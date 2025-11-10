@@ -4525,143 +4525,176 @@ function rebuildKelulusanCacheFromDB() {
   return { masterIndex, allHasilWrappers };
 }
 
+/**
+ * [MODIFIKASI UNTUK SSO]
+ * Memproses login guru, memverifikasi dari 'Akun_Guru' di spreadsheet sekolah.
+ * Menyimpan sesi ke UserProperties (bukan Cache) agar bisa dibaca oleh App 2.
+ */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const appUrl = ScriptApp.getService().getUrl();
+
+    // 1. Buka Master Sheet
+    let masterSS;
+    try {
+      masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    } catch (e) {
+      Logger.log(`Gagal membuka Master Sheet ID: ${MASTER_SHEET_ID}. Error: ${e.message}`);
+      throw new Error("Gagal terhubung ke database utama. Hubungi admin.");
+    }
+    
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-    
-    let targetSekolah = null;
-    let rowData = null;
-    
-    const npsnFinder = sheetSekolah.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
-    
-    if (npsnFinder.length > 0) {
-      const rowNum = npsnFinder[0].getRow();
-      rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
-      targetSekolah = rowData;
-    } else {
-      const namaFinder = sheetSekolah.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
-      if (namaFinder.length > 0) {
-        const rowNum = namaFinder[0].getRow();
-        rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
-        targetSekolah = rowData;
+    if (!sheetSekolah) {
+      throw new Error("Database Master (Sheet_Sekolah) tidak ditemukan.");
+    }
+
+    // 2. Cari Sekolah berdasarkan NPSN
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    let sekolahRow = null;
+    // Kolom H (index 7) adalah NPSN
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][7] == npsn) { 
+        sekolahRow = dataSekolah[i];
+        break;
       }
     }
 
-    if (!targetSekolah) {
-      return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
+    if (!sekolahRow) {
+      throw new Error("NPSN Sekolah tidak ditemukan di database.");
     }
 
-    const donasiStatus = targetSekolah[8] || "NONE"; // Kolom I
-    if (donasiStatus !== "APPROVED") {
-      return { status: "gagal", message: "Fitur Login Guru adalah fitur premium. Silakan minta Admin Sekolah Anda untuk mengaktifkan donasi." };
-    }
-
-    const spreadsheetID = targetSekolah[5];
-    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    const sheetGuru = getGuruSheet(ss);
-    if (!sheetGuru) {
-      return { status: "gagal", message: "Fitur guru belum diaktifkan di sekolah ini. Hubungi Admin." };
-    }
-
-    const guruEmailFinder = sheetGuru.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
-
-    const appUrl = ScriptApp.getService().getUrl();
+    const sekolahId = sekolahRow[0]; // Kolom A (SekolahID)
+    const namaSekolah = sekolahRow[1]; // Kolom B (NamaSekolah)
+    const jenjang = sekolahRow[2]; // Kolom C (Jenjang)
+    const spreadsheetID = sekolahRow[5]; // Kolom F (SpreadsheetID)
     
-    if (guruEmailFinder.length > 0) {
-      const rowNum = guruEmailFinder[0].getRow();
-      const guruData = sheetGuru.getRange(rowNum, 1, 1, sheetGuru.getLastColumn()).getValues()[0];
-      
-      if (verifyPassword(password, guruData[2], guruData[3])) {
-        
-        const dataMapel = guruData[4]; // Kolom E (MapelKelasJSON)
-        let mapelKelasData = {};
-        let assignedMapel = [];
-        let assignedKelas = new Set(); 
+    if (!spreadsheetID) {
+       throw new Error("Sekolah ini belum memiliki database. Hubungi admin.");
+    }
 
-        if (dataMapel) {
-          try {
-            mapelKelasData = JSON.parse(dataMapel);
-          } catch (e) {
-            mapelKelasData = {};
-            const mapelArray = String(dataMapel).split(',').map(s => s.trim());
-            mapelArray.forEach(mapelId => {
-              if (mapelId) {
-                mapelKelasData[mapelId] = ["*"]; 
-              }
-            });
-          }
+    // 3. Buka Spreadsheet Sekolah
+    let ssSekolah;
+    try {
+      ssSekolah = SpreadsheetApp.openById(spreadsheetID);
+    } catch (e) {
+      Logger.log(`Gagal membuka Spreadsheet Sekolah ID: ${spreadsheetID}. Error: ${e.message}`);
+      throw new Error("Gagal membuka database sekolah.");
+    }
+    
+    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID); // Ambil jenjang pilihan
+
+    // 4. Cari Guru di sheet 'Akun_Guru'
+    const sheetGuru = getGuruSheet(ssSekolah); // Helper function Anda
+    if (!sheetGuru) {
+      throw new Error("Database guru (Akun_Guru) tidak ditemukan di sekolah ini.");
+    }
+    
+    const dataGuru = sheetGuru.getDataRange().getValues();
+    const userEmailLower = email.toLowerCase();
+    let guruRow = null;
+    
+    // Kolom A (index 0) adalah Email
+    for (let i = 1; i < dataGuru.length; i++) {
+      if (dataGuru[i][0].toLowerCase() === userEmailLower) {
+        guruRow = dataGuru[i];
+        break;
+      }
+    }
+    
+    if (!guruRow) {
+      throw new Error("Email guru tidak ditemukan di sekolah ini.");
+    }
+
+    // 5. Verifikasi Password
+    const namaGuru = guruRow[1]; // Kolom B (Nama)
+    const dbHash = guruRow[2];   // Kolom C (HashedPassword)
+    const dbSalt = guruRow[3];   // Kolom D (Salt)
+
+    const passwordIsValid = verifyPassword(password, dbHash, dbSalt); // Helper function Anda
+
+    if (passwordIsValid) {
+      // 6. Login Berhasil!
+      const dataMapel = guruRow[4]; // Kolom E (MapelKelasJSON)
+      let mapelKelasData = {};
+      let assignedMapel = [];
+      let assignedKelas = new Set(); 
+
+      if (dataMapel) {
+        try {
+          mapelKelasData = JSON.parse(dataMapel);
+        } catch (e) {
+          mapelKelasData = {}; // Gagal parse, reset
         }
+      }
 
-        assignedMapel = Object.keys(mapelKelasData);
-        for (const mapel in mapelKelasData) {
-          const kelasArray = mapelKelasData[mapel];
+      assignedMapel = Object.keys(mapelKelasData);
+      
+      const kelasSheet = getKelasSheet(ssSekolah); // Helper function Anda
+      const semuaKelasData = kelasSheet.getDataRange().getValues();
+      semuaKelasData.shift();
+      const semuaKelasList = semuaKelasData.map(row => row[0]);
+
+      for (const mapel in mapelKelasData) {
+        const kelasArray = mapelKelasData[mapel];
+        if (Array.isArray(kelasArray)) {
           if (kelasArray.includes("*")) {
-            const kelasSheet = getKelasSheet(ss);
-            const semuaKelas = kelasSheet.getDataRange().getValues();
-            semuaKelas.shift(); 
-            semuaKelas.forEach(row => assignedKelas.add(row[0]));
+            semuaKelasList.forEach(k => assignedKelas.add(k));
           } else {
             kelasArray.forEach(k => assignedKelas.add(k));
           }
         }
-
-        // --- PERBAIKAN DI SINI ---
-        const allMapel = _getMapelInternal(ss, targetSekolah[0]);
-        // --- AKHIR PERBAIKAN ---
-        
-        const mapelUPSet = new Set();
-        const mapelUMSet = new Set();
-        
-        allMapel.forEach(m => {
-          if (m.isUP) mapelUPSet.add(m.id);
-          if (m.isUS) mapelUMSet.add(m.id);
-        });
-        
-        let hasPraktek = false;
-        let hasMadrasah = false;
-        
-        for (const mapelId of assignedMapel) {
-          if (mapelUPSet.has(mapelId)) hasPraktek = true;
-          if (mapelUMSet.has(mapelId)) hasMadrasah = true;
-          if (hasPraktek && hasMadrasah) break;
-        }
-        
-        const token = Utilities.getUuid();
-        const sessionData = {
-          role: 'guru',
-          sekolahID: targetSekolah[0],
-          namaSekolah: targetSekolah[1],
-          jenjang: targetSekolah[2],
-          spreadsheetID: spreadsheetID,
-          jenjangPilihan: jenjangPilihan,
-          namaGuru: guruData[1],
-          assignedMapel: assignedMapel, 
-          assignedKelas: Array.from(assignedKelas), 
-          mapelKelasData: mapelKelasData, 
-          hasUjianPraktek: hasPraktek,
-          hasUjianMadrasah: hasMadrasah,
-          lastActivity: new Date().getTime()
-        };
-        CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
-        
-        return {
-          status: "sukses",
-          role: "guru",
-          namaSekolah: targetSekolah[1],
-          namaGuru: guruData[1],
-          jenjangPilihan: jenjangPilihan,
-          hasUjianPraktek: hasPraktek,
-          hasUjianMadrasah: hasMadrasah,
-          token: token,
-          appUrl: appUrl
-        };
       }
+
+      const allMapel = _getMapelInternal(ssSekolah, sekolahId); // Helper function Anda
+      const { hasPraktek, hasMadrasah } = checkGuruMapelTypes(allMapel, assignedMapel);
+      
+const token = Utilities.getUuid();
+      
+      // === PERUBAHAN UTAMA: Simpan ke UserProperties ===
+      const userProperties = PropertiesService.getUserProperties();
+      
+      const sessionData = {
+        role: 'guru',
+        sekolahID: sekolahId,
+        namaSekolah: namaSekolah,
+        jenjang: jenjang,
+        spreadsheetID: spreadsheetID,
+        jenjangPilihan: jenjangPilihan,
+        namaGuru: namaGuru,
+        assignedMapel: assignedMapel,
+        assignedKelas: Array.from(assignedKelas),
+        mapelKelasData: mapelKelasData,
+        hasUjianPraktek: hasPraktek,
+        hasUjianMadrasah: hasMadrasah,
+        lastActivity: new Date().getTime(),
+        
+        // ===== BARIS INI YANG DIPERBAIKI =====
+        email: userEmailLower // <-- TAMBAHKAN BARIS INI
+        // ===================================
+      };
+      
+      userProperties.setProperty('JALANKU_SESSION_' + token, JSON.stringify(sessionData));
+      // === AKHIR PERUBAHAN ===
+
+      return {
+        status: "sukses",
+        role: "guru",
+        namaGuru: namaGuru,
+        namaSekolah: namaSekolah,
+        jenjang: jenjang,
+        jenjangPilihan: jenjangPilihan,
+        token: token,
+        appUrl: appUrl,
+        npsn: npsn, 
+        email: email // 'email' ini (bukan userEmailLower) sudah ada dari return sebelumnya
+      };
+    } else {
+      throw new Error("Password guru salah.");
     }
-    return { status: "gagal", message: "Email atau password guru salah." };
+
   } catch (e) {
-    return { status: "gagal", message: "Terjadi error: " + e.message };
+    Logger.log(e);
+    return { status: "gagal", message: e.message };
   }
 }
 
@@ -5769,4 +5802,42 @@ function generateSiswaLoginCards(token) {
     Logger.log("Error generateSiswaLoginCards: " + e.message);
     return { status: "gagal", message: e.message };
   }
+}
+
+/**
+ * [FUNGSI BARU YANG HILANG]
+ * Memeriksa daftar mapel yang diampu guru untuk menentukan
+ * apakah mereka mengajar Ujian Praktek atau Ujian Madrasah/Sekolah.
+ * @param {Array<Object>} allMapel - Daftar semua mapel dari _getMapelInternal.
+ * @param {Array<string>} assignedMapel - Array berisi ID mapel yang diampu guru.
+ * @returns {Object} { hasPraktek: boolean, hasMadrasah: boolean }
+ */
+function checkGuruMapelTypes(allMapel, assignedMapel) {
+  let hasPraktek = false;
+  let hasMadrasah = false;
+
+  if (!allMapel || !assignedMapel || assignedMapel.length === 0) {
+    return { hasPraktek, hasMadrasah };
+  }
+
+  const assignedSet = new Set(assignedMapel);
+
+  for (const mapel of allMapel) {
+    // Cek apakah mapel ini diampu oleh guru
+    if (assignedSet.has(mapel.id)) {
+      if (mapel.isUP) { // isUP = Ujian Praktek
+        hasPraktek = true;
+      }
+      if (mapel.isUS) { // isUS = Ujian Sekolah/Madrasah
+        hasMadrasah = true;
+      }
+    }
+    
+    // Jika sudah ketemu keduanya, tidak perlu loop lagi
+    if (hasPraktek && hasMadrasah) {
+      break;
+    }
+  }
+
+  return { hasPraktek, hasMadrasah };
 }
