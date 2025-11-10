@@ -2501,7 +2501,8 @@
   }
 
   function hasilLogin(response) {
-    setLoading(false);
+    // MODIFIKASI: Hapus setLoading(false) dari sini
+    
     resetButtonLoading(document.getElementById('btn-login'));
     resetButtonLoading(document.getElementById('btn-login-guru'));
 
@@ -2509,9 +2510,7 @@
       localStorage.setItem('sessionToken', response.token);
       resetInactivityTimer();
       
-      // --- TAMBAHAN BARU: Mendorong state "jebakan" ---
       history.pushState(null, "", location.href);
-      // --- AKHIR TAMBAHAN BARU ---
 
       globalAppUrl = response.appUrl || '';
 
@@ -2521,11 +2520,13 @@
       currentUserRole = response.role;
 
       if (response.role === 'superadmin') {
+        setLoading(false); // Matikan loading untuk superadmin
         document.getElementById('salam-superadmin').innerText = `Selamat Datang, ${response.nama}`;
         tampilHalaman('halaman-superadmin');
         bukaHalamanSuperadmin();
 
       } else if (response.role === 'admin') {
+        setLoading(false); // Matikan loading untuk admin
         jenjangBaseCache = response.jenjang;
         jenjangPilihanCache = response.jenjangPilihan;
         document.getElementById('salam-sekolah').innerText = `Selamat Datang, Admin ${response.namaSekolah}`;
@@ -2535,21 +2536,30 @@
           document.getElementById('btn-kembali-ke-superadmin').style.display = 'inline-flex';
         }
 
-        // --- TAMBAHKAN 2 BARIS INI ---
         globalDonasiStatus = response.donasiStatus || "NONE";
         updatePremiumFeatures(globalDonasiStatus);
-        // --- AKHIR TAMBAHAN ---
-
+        
         tampilHalaman('halaman-utama');
-
+      
+      // === BLOK PERUBAHAN UTAMA UNTUK SSO ===
       } else if (response.role === 'guru') {
-        guruHasPraktek = response.hasUjianPraktek;
-        guruHasMadrasah = response.hasUjianMadrasah;
-        jenjangPilihanCache = response.jenjangPilihan;
-        tampilkanDashboardGuru(response.namaGuru, response.namaSekolah);
+        
+        // JANGAN panggil setLoading(false). Biarkan toast loading tetap tampil
+        // sampai halaman redirect manual muncul.
+        
+        const app2Url = "https://script.google.com/macros/s/AKfycbzLlM6gS4SLd6uSEWXW9BmM78elNyXdi0wNnpfB4roDiVNWLK52ZkFIBZs6CIp4hi4IMg/exec"; // <-- URL APP 2 Anda
+        const app1Token = response.token; 
+        const npsn = response.npsn;
+        const email = response.email;
+        const redirectUrl = `${app2Url}?app1_token=${encodeURIComponent(app1Token)}&npsn=${encodeURIComponent(npsn)}&email=${encodeURIComponent(email)}`;
+        
+        // Panggil helper BARU untuk menampilkan tombol "Lanjutkan"
+        showRedirectPage(redirectUrl);
+      // === AKHIR BLOK PERUBAHAN ===
       }
 
     } else {
+      setLoading(false); // Matikan loading jika GAGAL
       if (document.getElementById('halaman-login-guru').style.display !== 'none') {
           showMessage('login-guru-error', response.message, true);
       } else {
@@ -9857,6 +9867,33 @@ function populateSiswaFilters() {
     }, 50); 
     
     showToast(`Berhasil membuat ${cardData.length} kartu siswa.`, 'sukses');
+  }
+
+  /**
+   * [FUNGSI BARU]
+   * Menampilkan halaman "lanjutkan" manual karena redirect otomatis diblokir.
+   */
+  function showRedirectPage(redirectUrl) {
+    try {
+      // 1. Matikan toast loading
+      setLoading(false); 
+      
+      // 2. Sembunyikan form login
+      document.getElementById('halaman-login').style.display = 'none';
+      
+      // 3. Tampilkan halaman redirect
+      const redirectPage = document.getElementById('halaman-redirect-guru');
+      redirectPage.style.display = 'block';
+      
+      // 4. Atur URL yang benar di tombol "Lanjutkan"
+      const redirectButton = document.getElementById('btn-redirect-guru-lanjutkan');
+      redirectButton.href = redirectUrl;
+
+    } catch (e) {
+      console.error("Gagal total menampilkan halaman redirect manual:", e);
+      // Fallback paling akhir jika semua gagal
+      document.body.innerHTML = '<h1>Login Berhasil</h1><p>Silakan <a href="' + redirectUrl + '" target="_top">klik di sini untuk melanjutkan</a>.</p>';
+    }
   }
 
 </script>
