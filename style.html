@@ -4536,4 +4536,254 @@
   }
 
   /* --- AKHIR BLOK BARU --- */
+
+  /* Header untuk form grid T.A. */
+  .form-group-grid-header {
+    display: grid;
+    /* Sesuaikan grid agar cocok dengan .tahun-ajar-input-row */
+    grid-template-columns: 1fr 1.5fr 100px 50px; 
+    gap: 10px;
+    margin-bottom: 5px;
+    padding: 0 5px;
+  }
+  .form-group-grid-header label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-light);
+    margin-bottom: 0;
+  }
+
+  /* Baris input untuk T.A. */
+  .tahun-ajar-input-row {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr 100px 50px;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .tahun-ajar-input-row input[type="text"] {
+    margin: 0;
+    font-size: 15px;
+    padding: 10px;
+  }
+  .tahun-ajar-input-row select {
+    margin: 0;
+    font-size: 15px;
+    padding: 10px;
+    height: 44px; /* Samakan tinggi */
+    box-sizing: border-box;
+  }
+
+  /* Tombol aksi di baris T.A. */
+  .btn-aksi-ta {
+    width: 100%; /* Penuhi 50px */
+    padding: 10px 0;
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1.2;
+    height: 44px; /* Samakan tinggi input */
+    gap: 0;
+  }
+  .btn-remove-ta {
+    background-color: var(--danger-color);
+  }
+  .btn-remove-ta:hover {
+    background-color: #b02a37;
+  }
+
+  /* Tombol simpan T.A. */
+  #btn-simpan-tahun-ajar {
+    background-color: var(--success-color);
+  }
+  #btn-simpan-tahun-ajar:hover {
+    background-color: #157347;
+  }
+  #btn-simpan-tahun-ajar:disabled {
+    background-color: var(--secondary-color) !important;
+  }
+
+  /* Header untuk form grid T.A. Admin */
+  .form-group-grid-header {
+    display: grid;
+    /* Grid 4 kolom */
+    grid-template-columns: 1fr 1.5fr 100px 50px; 
+    gap: 10px;
+    margin-bottom: 5px;
+    padding: 0 5px;
+  }
+  .form-group-grid-header label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-light);
+    margin-bottom: 0;
+  }
+
+  /* Baris input untuk T.A. Admin */
+  .tahun-ajar-input-row {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr 100px 50px;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .tahun-ajar-input-row input[type="text"] {
+    margin: 0;
+    font-size: 15px;
+    padding: 10px;
+  }
+  .tahun-ajar-input-row select {
+    margin: 0;
+    font-size: 15px;
+    padding: 10px;
+    height: 44px; /* Samakan tinggi */
+    box-sizing: border-box;
+  }
+
+  /* Tombol aksi di baris T.A. Admin */
+  .btn-aksi-ta {
+    width: 100%; /* Penuhi 50px */
+    padding: 10px 0;
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1.2;
+    height: 44px; /* Samakan tinggi input */
+    gap: 0;
+  }
+  .btn-remove-ta {
+    background-color: var(--danger-color);
+  }
+  .btn-remove-ta:hover {
+    background-color: #b02a37;
+  }
+
+  /* Tombol simpan T.A. Admin */
+  #btn-simpan-tahun-ajar-admin {
+    background-color: var(--success-color);
+  }
+  #btn-simpan-tahun-ajar-admin:hover {
+    background-color: #157347;
+  }
+  #btn-simpan-tahun-ajar-admin:disabled {
+    background-color: var(--secondary-color) !important;
+  }
+
+  /* Hover state untuk kartu T.A. Admin baru */
+  #btn-buka-kelola-ta-admin:hover {
+    background-color: #0dcaf0 !important;
+    color: white !important;
+  }
+
+  /* Hover state untuk kartu Penempatan Siswa baru */
+  #btn-buka-penempatan-siswa:hover {
+    background-color: #6f42c1 !important;
+    color: white !important;
+  }
+
+  /* Layout Halaman Penempatan Siswa */
+  .penempatan-container {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr; /* Kolom 1, Tombol, Kolom 2 */
+    gap: 15px;
+    align-items: start;
+    margin-top: 20px;
+  }
+
+  .penempatan-list-box {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-white);
+    height: 400px; /* Tinggi tetap */
+    display: flex;
+    flex-direction: column; /* Atur tata letak vertikal */
+  }
+  .penempatan-list-box h4 {
+    font-size: 16px;
+    margin: 0;
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-light);
+  }
+
+  .penempatan-filter {
+    width: 100%;
+    padding: 10px 15px;
+    font-size: 14px;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
+  }
+  .penempatan-filter:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  .penempatan-list {
+    overflow-y: auto; /* List bisa di-scroll */
+    flex-grow: 1; /* Ambil sisa ruang */
+    padding: 5px;
+  }
+
+  .penempatan-list-item {
+    display: flex; /* Gunakan flexbox */
+    justify-content: space-between; /* Pisahkan nama dan input */
+    align-items: center; /* Sejajarkan */
+    padding: 8px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 5px;
+    margin: 3px 0;
+    border: 1px solid transparent;
+    gap: 10px; /* Jarak antara nama dan input */
+  }
+  .penempatan-list-item:hover {
+    background-color: #e9ecef;
+  }
+  .penempatan-list-item.selected {
+    background-color: #e7f1ff;
+    border-color: var(--primary-color);
+    font-weight: 500;
+  }
+
+  .penempatan-list-item .item-nama {
+    flex-grow: 1; /* Nama ambil ruang sisa */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .penempatan-list-item .item-kelas {
+    flex-shrink: 0; /* Kelas tidak mengecil */
+    font-size: 12px;
+    color: var(--text-light);
+    background-color: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .penempatan-list-item .item-ruang {
+    flex-shrink: 0; /* Input ruang tidak mengecil */
+    width: 80px;
+    font-size: 13px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+  }
+
+  .penempatan-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-self: center; /* Posisikan di tengah vertikal */
+  }
+  .penempatan-actions button {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    padding: 0;
+  }
+  .penempatan-actions button:disabled {
+    background-color: var(--secondary-color) !important;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 </style>
