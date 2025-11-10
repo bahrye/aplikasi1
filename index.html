@@ -1,0 +1,1698 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pengolahan Nilai Ijazah</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    <?!= include('style'); ?>
+  </head>
+  <body>
+
+    <div id="global-toast-container"></div>
+    <div id="global-ui-blocker"></div> <div id="loader" style="display: none;">
+      <div class="spinner"></div>
+    </div>
+
+    <div class="container" id="auth-container" style="display: none;">
+      <div class="app-header">
+        <h1>Nilai Ijazah</h1>
+        <p>Aplikasi Pengolahan Nilai Sekolah</p>
+      </div>
+      
+      <div class="auth-tabs">
+        <button id="tab-btn-admin" class="tab-link active" data-tab="admin">Login Admin</button>
+        <button id="tab-btn-guru" class="tab-link" data-tab="guru">Login Guru</button>
+        <button id="tab-btn-siswa" class="tab-link" data-tab="siswa">Cek Kelulusan</button>
+      </div>
+
+      <div id="halaman-login" class="page auth-tab-content active" data-content="admin">
+        <form id="login-form">
+          <div class="form-group">
+            <input type="email" id="login-email" placeholder="Email Admin Sekolah" name="email" autocomplete="email">
+          </div>
+          <div class="form-group form-group-password">
+            <input type="password" id="login-password" placeholder="Password" name="password" autocomplete="current-password">
+            <span id="toggle-login-password" class="toggle-password-icon fas fa-eye"></span>
+          </div>
+        </form>
+        <button id="btn-login"><i class="fas fa-sign-in-alt"></i>Masuk</button>
+        <p id="login-error" class="message error"></p>
+        <a id="link-ke-registrasi" class="nav-link">Belum punya akun? Daftar di sini</a>
+      </div>
+
+      <div id="halaman-login-guru" class="page auth-tab-content" style="display: none;" data-content="guru">
+        <form id="login-guru-form">
+          <div class="form-group">
+            <input type="text" id="login-guru-npsn" placeholder="NPSN Sekolah" inputmode="numeric" required>
+          </div>
+          <div class="form-group">
+            <input type="email" id="login-guru-email" placeholder="Email Guru" autocomplete="email" required>
+          </div>
+          <div class="form-group form-group-password">
+            <input type="password" id="login-guru-password" placeholder="Password" autocomplete="current-password" required>
+            <span id="toggle-login-guru-password" class="toggle-password-icon fas fa-eye"></span>
+          </div>
+          <button type="submit" id="btn-login-guru"><i class="fas fa-chalkboard-teacher"></i>Masuk sebagai Guru</button>
+        </form>
+        <p id="login-guru-error" class="message error"></p>
+      </div>
+      
+      <div id="halaman-login-siswa" class="page auth-tab-content" style="display: none;" data-content="siswa">
+        <form id="login-siswa-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="login-siswa-nisn">NISN (Nomor Induk Siswa Nasional)</label>
+            <input type="text" id="login-siswa-nisn" placeholder="Masukkan NISN Anda" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label for="login-siswa-tgllahir">Tanggal Lahir</label>
+            <input type="date" id="login-siswa-tgllahir">
+          </div>
+        </form>
+        <button id="btn-cek-kelulusan"><i class="fas fa-search"></i>Cek Status Kelulusan</button>
+        <p id="login-siswa-error" class="message error"></p>
+      </div>
+
+      <div id="halaman-registrasi" class="page" style="display: none;">
+        <form id="reg-form">
+          <div class="form-group">
+            <input type="text" id="reg-nama-sekolah" placeholder="Nama Sekolah">
+          </div>
+          
+          <div class="form-group">
+            <input type="text" id="reg-npsn" placeholder="NPSN Sekolah (Wajib)" inputmode="numeric">
+            <small class="helper-text">NPSN akan terkunci dan digunakan untuk login guru.</small>
+          </div>
+          
+          <div class="form-group">
+            <select id="reg-jenjang">
+              <option value="">-- Pilih Jenjang --</option>
+              <option value="SD/MI">SD/MI</option>
+              <option value="SMP/MTS">SMP/MTS</option>
+              <option value="SMA/MA">SMA/MA</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <input type="email" id="reg-email" placeholder="Email Admin">
+            
+            <div id="reg-email-tooltip">
+              <ul>
+                <li id="email-format">Format email tidak valid (contoh: email@domain.com)</li>
+              </ul>
+            </div>
+          </div>
+          <div class="form-group form-group-password">
+            <div class="password-input-wrapper">
+              <input type="password" id="reg-password" placeholder="Buat Password" name="password" autocomplete="new-password">
+              <span id="toggle-reg-password" class="toggle-password-icon fas fa-eye"></span>
+            </div>
+            <div id="reg-password-tooltip">
+              <ul>
+                <li id="pass-length">Minimal 8 karakter</li>
+                <li id="pass-lower">Satu huruf kecil (a-z)</li>
+                <li id="pass-upper">Satu huruf besar (A-Z)</li>
+                <li id="pass-number">Satu angka (0-9)</li>
+                <li id="pass-symbol">Satu simbol (!@#$)</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="form-group form-group-password">
+            <div class="password-input-wrapper">
+              <input type="password" id="reg-password-confirm" placeholder="Masukkan Ulang Password" autocomplete="new-password">
+              <span id="toggle-reg-confirm-password" class="toggle-password-icon fas fa-eye"></span>
+            </div>
+            <div id="reg-password-confirm-tooltip">
+              <ul>
+                <li id="pass-match">Password tidak cocok</li>
+              </ul>
+            </div>
+          </div>
+        </form>
+        <button id="btn-registrasi"><i class="fas fa-user-plus"></i>Daftar</button>
+        <p id="reg-message" class="message"></p>
+        <a id="link-ke-login" class="nav-link">Sudah punya akun? Login</a>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-utama" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button id="btn-kembali-ke-superadmin" style="display: none;">
+            <i class="fas fa-user-shield"></i>Kembali ke Superadmin
+          </button>
+          <button id="btn-logout"><i class="fas fa-sign-out-alt"></i>Logout</button>
+        </div>
+
+        <h2 id="salam-sekolah">Selamat Datang, Admin</h2>
+        <p>Ini adalah dashboard utama Anda. Silakan pilih menu di bawah ini:</p>
+        
+        <div class="dashboard-section-header-flex">
+          <h3 class="dashboard-section-header">Kelola Data</h3>
+          <button id="btn-update-semua-data" class="btn-aksi btn-update-data" title="Memuat ulang semua data dari server">
+            <i class="fas fa-sync-alt"></i>Update Semua Data
+          </button>
+        </div>
+        <div class="dashboard-menu-grid">
+          <button class="dashboard-card" id="btn-buka-data-sekolah">
+            <i class="fas fa-school"></i>
+            <span>Kelola Data Sekolah</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-guru">
+            <i class="fas fa-chalkboard-teacher"></i>
+            <span>Kelola Data Guru</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
+          </button>
+          <button class="dashboard-card" id="btn-buka-siswa">
+            <i class="fas fa-users"></i>
+            <span>Kelola Data Siswa</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-mapel">
+            <i class="fas fa-book-open"></i>
+            <span>Kelola Mata Pelajaran</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-bobot">
+            <i class="fas fa-balance-scale"></i>
+            <span>Kelola Bobot Nilai</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-kelas">
+            <i class="fas fa-chalkboard-teacher"></i>
+            <span>Kelola Kelas</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-semester">
+            <i class="fas fa-layer-group"></i>
+            <span>Kelola Semester</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-donasi">
+            <i class="fas fa-hand-holding-heart"></i>
+            <span>Donasi Premium</span>
+          </button>
+        </div>
+
+        <hr class="dashboard-divider">
+
+        <h3 class="dashboard-section-header">Input Nilai</h3>
+        <div class="dashboard-menu-grid dashboard-grid-input"> <button class="dashboard-card" id="btn-buka-input-ujian">
+            <i class="fas fa-pen-alt"></i>
+            <span>Input Nilai Ujian</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-input-rapor">
+            <i class="fas fa-book-reader"></i>
+            <span>Input Nilai Rapor</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-validasi-nilai">
+            <i class="fas fa-tasks"></i>
+            <span>Validasi Nilai</span>
+          </button>
+        </div>
+
+        <hr class="dashboard-divider">
+
+        <h3 class="dashboard-section-header">Hasil Akhir</h3>
+        <div class="dashboard-menu-grid dashboard-grid-input">
+          <button class="dashboard-card" id="btn-buka-nilai-ijazah">
+            <i class="fas fa-file-invoice"></i>
+            <span>Nilai Ijazah</span>
+          </button>
+          
+          <button class="dashboard-card" id="btn-buka-kelola-kelulusan">
+            <i class="fas fa-bullhorn"></i>
+            <span>Kelola Kelulusan</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
+          </button>
+
+          <button class="dashboard-card card-disabled" id="btn-buka-proses-kelulusan">
+            <i class="fas fa-history"></i>
+            <span>Proses Kelulusan</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-input-ujian" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-6"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Input Nilai Ujian</h2>
+        </div>
+
+        <div class="page-sub-header">
+          <p>Pilih jenis ujian yang akan diinput nilainya.</p>
+          <button id="btn-buka-upload-nilai" class="btn-aksi"><i class="fas fa-upload"></i>Upload Nilai</button>
+        </div>
+        <div class="dashboard-menu-grid dashboard-grid-input">
+          <button class="dashboard-card" id="btn-buka-input-um">
+            <i class="fas fa-graduation-cap"></i>
+            <span id="label-ujian-utama">Ujian Sekolah</span> 
+          </button>
+          <button class="dashboard-card" id="btn-buka-input-praktek">
+            <i class="fas fa-flask"></i>
+            <span>Ujian Praktek</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-rekap-nilai">
+            <i class="fas fa-chart-bar"></i>
+            <span>Rekapitulasi Nilai Ujian</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-input-rapor" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-8"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+        <div class="page-header">
+          <h2>Input Nilai Rapor</h2>
+        </div>
+
+        <div class="page-sub-header">
+          <p>Pilih semester yang akan diinput nilainya.</p>
+          <button id="btn-buka-upload-rapor" class="btn-aksi"><i class="fas fa-upload"></i>Upload Nilai Rapor</button>
+        </div>
+        
+        <div class="dashboard-menu-grid dashboard-grid-input" id="rapor-semester-card-container">
+          <p>Memuat daftar semester...</p>
+        </div>
+        
+        <hr class="dashboard-divider">
+        <h3 class="dashboard-section-header">Rekapitulasi</h3>
+        <div class="dashboard-menu-grid dashboard-grid-input">
+          <button class="dashboard-card" id="btn-buka-rekap-rapor">
+            <i class="fas fa-chart-line"></i>
+            <span>Rekapitulasi Nilai Rapor</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-input-rapor-detail" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-input-rapor"><i class="fas fa-arrow-circle-left"></i>Kembali ke Pilihan Semester</button>
+        </div>
+        <div class="page-header">
+          <h2 id="judul-halaman-input-rapor">Input Nilai Rapor</h2> 
+        </div>
+        <p id="input-rapor-message" class="message" style="display: none;"></p>
+        
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="input-rapor-filter-kelas">Tampilkan Kelas</label>
+            <select id="input-rapor-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="tab-bar">
+          <button class="tab-link active" data-tab="pengetahuan">Nilai Peng.</button>
+          <button class="tab-link" data-tab="keterampilan">Nilai Ket.</button>
+          <button class="tab-link" data-tab="rekap">Rekap</button>
+        </div>
+
+        <div class="tab-content-wrapper">
+          
+          <div id="tab-pengetahuan-content" class="tab-content active">
+            <p class="table-content-header">Input Nilai Pengetahuan</p>
+            <div class="input-nilai-table-container" id="input-rapor-table-container">
+              <p>Memuat data...</p>
+              <div class="table-blocker-overlay"></div> </div>
+            <hr>
+            <div class="form-actions" id="form-actions-pengetahuan">
+                <button type="button" id="btn-bersihkan-input-rapor-p" disabled><i class="fas fa-eraser"></i>Bersihkan Pengetahuan</button>
+                <button type="button" id="btn-simpan-input-rapor-p" disabled><i class="fas fa-save"></i>Simpan Pengetahuan</button>
+            </div>
+          </div>
+
+          <div id="tab-keterampilan-content" class="tab-content">
+            <p class="table-content-header">Input Nilai Keterampilan</p>
+            <div class="input-nilai-table-container" id="input-rapor-keterampilan-table-container">
+              <p>Memuat data...</p>
+              <div class="table-blocker-overlay"></div> </div>
+            <hr>
+            <div class="form-actions" id="form-actions-keterampilan">
+                <button type="button" id="btn-bersihkan-input-rapor-k" disabled><i class="fas fa-eraser"></i>Bersihkan Keterampilan</button>
+                <button type="button" id="btn-simpan-input-rapor-k" disabled><i class="fas fa-save"></i>Simpan Keterampilan</button>
+            </div>
+          </div>
+
+          <div id="tab-rekap-content" class="tab-content">
+            <p class="table-content-header">Rekapitulasi Nilai</p>
+            <div class="input-nilai-table-container" id="rekap-rapor-semester-table-container">
+              <p>Memuat data...</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-rekap-rapor" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-input-rapor-2"><i class="fas fa-arrow-circle-left"></i>Kembali ke Pilihan Semester</button>
+        </div>
+        <div class="page-header">
+          <h2 id="judul-halaman-rekap-rapor">Rekapitulasi Nilai Rapor</h2> 
+        </div>
+        <p id="rekap-rapor-message" class="message" style="display: none;"></p>
+        
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="rekap-rapor-filter-kelas">Tampilkan Kelas</label>
+            <select id="rekap-rapor-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-nilai-table-container" id="rekap-rapor-table-container">
+          <p>Memuat data...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-rekap-nilai" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-input-ujian-2"><i class="fas fa-arrow-circle-left"></i>Kembali ke Pilihan Ujian</button>
+        </div>
+
+        <div class="page-header">
+          <h2 id="judul-halaman-rekap-nilai">Rekapitulasi Nilai Ujian</h2> 
+        </div>
+
+        <p id="rekap-nilai-message" class="message" style="display: none;"></p>
+        
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="rekap-nilai-filter-kelas">Tampilkan Kelas</label>
+            <select id="rekap-nilai-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-nilai-table-container" id="rekap-nilai-table-container">
+          <p>Memuat data...</p>
+        </div>
+        
+        </div>
+    </div>
+
+    <div class="container" id="halaman-input-nilai-detail" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-input-ujian"><i class="fas fa-arrow-circle-left"></i>Kembali ke Pilihan Ujian</button>
+        </div>
+
+        <div class="page-header">
+          <h2 id="judul-halaman-input-nilai">Input Nilai Ujian</h2> 
+        </div>
+
+        <p id="input-nilai-message" class="message" style="display: none;"></p>
+        
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="input-nilai-filter-kelas">Tampilkan Kelas</label>
+            <select id="input-nilai-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-nilai-table-container" id="input-nilai-table-container">
+          <p>Memuat data...</p>
+        <div class="table-blocker-overlay"></div> </div>
+        
+        <hr>
+        <div class="form-actions">
+            <button type="button" id="btn-bersihkan-input-nilai" disabled><i class="fas fa-eraser"></i>Bersihkan Semua Nilai</button>
+            <button type="button" id="btn-simpan-input-nilai" disabled><i class="fas fa-save"></i>Simpan Perubahan Nilai</button>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="container" id="halaman-data-sekolah" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-2"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Data Sekolah</h2>
+        </div>
+
+        <p>Lengkapi data identitas sekolah Anda. Data ini akan digunakan pada dokumen dan laporan.</p>
+
+        <form id="form-data-sekolah">
+
+          <h3 class="form-section-header">Identitas Utama</h3>
+          <div class="form-group">
+            <label for="data-nama-sekolah">Nama Sekolah</label>
+            <input type="text" id="data-nama-sekolah" disabled>
+          </div>
+          <div class="form-group">
+            <label for="data-jenjang-pilihan">Jenjang Sekolah (Wajib)</label>
+            <select id="data-jenjang-pilihan"></select>
+          </div>
+          <div class="form-group">
+            <label for="data-npsn">NPSN</label>
+            <input type="text" id="data-npsn" placeholder="Masukkan NPSN" disabled>
+          </div>
+          <div class="form-group" id="grup-nsm">
+            <label for="data-nsm">NSM</label>
+            <input type="text" id="data-nsm" placeholder="Masukkan NSM (jika ada)">
+          </div>
+
+          <h3 class="form-section-header">Alamat</h3>
+          <div class="form-group">
+            <label for="data-alamat">Alamat Sekolah (Wajib)</label>
+            <textarea id="data-alamat" rows="3" placeholder="Masukkan alamat lengkap sekolah"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="data-provinsi">Provinsi</label>
+            <input type="text" id="data-provinsi" placeholder="Misal: Jawa Barat">
+          </div>
+          <div class="form-group">
+            <select id="data-pilihan-kabkot" class="label-dropdown" title="Klik untuk mengganti tipe">
+              <option value="Kabupaten">Kabupaten</option>
+              <option value="Kota">Kota</option>
+            </select>
+            <input type="text" id="data-kabkot" placeholder="Masukkan nama Kabupaten/Kota">
+          </div>
+
+          <div class="form-group">
+            <label for="data-kecamatan">Kecamatan</label>
+            <input type="text" id="data-kecamatan" placeholder="Misal: Bulukumpa">
+          </div>
+
+          <div class="form-group">
+            <select id="data-pilihan-keldes" class="label-dropdown" title="Klik untuk mengganti tipe">
+              <option value="Kelurahan">Kelurahan</option>
+              <option value="Desa">Desa</option>
+            </select>
+            <input type="text" id="data-keldes" placeholder="Masukkan nama Kelurahan/Desa">
+          </div>
+          <div class="form-group">
+            <label for="data-kodepos">Kode Pos</label>
+            <input type="text" id="data-kodepos" placeholder="Misal: 40135">
+          </div>
+
+          <h3 class="form-section-header">Kontak & Legalitas</h3>
+          <div class="form-group">
+            <label for="data-telepon">Nomor Telepon</label>
+            <input type="text" id="data-telepon" placeholder="Misal: (022) 2501234">
+          </div>
+          <div class="form-group">
+            <label for="data-email">Email</label>
+            <input type="text" id="data-email" placeholder="Misal: info@sekolah.sch.id">
+          </div>
+          <div class="form-group">
+            <label for="data-website">Website</label>
+            <input type="text" id="data-website" placeholder="Misal: https://sekolah.sch.id">
+          </div>
+          <div class="form-group">
+            <label for="data-kepsek">Nama Kepala Sekolah (Wajib)</label>
+            <input type="text" id="data-kepsek" placeholder="Masukkan nama lengkap">
+          </div>
+          <div class="form-group">
+            <label for="data-nip-kepsek">NIP Kepala Sekolah</label>
+            <input type="text" id="data-nip-kepsek" placeholder="Masukkan NIP (jika ada)">
+          </div>
+
+          <p id="data-sekolah-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions">
+              <button type="submit" id="btn-simpan-data-sekolah"><i class="fas fa-save"></i>Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="container" id="halaman-bobot" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-3"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Bobot Nilai Ijazah</h2>
+        </div>
+
+        <p>Atur persentase bobot untuk nilai rapor dan nilai ujian. Total keduanya harus 100%. Bobot default adalah 60% Rapor dan 40% Ujian.</p>
+
+        <form id="form-bobot">
+
+          <div class="form-group">
+            <label for="bobot-rapor">Bobot Nilai Rapor (%)</label>
+            <input type="number" id="bobot-rapor" min="0" max="100" placeholder="Contoh: 60">
+          </div>
+
+          <div class="form-group">
+            <label for="bobot-ujian">Bobot Nilai Ujian (%)</label>
+            <input type="number" id="bobot-ujian" min="0" max="100" placeholder="Contoh: 40">
+          </div>
+
+          <div class="form-group">
+            <label for="bobot-kkm">Nilai KKM (Kriteria Ketuntasan Minimal)</label>
+            <input type="number" id="bobot-kkm" min="0" max="100" placeholder="Contoh: 76">
+          </div>
+
+          <p id="bobot-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions">
+              <button type="submit" id="btn-simpan-bobot"><i class="fas fa-save"></i>Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="container" id="halaman-kelas" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-4"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Kelas</h2>
+        </div>
+
+        <p>Masukkan nama-nama kelas yang ada di sekolah Anda. Klik tombol (+) untuk menambah baris baru.</p>
+
+        <form id="form-kelas">
+
+          <div id="kelas-list-container">
+            <p>Memuat data kelas...</p>
+          </div>
+
+          <p id="kelas-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions">
+              <button type="submit" id="btn-simpan-kelas"><i class="fas fa-save"></i>Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="container" id="halaman-siswa" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+            <button id="btn-kembali-ke-dashboard-5"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Data Siswa</h2>
+          <div class="header-buttons">
+            <button id="btn-cetak-kartu-siswa" style="background-color: var(--primary-color);">
+              <i class="fas fa-id-card"></i>Cetak Kartu Siswa
+            </button>
+            <button id="btn-tambah-siswa-baru"><i class="fas fa-plus"></i>Tambah Siswa</button>
+            <button id="btn-import-siswa"><i class="fas fa-upload"></i>Import Siswa</button>
+            <button id="btn-hapus-semua-siswa"><i class="fas fa-trash-alt"></i>Hapus Semua Siswa</button>
+          </div>
+        </div>
+
+        <p>Kelola data siswa di sekolah Anda. Data ini akan digunakan untuk input nilai.</p>
+
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="siswa-filter-kelas">Filter per Kelas</label>
+            <select id="siswa-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="siswa-sort-by">Urutkan berdasarkan</label>
+            <select id="siswa-sort-by">
+              <option value="default">Urutan Default (Per Kelas)</option>
+              <option value="nama-az">Nama (A-Z)</option>
+              <option value="nama-za">Nama (Z-A)</option>
+              <option value="nisn-asc">NISN (Menaik)</option>
+              <option value="nisn-desc">NISN (Menurun)</option>
+            </select>
+          </div>
+          <div class="form-group filter-bar-action">
+            </div>
+        </div>
+
+        <div class="siswa-table-container" id="siswa-table-container">
+          <p>Memuat data siswa...</p>
+        </div>
+        
+        <div class="floating-action-container" id="siswa-floating-actions">
+          <button id="btn-simpan-urutan-siswa" class="btn-aksi" disabled>
+            <i class="fas fa-save"></i>Simpan Urutan
+          </button>
+          
+          <button id="btn-batal-siswa-actions" class="btn-aksi btn-aksi-batal" title="Batalkan Perubahan">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-guru" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+            <button type="button" id="btn-kembali-ke-dashboard-guru"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Data Guru</h2>
+          <div class="header-buttons">
+            <button id="btn-sync-guru-kelas" class="btn-aksi" style="display: none; background-color: #fd7e14;">
+              <i class="fas fa-sync-alt"></i>Sinkronkan Kelas Guru
+            </button>
+            <button id="btn-cetak-kartu-guru" style="background-color: #fd7e14;"><i class="fas fa-print"></i>Cetak Kartu Login</button>
+            <button id="btn-tambah-guru-baru"><i class="fas fa-plus"></i>Tambah Guru</button>
+            <button id="btn-import-guru"><i class="fas fa-upload"></i>Import Guru</button>
+          </div>
+        </div>
+
+        <p>Tambahkan guru dan tentukan mata pelajaran yang mereka ampu agar mereka dapat login dan menginput nilai.</p>
+
+        <hr class="dashboard-divider">
+        <div class="siswa-table-container" id="guru-table-container">
+          <p>Memuat data guru...</p>
+        </div>
+
+        <hr class="dashboard-divider">
+        <h3 class="form-section-header">Pengaturan Waktu Input Guru</h3>
+        
+        <form id="form-pengaturan-guru" onsubmit="return false;">
+            
+            <p>Atur izin bagi guru untuk menginput/mengedit nilai ujian (UM & UP). Jika nonaktif, guru <b>tidak bisa</b> menginput nilai sama sekali.</p>
+            
+            <div class="form-group-toggle">
+                <label for="toggle-waktu-input">Aktifkan Izin Input Nilai Guru</label>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-waktu-input">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            
+            <div id="container-tanggal-input-guru" style="display: none;">
+                <p class="helper-text" style="text-align: center; margin-bottom: 15px; font-size: 13px;">
+                  (Opsional) Biarkan tanggal kosong agar guru bisa menginput nilai tanpa batas waktu, selama izin di atas aktif.
+                </p>
+                <div class="form-group">
+                    <label for="guru-tanggal-mulai">Tanggal Mulai Input (Opsional)</label>
+                    <input type="datetime-local" id="guru-tanggal-mulai">
+                </div>
+                <div class="form-group">
+                    <label for="guru-tanggal-tutup">Tanggal Selesai Input (Opsional)</label>
+                    <input type="datetime-local" id="guru-tanggal-tutup">
+                </div>
+            </div>
+
+            <p id="pengaturan-guru-message" class="message" style="display: none;"></p>
+            
+            <div class="form-actions">
+                <button type="button" id="btn-simpan-pengaturan-guru" disabled><i class="fas fa-save"></i>Simpan Pengaturan</button>
+            </div>
+        </form>
+
+      </div>
+    </div>
+    
+    <div class="container" id="halaman-mapel" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button id="btn-kembali-ke-dashboard"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Mapel</h2>
+          <div class="header-buttons">
+            <button id="btn-tambah-mapel-baru"><i class="fas fa-plus"></i>Tambah Mapel</button>
+            <button id="btn-ambil-default"><i class="fas fa-download"></i>Ambil Mapel Default</button>
+            <button id="btn-hapus-semua"><i class="fas fa-trash-alt"></i>Hapus Semua Mapel</button>
+            </div>
+        </div>
+
+        <div class="table-toolbar">
+          <p>Kelola mata pelajaran yang akan digunakan di sekolah Anda.</p>
+          </div>
+
+        <div class="mapel-table-container" id="mapel-table-container">
+          <p>Memuat data mapel...</p>
+        </div>
+        
+        <p id="mapel-message" class="message" style="display: none; margin-top: 15px;"></p>
+        
+        <div class="floating-action-container" id="mapel-floating-actions">
+          <button id="btn-simpan-urutan-mapel" class="btn-aksi" disabled>
+            <i class="fas fa-save"></i>Simpan Urutan
+          </button>
+          <button id="btn-simpan-tipe-ujian" class="btn-aksi" disabled>
+            <i class="fas fa-tasks"></i>Simpan Tipe Ujian
+          </button>
+          
+          <button id="btn-batal-mapel-actions" class="btn-aksi btn-aksi-batal" title="Batalkan Perubahan">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        
+      </div>
+    </div>
+
+    <div id="siswa-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-siswa-title">Tambah Siswa Baru</h2>
+          <span class="close-button" id="btn-tutup-modal-siswa">&times;</span>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modal-siswa-mode" value="add">
+          <input type="hidden" id="modal-siswa-id" value="">
+
+          <div class="form-group">
+            <label for="modal-siswa-nama">Nama Lengkap Siswa (Wajib)</label>
+            <input type="text" id="modal-siswa-nama" placeholder="Masukkan nama lengkap">
+          </div>
+          
+          <div class="form-group">
+            <label for="modal-siswa-nisn">NISN Siswa (Wajib)</label>
+            <input type="text" id="modal-siswa-nisn" placeholder="Contoh: 0087976532" inputmode="numeric">
+            
+            <div id="modal-nisn-tooltip">
+              <ul>
+                <li id="nisn-rules"></li>
+              </ul>
+            </div>
+            </div>
+          <div class="form-group">
+            <label for="modal-siswa-nis-lokal">NIS Lokal (Opsional)</label>
+            <input type="text" id="modal-siswa-nis-lokal" placeholder="Misal: 240001" inputmode="numeric">
+            <small class="helper-text">Format: 6 digit angka (contoh: 240001)</small>
+            
+            <div id="modal-nis-lokal-tooltip">
+              <ul>
+                <li id="nis-lokal-rules"></li>
+              </ul>
+            </div>
+            </div>
+          <div class="form-group">
+            <label for="modal-siswa-jk">Jenis Kelamin (Wajib)</label>
+            <select id="modal-siswa-jk">
+              <option value="">-- Pilih Jenis Kelamin --</option>
+              <option value="L">Laki-laki</option>
+              <option value="P">Perempuan</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modal-siswa-tempat-lahir">Tempat Lahir (Opsional)</label>
+            <input type="text" id="modal-siswa-tempat-lahir" placeholder="Misal: Jakarta">
+          </div>
+          <div class="form-group">
+            <label for="modal-siswa-tgl-lahir">Tanggal Lahir (Opsional)</label>
+            <input type="date" id="modal-siswa-tgl-lahir">
+          </div>
+          <div class="form-group">
+            <label for="modal-siswa-kelas">Kelas (Wajib)</label>
+            <select id="modal-siswa-kelas">
+              <option value="">-- Memuat kelas... --</option>
+            </select>
+          </div>
+
+          <p id="modal-siswa-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-siswa"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-simpan-siswa"><i class="fas fa-save"></i>Simpan</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="guru-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-guru-title">Tambah Guru Baru</h2>
+          <span class="close-button" id="btn-tutup-modal-guru">&times;</span>
+        </div>
+        <div class="modal-body">
+          <form id="form-guru" onsubmit="return false;">
+            <input type="hidden" id="modal-guru-mode" value="add" data-is-single-class-mode="true"> 
+            <input type="hidden" id="modal-guru-original-email" value="">
+
+            <div class="form-group">
+              <label for="modal-guru-nama">Nama Lengkap Guru (Wajib)</label>
+              <input type="text" id="modal-guru-nama" placeholder="Contoh: Budi Santoso, S.Pd." required>
+            </div>
+            
+            <div class="form-group">
+              <label for="modal-guru-email">Email Login (Wajib & Unik)</label>
+              <input type="email" id="modal-guru-email" placeholder="guru@sekolah.sch.id" required>
+            </div>
+
+            <div class="form-group form-group-password">
+               <label for="modal-guru-password" id="label-guru-password">Password (Wajib untuk baru)</label>
+               <div class="password-input-wrapper">
+                 <input type="password" id="modal-guru-password" placeholder="Masukkan password" autocomplete="new-password">
+                 <span id="toggle-guru-password" class="toggle-password-icon fas fa-eye"></span>
+               </div>
+               <small class="helper-text">Minimal 8 karakter.</small>
+            </div>
+
+            <div class="form-group">
+              <label>Mata Pelajaran yang Diampu:</label>
+              
+              <div id="modal-guru-ui-single-class">
+                  <div class="mapel-search-wrapper">
+                    <input type="text" id="modal-guru-mapel-search" placeholder="Ketik Kode atau Nama Mapel...">
+                    <div id="modal-guru-mapel-suggestions" class="mapel-suggestions-container"></div>
+                  </div>
+                  <small class="helper-text">Klik pada hasil pencarian untuk menambahkan mapel.</small>
+                  <div id="modal-guru-mapel-selected" class="mapel-selected-container"></div>
+              </div>
+
+              <div id="modal-guru-ui-multi-class" style="display: none;">
+                  <div class="mapel-search-wrapper">
+                      <input type="text" id="modal-guru-mapel-kelas-search" placeholder="Ketik Kode atau Nama Mapel...">
+                      <div id="modal-guru-mapel-kelas-suggestions" class="mapel-suggestions-container"></div>
+                  </div>
+                  <small class="helper-text">Klik hasil pencarian untuk menambahkan mapel ke daftar di bawah.</small>
+                  
+                  <div id="modal-guru-mapel-kelas-list" class="mapel-kelas-list-container">
+                      </div>
+              </div>
+            </div>
+            <p id="modal-guru-error" class="message error"></p>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-guru"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-simpan-guru"><i class="fas fa-save"></i>Simpan</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="mapel-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-title">Tambah Mapel Baru</h2>
+          <span class="close-button" id="btn-tutup-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modal-mapel-mode" value="add">
+
+          <div class="form-group">
+            <label for="modal-mapel-id">Kode Mapel (Unik)</label>
+            <input type="text" id="modal-mapel-id" placeholder="Contoh: QH (2-5 Karakter)" maxlength="5">
+            
+            <div id="modal-mapel-id-tooltip">
+              <ul>
+                <li id="mapel-id-rules"></li>
+              </ul>
+            </div>
+            </div>
+          
+          <div class="form-group">
+            <label for="modal-mapel-nama">Nama Mata Pelajaran</label>
+            <input type="text" id="modal-mapel-nama" placeholder="Contoh: Matematika">
+          </div>
+          <p id="modal-mapel-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-simpan-mapel"><i class="fas fa-save"></i>Simpan</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="confirmation-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="confirm-modal-title">Konfirmasi</h2>
+          <span class="close-button" id="btn-confirm-close">&times;</span>
+        </div>
+        <div class="modal-body" id="confirm-modal-body">
+          </div>
+        <div class="modal-footer">
+          <button id="btn-confirm-cancel"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-confirm-ok"><i class="fas fa-check"></i>OK</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="info-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="info-modal-title">Informasi</h2>
+          <span class="close-button" id="btn-info-close">&times;</span>
+        </div>
+        <div class="modal-body" id="info-modal-body">
+          </div>
+        <div class="modal-footer">
+          <button id="btn-info-ok"><i class="fas fa-check"></i>OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="alasan-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="alasan-modal-title">Konfirmasi Pembatalan</h2>
+          <span class="close-button" id="btn-alasan-close">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p id="alasan-modal-message">Masukkan alasan pembatalan untuk sekolah: <strong><span id="alasan-modal-nama-sekolah"></span></strong></p>
+          <div class="form-group">
+            <label for="alasan-modal-input">Alasan Pembatalan (Wajib)</label>
+            <textarea id="alasan-modal-input" rows="3" placeholder="Contoh: Admin sekolah mengajukan penghentian layanan..."></textarea>
+            <small class="helper-text">Alasan ini akan terlihat oleh admin sekolah tersebut.</small>
+          </div>
+          <p id="alasan-modal-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-alasan-cancel"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-alasan-ok"><i class="fas fa-check"></i>OK, Batalkan</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="import-siswa-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-import-siswa-title">Import Data Siswa</h2>
+          <span class="close-button" id="btn-tutup-modal-import-siswa">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p>Import data siswa menggunakan file Excel. Ikuti langkah-langkah di bawah ini:</p>
+          
+          <div class="import-step-box">
+            <div class="import-step-number">1</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unduh Template</h4>
+              <p>Dapatkan template Excel, isi data siswa, dan pastikan semua kolom wajib terisi.</p>
+              <button id="btn-download-template-siswa" class="btn-aksi"><i class="fas fa-file-excel"></i>Unduh Template (.xlsx)</button>
+              <p id="template-message" class="message" style="display: none;"></p>
+            </div>
+          </div>
+
+          <div class="import-step-box">
+            <div class="import-step-number">2</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unggah File Excel</h4>
+              <p>Pilih file Excel (`.xlsx` atau `.xls`) yang sudah Anda isi.</p>
+              
+              <label for="file-upload-siswa" class="file-upload-zone" id="file-upload-zone">
+                <input type="file" id="file-upload-siswa" accept=".xlsx, .xls, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text">Klik untuk memilih file atau seret & letakkan di sini.</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="import-siswa-results" style="display: none;">
+            </div>
+          
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-import-siswa"><i class="fas fa-times"></i>Tutup</button>
+          <button id="btn-proses-import-siswa" disabled><i class="fas fa-cogs"></i>Proses Import</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="upload-nilai-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-upload-nilai-title">Upload Nilai Ujian</h2>
+          <span class="close-button" id="btn-tutup-modal-upload-nilai">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p>Upload nilai ujian menggunakan file Excel. Ikuti langkah-langkah di bawah ini:</p>
+          
+          <div class="import-step-box">
+            <div class="import-step-number">1</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unduh Template Nilai</h4>
+              <p>Pilih kelas untuk mengisi template, unduh, lalu isi nilai.</p>
+              
+              <div class="form-group">
+                <label for="upload-nilai-filter-kelas">Pilih Kelas untuk Template</label>
+                <select id="upload-nilai-filter-kelas">
+                  <option value="semua">-- Tampilkan Semua Kelas --</option>
+                  </select>
+              </div>
+              
+              <button id="btn-download-template-nilai" class="btn-aksi"><i class="fas fa-file-excel"></i>Unduh Template (.xlsx)</button>
+              <p id="template-nilai-message" class="message" style="display: none;"></p>
+            </div>
+          </div>
+
+          <div class="import-step-box">
+            <div class="import-step-number">2</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unggah File Nilai</h4>
+              <p>Pilih file Excel (`.xlsx` atau `.xls`) yang sudah Anda isi.</p>
+              
+              <label for="file-upload-nilai" class="file-upload-zone" id="file-upload-zone-nilai">
+                <input type="file" id="file-upload-nilai" accept=".xlsx, .xls, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text-nilai">Klik untuk memilih file atau seret & letakkan di sini.</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="import-nilai-results" style="display: none;">
+            </div>
+          
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-upload-nilai"><i class="fas fa-times"></i>Tutup</button>
+          <button id="btn-proses-upload-nilai" disabled><i class="fas fa-cogs"></i>Proses Upload Nilai</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="upload-nilai-rapor-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-upload-nilai-rapor-title">Upload Nilai Rapor</h2>
+          <span class="close-button" id="btn-tutup-modal-upload-nilai-rapor">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p>Upload nilai rapor (Pengetahuan & Keterampilan) menggunakan file Excel.</p>
+          
+          <div class="import-step-box">
+            <div class="import-step-number">1</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unduh Template Nilai</h4>
+              <p>Pilih semester dan kelas untuk mengisi template, unduh, lalu isi nilai.</p>
+              
+              <div class="form-group">
+                <label for="upload-rapor-filter-semester">Pilih Semester (Wajib)</label>
+                <select id="upload-rapor-filter-semester">
+                  <option value="">-- Pilih Semester --</option>
+                  </select>
+              </div>
+
+              <div class="form-group">
+                <label for="upload-rapor-filter-kelas">Pilih Kelas untuk Template (Wajib)</label>
+                <select id="upload-rapor-filter-kelas">
+                  <option value="">-- Pilih Kelas --</option>
+                  </select>
+              </div>
+              
+              <button id="btn-download-template-rapor" class="btn-aksi"><i class="fas fa-file-excel"></i>Unduh Template (.xlsx)</button>
+              <p id="template-rapor-message" class="message" style="display: none;"></p>
+            </div>
+          </div>
+
+          <div class="import-step-box">
+            <div class="import-step-number">2</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unggah File Nilai</h4>
+              <p>Pilih file Excel (`.xlsx` atau `.xls`) yang sudah Anda isi.</p>
+              
+              <label for="file-upload-rapor" class="file-upload-zone" id="file-upload-zone-rapor">
+                <input type="file" id="file-upload-rapor" accept=".xlsx, .xls, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text-rapor">Klik untuk memilih file atau seret & letakkan di sini.</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="import-rapor-results" style="display: none;">
+            </div>
+          
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-upload-nilai-rapor"><i class="fas fa-times"></i>Tutup</button>
+          <button id="btn-proses-upload-nilai-rapor" disabled><i class="fas fa-cogs"></i>Proses Upload Nilai</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="import-guru-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-import-guru-title">Import Data Guru</h2>
+          <span class="close-button" id="btn-tutup-modal-import-guru">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p>Import data guru menggunakan file Excel. Ikuti langkah-langkah di bawah ini:</p>
+          
+          <div class="import-step-box">
+            <div class="import-step-number">1</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unduh Template</h4>
+              <p>Template Excel akan berisi <strong>sheet "Daftar Mapel"</strong> untuk referensi Anda saat mengisi kolom MapelIDs.</p>
+              <button id="btn-download-template-guru" class="btn-aksi"><i class="fas fa-file-excel"></i>Unduh Template (.xlsx)</button>
+              <p id="template-guru-message" class="message" style="display: none;"></p>
+            </div>
+          </div>
+
+          <div class="import-step-box">
+            <div class="import-step-number">2</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unggah File Excel</h4>
+              <p>Pilih file Excel (`.xlsx` atau `.xls`) yang sudah Anda isi.</p>
+              
+              <label for="file-upload-guru" class="file-upload-zone" id="file-upload-zone-guru">
+                <input type="file" id="file-upload-guru" accept=".xlsx, .xls, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text-guru">Klik untuk memilih file atau seret & letakkan di sini.</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="import-guru-results" style="display: none;">
+            </div>
+          
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-import-guru"><i class="fas fa-times"></i>Tutup</button>
+          <button id="btn-proses-import-guru" disabled><i class="fas fa-cogs"></i>Proses Import</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-semester" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-7"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Semester</h2>
+        </div>
+
+        <p>Pilih jumlah semester yang akan digunakan untuk perhitungan nilai rapor. Jenjang SD/MI dapat memilih 3 atau 5 semester. Jenjang lain otomatis 5 semester.</p>
+
+        <form id="form-semester">
+
+          <div class="form-group">
+            <label for="pilihan-semester">Jumlah Semester Rapor</label>
+            <select id="pilihan-semester">
+              </select>
+          </div>
+
+          <p id="semester-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions">
+              <button type="submit" id="btn-simpan-semester"><i class="fas fa-save"></i>Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-nilai-ijazah" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-9"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+        <div class="page-header">
+          <h2 id="judul-halaman-nilai-ijazah">Nilai Ijazah</h2> 
+          <div class="header-buttons">
+            
+            <span id="btn-recalculate-ijazah-text" class="recalculate-text-reminder">
+              Data telah diperbarui! <i class="fas fa-arrow-right"></i>
+            </span>
+            <button id="btn-recalculate-ijazah" class="btn-aksi" style="background-color: #fd7e14; padding: 10px 15px; font-size: 14px;">
+              <i class="fas fa-sync-alt"></i>Hitung Ulang Nilai
+            </button>
+          </div>
+        </div>
+        <p id="ijazah-info-update" class="message success" style="display: none; text-align: left;"></p>
+        <p id="nilai-ijazah-message" class="message" style="display: none;"></p>
+        
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="ijazah-filter-kelas">Tampilkan Kelas</label>
+            <select id="ijazah-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="tab-bar" id="ijazah-tab-bar">
+          <button class="tab-link active" data-tab="ujian">Nilai Ujian (Berbobot)</button>
+          <button class="tab-link" data-tab="rapor">Nilai Rapor (Berbobot)</button>
+          <button class="tab-link" data-tab="ijazah">Nilai Ijazah (Final)</button>
+        </div>
+
+        <div class="tab-content-wrapper">
+          
+          <div id="tab-ujian-content" class="tab-content active">
+            <div class="table-header-toolbar">
+              <p class="table-content-header">Nilai Ujian (Setelah Diberi Bobot)</p>
+              <div class="toolbar-button-group">
+                <button id="btn-toggle-ujian-view" class="btn-aksi btn-aksi-toggle">Lihat Nilai Asli</button>
+                <div class="export-button-group" id="export-controls-ujian" style="display: none;">
+                  <button class="btn-aksi btn-export-icon" data-tipe="pdf" data-tab="ujian" title="Ekspor ke PDF">
+                    <i class="fas fa-file-pdf"></i>
+                  </button>
+                  <button class="btn-aksi btn-export-icon" data-tipe="excel" data-tab="ujian" title="Ekspor ke Excel">
+                    <i class="fas fa-file-excel"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="input-nilai-table-container" id="ijazah-ujian-table-container">
+              <p>Memuat data...</p>
+            </div>
+          </div>
+
+          <div id="tab-rapor-content" class="tab-content">
+            <div class="table-header-toolbar">
+              <p class="table-content-header">Nilai Rapor (Setelah Diberi Bobot)</p>
+              <div class="toolbar-button-group">
+                <button id="btn-toggle-rapor-view" class="btn-aksi btn-aksi-toggle">Lihat Nilai Asli</button>
+                <div class="export-button-group" id="export-controls-rapor" style="display: none;">
+                  <button class="btn-aksi btn-export-icon" data-tipe="pdf" data-tab="rapor" title="Ekspor ke PDF">
+                    <i class="fas fa-file-pdf"></i>
+                  </button>
+                  <button class="btn-aksi btn-export-icon" data-tipe="excel" data-tab="rapor" title="Ekspor ke Excel">
+                    <i class="fas fa-file-excel"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="input-nilai-table-container" id="ijazah-rapor-table-container">
+              <p>Memuat data...</p>
+            </div>
+          </div>
+
+          <div id="tab-ijazah-content" class="tab-content">
+            <div class="table-header-toolbar">
+              <p class="table-content-header">Nilai Ijazah (Hasil Akhir)</p>
+              <div class="toolbar-button-group">
+                <div class="export-button-group" id="export-controls-ijazah" style="display: none;">
+                  <button class="btn-aksi btn-export-icon" data-tipe="pdf" data-tab="ijazah" title="Ekspor ke PDF">
+                    <i class="fas fa-file-pdf"></i>
+                  </button>
+                  <button class="btn-aksi btn-export-icon" data-tipe="excel" data-tab="ijazah" title="Ekspor ke Excel">
+                    <i class="fas fa-file-excel"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="input-nilai-table-container" id="ijazah-final-table-container">
+              <p>Memuat data...</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-validasi-nilai" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-10"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2 id="judul-halaman-validasi-nilai">Validasi Kelengkapan Nilai</h2> 
+        </div>
+
+        <p>Halaman ini memeriksa kelengkapan data nilai rapor dan nilai ujian untuk setiap siswa berdasarkan mata pelajaran yang diwajibkan (ditandai US atau UP).</p>
+        <p id="validasi-message" class="message" style="display: none;"></p>
+        
+        <div class="filter-bar">
+          <div class="form-group">
+            <label for="validasi-filter-kelas">Tampilkan Kelas</label>
+            <select id="validasi-filter-kelas">
+              <option value="semua">-- Tampilkan Semua Kelas --</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-nilai-table-container" id="validasi-nilai-table-container">
+          <p>Memuat data...</p>
+        </div>
+        
+        </div>
+    </div>
+
+    <div class="container" id="halaman-superadmin" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button id="btn-superadmin-logout"><i class="fas fa-sign-out-alt"></i>Logout Superadmin</button>
+        </div>
+
+        <div class="page-header">
+          <h2 id="salam-superadmin">Selamat Datang, Super Admin</h2>
+          <div class="header-buttons">
+            <button id="btn-tambah-sekolah-baru"><i class="fas fa-plus"></i>Tambah Sekolah Baru</button>
+          </div>
+        </div>
+
+        <p>Anda login sebagai Superadmin. Anda dapat mengelola semua akun sekolah yang terdaftar di sistem.</p>
+        
+        <p id="superadmin-message" class="message" style="display: none;"></p>
+
+        <h3 class="form-section-header" style="color: #fd7e14;">Verifikasi Donasi Tertunda</h3>
+        <div class="superadmin-table-container" id="superadmin-donasi-list">
+          <p>Memuat donasi tertunda...</p>
+        </div>
+        <h3 class="form-section-header">Daftar Sekolah Terdaftar</h3>
+        <div class="superadmin-table-container" id="superadmin-sekolah-list">
+          <p>Memuat daftar sekolah...</p>
+        </div>
+        </div>
+    </div>
+
+    <div id="superadmin-sekolah-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-sekolah-title">Tambah Sekolah Baru</h2>
+          <span class="close-button" id="btn-tutup-modal-sekolah">&times;</span>
+        </div>
+        <div class="modal-body">
+          
+          <form id="modal-sekolah-form" onsubmit="return false;">
+            <input type="hidden" id="modal-sekolah-mode" value="add">
+            <input type="hidden" id="modal-sekolah-id" value="">
+            <input type="hidden" id="modal-sekolah-ss-id" value="">
+
+            <div class="form-group">
+              <label for="modal-sekolah-nama">Nama Sekolah (Wajib)</label>
+              <input type="text" id="modal-sekolah-nama" placeholder="Misal: MI AL HUDA">
+            </div>
+            <div class="form-group">
+              <label for="modal-sekolah-jenjang">Jenjang (Wajib)</label>
+              <select id="modal-sekolah-jenjang">
+                <option value="">-- Pilih Jenjang --</option>
+                <option value="SD/MI">SD/MI</option>
+                <option value="SMP/MTS">SMP/MTS</option>
+                <option value="SMA/MA">SMA/MA</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="modal-sekolah-email">Email Admin (Wajib)</label>
+              <input type="email" id="modal-sekolah-email" placeholder="admin.sekolah@email.com">
+            </div>
+            <div class="form-group">
+              <label for="modal-sekolah-password">Password Admin (Wajib untuk baru)</label>
+              <input type="password" id="modal-sekolah-password" autocomplete="new-password">
+              <small class="helper-text">Kosongkan jika tidak ingin mengubah password saat Edit.</small>
+            </div>
+
+            <p id="modal-sekolah-error" class="message error"></p>
+          </form> 
+          </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-sekolah"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-simpan-sekolah"><i class="fas fa-save"></i>Simpan</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-kelola-kelulusan" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-11"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Publikasi Kelulusan</h2>
+        </div>
+
+        <p>Gunakan halaman ini untuk mempublikasikan hasil kelulusan siswa. Siswa dapat mengecek status mereka menggunakan NISN dan Tanggal Lahir.</p>
+
+        <div id="status-publikasi-container" class="message" style="display: none; text-align: left;">
+          <p style="margin: 0;"><strong>Status:</strong> <span id="status-publikasi-text">Memeriksa...</span></p>
+          <p style="margin: 5px 0 0;" id="status-publikasi-tanggal-wrapper"><strong>Tanggal Aktif:</strong> <span id="status-publikasi-tanggal">N/A</span></p>
+        </div>
+
+        <form id="form-kelola-kelulusan" onsubmit="return false;">
+          <h3 class="form-section-header">Atur Jadwal Pengumuman</h3>
+          <div class="form-group">
+            <label for="input-tanggal-pengumuman">Tanggal & Waktu Pengumuman (Wajib)</label>
+            <input type="datetime-local" id="input-tanggal-pengumuman">
+            <small class="helper-text">Siswa hanya dapat melihat hasil LULUS/TIDAK LULUS setelah tanggal dan waktu ini tercapai.</small>
+          </div>
+          
+          <p id="kelulusan-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions" style="justify-content: space-between;">
+              <button type="button" id="btn-tarik-publikasi" style="background-color: var(--danger-color);" disabled><i class="fas fa-ban"></i>Tarik Publikasi</button>
+              
+              <button type="button" id="btn-publikasikan-hasil"><i class="fas fa-paper-plane"></i>Publikasikan Hasil</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="container" id="halaman-hasil-siswa" style="display: none;">
+      <div class="app-header">
+        <h1>Pengumuman Kelulusan</h1>
+        <p id="hasil-nama-sekolah" style="text-transform: uppercase; font-weight: 500; font-size: 16px;">Sekolah Anda</p>
+      </div>
+
+      <div id="hasil-countdown-container" class="page" style="display: none; text-align: center;">
+        <h2 style="color: var(--primary-color); margin-top: 0;">Pengumuman Kelulusan Akan Dibuka Dalam:</h2>
+        <div class="countdown-container">
+          <div class="countdown-box"><span id="countdown-days">00</span>Hari</div>
+          <div class="countdown-box"><span id="countdown-hours">00</span>Jam</div>
+          <div class="countdown-box"><span id="countdown-minutes">00</span>Menit</div>
+          <div class="countdown-box"><span id="countdown-seconds">00</span>Detik</div>
+        </div>
+        <p id="countdown-target-date" style="color: var(--text-light); margin-top: 20px;"></p>
+        <button id="btn-logout-siswa" class="btn-aksi" style="width: auto; padding: 12px 20px; margin-top: 15px; background-color: var(--secondary-color);"><i class="fas fa-arrow-left"></i>Kembali</button>
+      </div>
+      
+      <div id="hasil-reveal-container" class="page" style="display: none; text-align: center;">
+        
+        <div id="envelope-container">
+          <p style="font-size: 18px; margin-top: 0; color: var(--text-dark);">Hasil kelulusan Anda telah tersedia.</p>
+          
+          <img src="https://images.icon-icons.com/1229/PNG/512/1492692370-9email_83539.png" 
+               alt="Buka Amplop" 
+               id="envelope-image-clickable" 
+               title="Klik untuk Buka">
+          
+          <p id="reveal-instruction" style="font-size: 16px; font-weight: 700; color: var(--primary-color); margin-top: 20px;">
+            <i class="fas fa-hand-pointer"></i> Klik amplop untuk melihat hasil.
+          </p>
+        </div>
+
+        <div id="result-card-container" style="display: none;">
+          <div id="hasil-lulus-container" style="display: none;">
+            <i class="fas fa-check-circle" style="font-size: 60px; color: var(--success-color); margin-bottom: 20px;"></i>
+            <h2 style="color: var(--success-color); margin-top: 0; font-size: 28px;">SELAMAT!</h2>
+            <h2 id="hasil-nama-siswa-lulus" style="font-size: 24px; margin-top: -10px; margin-bottom: 15px; color: var(--text-dark); text-transform: uppercase;">NAMA SISWA</h2>
+            <p style="font-size: 18px;">Berdasarkan hasil nilai akhir, Anda dinyatakan:</p>
+            <h1 style="color: var(--success-color); font-size: 40px; margin: 10px 0 20px;">LULUS</h1>
+            <button id="btn-logout-siswa-2" class="btn-aksi" style="width: auto; padding: 12px 20px; margin-top: 15px; background-color: var(--secondary-color);"><i class="fas fa-arrow-left"></i>Kembali</button>
+          </div>
+          
+          <div id="hasil-tidak-lulus-container" style="display: none;">
+            <i class="fas fa-times-circle" style="font-size: 60px; color: var(--danger-color); margin-bottom: 20px;"></i>
+            <h2 style="color: var(--danger-color); margin-top: 0; font-size: 28px;">MAAF</h2>
+            <h2 id="hasil-nama-siswa-gagal" style="font-size: 24px; margin-top: -10px; margin-bottom: 15px; color: var(--text-dark); text-transform: uppercase;">NAMA SISWA</h2>
+            <p style="font-size: 18px;">Berdasarkan hasil nilai akhir, Anda dinyatakan:</p>
+            <h1 style="color: var(--danger-color); font-size: 40px; margin: 10px 0 20px;">TIDAK LULUS</h1>
+            <p style="font-size: 16px; color: var(--text-light);">Silakan hubungi pihak sekolah untuk informasi lebih lanjut.</p>
+            <button id="btn-logout-siswa-3" class="btn-aksi" style="width: auto; padding: 12px 20px; margin-top: 15px; background-color: var(--secondary-color);"><i class="fas fa-arrow-left"></i>Kembali</button>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+
+    <div id="halaman-cetak-kartu" style="display: none;">
+      <div class="print-toolbar">
+        <button id="btn-tutup-halaman-cetak" class="btn-aksi" style="background-color: var(--secondary-color);"><i class="fas fa-times"></i> Tutup</button>
+        <button id="btn-print-kartu" class="btn-aksi" style="background-color: var(--primary-color);"><i class="fas fa-print"></i> Cetak</button>
+      </div>
+      <div id="kartu-container">
+        </div>
+    </div>
+
+    <div class="container" id="halaman-proses-kelulusan" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-13"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Proses Kelulusan (Tutup Tahun Ajaran)</h2>
+        </div>
+
+        <div class="message error" style="display: block; text-align: left; font-size: 16px; line-height: 1.6;">
+          <h4 style="margin-top: 0; font-size: 18px;"><i class="fas fa-exclamation-triangle"></i> PERINGATAN BESAR!</h4>
+          <p style="margin: 0;">Tindakan ini akan <strong>MENGHAPUS PERMANEN</strong> seluruh data berikut:</p>
+          <ul style="margin: 10px 0 0 20px; padding: 0;">
+            <li>Semua data di <strong>Kelola Data Siswa</strong>.</li>
+            <li>Semua <strong>Nilai Ujian</strong> (UM/US dan Praktek).</li>
+            <li>Semua <strong>Nilai Rapor</strong> (Semester 1 s/d 5).</li>
+            <li>Semua data <strong>Nilai Ijazah</strong> dan data <strong>Validasi</strong>.</li>
+          </ul>
+          <p style="margin-top: 15px;">Data <strong>Mata Pelajaran</strong> dan <strong>Kelas</strong> akan <strong>TETAP DISIMPAN</strong> untuk tahun ajaran berikutnya.</p>
+          <p style="margin-top: 15px;">Tindakan ini <strong>TIDAK BISA DIBATALKAN</strong>.</p>
+        </div>
+
+        <form id="form-proses-kelulusan" onsubmit="return false;">
+          <h3 class="form-section-header">Langkah 1: Download Backup Data</h3>
+          <p>Sebelum melanjutkan, sistem akan mengunduh salinan (backup) lengkap database Anda saat ini dalam format Excel. Pastikan Anda menyimpannya.</p>
+
+          <h3 class="form-section-header">Langkah 2: Konfirmasi Penghapusan</h3>
+          <p>Untuk melanjutkan proses dan menghapus data, ketik nama sekolah Anda di bawah ini. Nama sekolah harus sama persis.</p>
+          
+          <div class="form-group">
+            <label for="input-konfirmasi-nama-sekolah">Ketik Nama Sekolah: <strong id="nama-sekolah-untuk-konfirmasi" style="color: var(--danger-color);">Memuat...</strong></label>
+            <input type="text" id="input-konfirmasi-nama-sekolah" placeholder="Ketik nama sekolah Anda di sini" autocomplete="off">
+            <input type="hidden" id="nama-sekolah-hidden-konfirmasi" value="">
+          </div>
+          
+          <p id="proses-kelulusan-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions">
+              <button type="button" id="btn-proses-kelulusan" disabled style="background-color: var(--danger-color);">
+                <i class="fas fa-trash-alt"></i>Download Backup & Hapus Data
+              </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-donasi" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-12"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Donasi Fitur Premium</h2>
+        </div>
+
+        <div class="swiper-container donasi-slider">
+          <div class="swiper-wrapper">
+            
+            <?!= include('slider-content'); ?>
+            </div>
+          
+          <div class="swiper-button-next"></div>
+          <div class="swiper-button-prev"></div>
+          
+          <div class="swiper-pagination"></div>
+        </div>
+
+        <div id="donasi-state-form" style="display: none;">
+          <p>Aktifkan fitur premium untuk membuka menu <strong>Kelola Data Guru dan Kelulusan</strong>, <strong>Login Guru</strong>, dan <strong>Cek Kelulusan Siswa</strong>.</p>
+          
+          <div class="payment-info-box">
+            <span>Silakan transfer ke E-Wallet ShopeePay:</span>
+            <strong class="payment-number">081543276033</strong>
+            <span>(a.n. Syamsul Bahri)</span>
+          </div>
+          
+          <h3 class="form-section-header" style="margin-top: 30px;">Konfirmasi Donasi Anda</h3>
+          <p style="margin-top: -15px;">Setelah melakukan transfer, mohon isi form di bawah ini.</p>
+          
+          <form id="form-donasi" onsubmit="return false;">
+            <div class="form-group">
+              <label for="donasi-email">Email yang digunakan (Akun ini)</label>
+              <input type="email" id="donasi-email" disabled>
+            </div>
+            <div class="form-group">
+              <label for="donasi-nama-sekolah">Nama Sekolah</label>
+              <input type="text" id="donasi-nama-sekolah" disabled>
+            </div>
+            <div class="form-group">
+              <label for="donasi-metode">Pilih Bank/E-wallet Pengirim (Wajib)</label>
+              <select id="donasi-metode" required>
+                <option value="">-- Pilih Metode --</option>
+                <option value="BCA">BCA</option>
+                <option value="BRI">BRI</option>
+                <option value="Mandiri">Mandiri</option>
+                <option value="BNI">BNI</option>
+                <option value="SeaBank">SeaBank</option>
+                <option value="ShopeePay">ShopeePay</option>
+                <option value="DANA">DANA</option>
+                <option value="OVO">OVO</option>
+                <option value="GoPay">GoPay</option>
+                <option value="LinkAja">LinkAja</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="donasi-nama-rekening">Nama Pemilik Rekening/E-wallet (Wajib)</label>
+              <input type="text" id="donasi-nama-rekening" placeholder="Contoh: Budi Setiawan" required>
+            </div>
+            <div class="form-group">
+              <label for="donasi-jumlah">Jumlah yang Didonasikan (Rp) (Wajib)</label>
+              <input type="number" id="donasi-jumlah" placeholder="Contoh: 15000" inputmode="numeric" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="donasi-file">Upload Bukti Transfer (Wajib - Gambar/PDF)</label>
+              <label for="donasi-file" class="file-upload-zone" id="file-upload-zone-donasi">
+                <input type="file" id="donasi-file" accept="image/*,.pdf">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text-donasi">Klik untuk memilih file...</span>
+              </label>
+            </div>
+
+            <p id="donasi-message" class="message" style="display: none;"></p>
+
+            <hr>
+            <div class="form-actions">
+                <button type="button" id="btn-kirim-donasi"><i class="fas fa-paper-plane"></i>Kirim Konfirmasi Donasi</button>
+            </div>
+          </form>
+        </div>
+        
+        <div id="donasi-state-pending" style="display: none; text-align: center;">
+          <i class="fas fa-clock" style="font-size: 48px; color: var(--primary-color); margin-bottom: 20px;"></i>
+          <h3 style="margin-top: 0;">Donasi Anda Sedang Diverifikasi</h3>
+          <p>Terima kasih! Bukti donasi Anda telah terkirim. Superadmin akan segera melakukan verifikasi. (Biasanya 1x24 jam).</p>
+          <p id="donasi-pending-data" class="message" style="display: block; background-color: var(--bg-light); color: var(--text-dark); text-align: left;"></p>
+          <div class="form-actions" style="justify-content: center;">
+            <button id="btn-lihat-file-donasi" class="btn-aksi" style="background-color: var(--secondary-color);"><i class="fas fa-eye"></i>Lihat File</button>
+            <button id="btn-batalkan-donasi" class="btn-aksi" style="background-color: var(--danger-color);"><i class="fas fa-times"></i>Batalkan Donasi</button>
+          </div>
+        </div>
+
+        <div id="donasi-state-approved" style="display: none; text-align: center;">
+          <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success-color); margin-bottom: 20px;"></i>
+          <h3 style="margin-top: 0;">Donasi Diterima!</h3>
+          <p>Verifikasi berhasil. <strong>Semua Fitur Premium telah aktif.</strong> Terima kasih atas dukungan Anda.</p>
+        </div>
+        
+        <div id="donasi-state-rejected" style="display: none; text-align: center;">
+          <i class="fas fa-times-circle" style="font-size: 48px; color: var(--danger-color); margin-bottom: 20px;"></i>
+          <h3 style="margin-top: 0;">Donasi Ditolak</h3>
+          <p>Maaf, verifikasi donasi Anda ditolak oleh Superadmin.</p>
+          <p id="donasi-rejected-reason" class="message error" style="display: block; text-align: left; font-weight: 500;"></p>
+          <p>Silakan perbaiki data/bukti transfer Anda dan kirim ulang melalui formulir di bawah ini.</p>
+        </div>
+
+      </div>
+    </div>
+
+    <canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10001; pointer-events: none;"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <footer class="universal-footer">
+      <a href="https://wa.me/qr/FMVS3NLDIRUAA1" target="_blank" rel="noopener noreferrer">
+        <p>&copy; <span id="footer-year">2025</span> Created by Syamsul Bahri
+      </a>
+    </footer>
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <?!= include('client'); ?>
+  </body>
+</html>
