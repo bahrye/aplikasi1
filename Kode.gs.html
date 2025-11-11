@@ -357,86 +357,6 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
   }
 }
 
-// --- [FUNGSI BARU] ---
-/**
- * Helper untuk mendaftarkan sekolah baru di database Aplikasi 2.
- * Dijalankan oleh prosesVerifikasiToken.
- */
-function registerSchoolInApp2(sekolahID, namaSekolah) {
-  try {
-    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
-    const sheetSekolah_app2 = ss_app2.getSheetByName('db_sekolah');
-    if (!sheetSekolah_app2) throw new Error("Sheet 'db_sekolah' di Aplikasi 2 tidak ditemukan.");
-
-    // Cek duplikat
-    const data = sheetSekolah_app2.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == sekolahID) {
-        Logger.log(`Sekolah ${sekolahID} sudah ada di App 2.`);
-        return; // Sudah ada, jangan lakukan apa-apa
-      }
-    }
-    
-    // Tambah sekolah baru (dengan data minimal)
-    // Asumsi App 2: A-I (id, nama, tempat, kepsek, nip, template_id, tgl_sistem, template_rekap, pengumuman)
-    sheetSekolah_app2.appendRow([
-      sekolahID,          // id_sekolah (pakai ID dari App 1)
-      namaSekolah,        // nama_sekolah
-      'Belum Diatur',     // tempat_ttd (Kolom C)
-      'Belum Diatur',     // kepala_sekolah (Kolom D)
-      '-',                // nip_kepsek (Kolom E)
-      'ID_TEMPLATE_HARUS_DIISI_MANUAL', // template_id (Kolom F)
-      null,               // tanggal_sistem (Kolom G)
-      '',                 // template_rekap (Kolom H)
-      ''                  // pengumuman (Kolom I)
-    ]);
-    Logger.log(`Sekolah ${namaSekolah} (ID: ${sekolahID}) berhasil didaftarkan di App 2.`);
-
-  } catch (e) {
-    Logger.log(`GAGAL mendaftarkan sekolah ${namaSekolah} di App 2: ${e.message}`);
-    // Jangan gagalkan registrasi utama, cukup log error ini.
-  }
-}
-
-// --- [PASTIKAN FUNGSI INI ADA di aplikasi1/Kode.gs.html] ---
-
-/**
- * [FUNGSI BARU]
- * Helper untuk mendaftarkan admin sekolah sebagai 'guru' di App 2.
- * Dijalankan oleh prosesVerifikasiToken.
- */
-function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword) {
-  try {
-    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
-    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
-    if (!sheetGuru_app2) throw new Error("Sheet 'db_guru' di Aplikasi 2 tidak ditemukan.");
-
-    // Cek duplikat
-    const data = sheetGuru_app2.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0].toLowerCase() == email.toLowerCase()) {
-        Logger.log(`Guru ${email} sudah ada di App 2.`);
-        return; // Guru sudah ada
-      }
-    }
-    
-    // Tambah guru baru (sebagai 'guru' biasa)
-    // Asumsi App 2: A-E (email, password, nama, id_sekolah, role)
-    sheetGuru_app2.appendRow([
-      email,
-      plainPassword, // Simpan password plain text (sesuai logika App 2)
-      `Admin ${namaSekolah}`, // Nama
-      sekolahID,           // id_sekolah
-      'guru'               // role
-    ]);
-    Logger.log(`Admin ${email} berhasil didaftarkan sebagai guru di App 2.`);
-
-  } catch (e) {
-    Logger.log(`GAGAL mendaftarkan admin ${email} di App 2: ${e.message}`);
-  }
-}
-// --- [AKHIR FUNGSI BARU] ---
-
 // --- [GANTI FUNGSI INI] ---
 function prosesVerifikasiToken(token) {
   if (!token) {
@@ -495,41 +415,50 @@ function prosesVerifikasiToken(token) {
         }
 
         try {
-          // Buat Database Aplikasi 1 (Ijazah)
-          // (menggunakan npsn dari data pending)
-          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS);
+          // ===============================================
+          // ===== PERUBAHAN DIMULAI DI SINI =====
+          // ===============================================
+
+          // 1. Buat Database Aplikasi 1 (Ijazah)
+          const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS);
           
-          // Buat ID Sekolah Unik (App 1)
+          // 2. [BARU] Buat Database Aplikasi 2 (Nilai Ujian)
+          const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase());
+
+          // 3. Buat ID Sekolah Unik (App 1)
           const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
           
-          // --- [PERUBAHAN LOGIKA PASSWORD] ---
-          // Simpan password plain text di Kolom E (HashedPassword) dan string kosong di Kolom G (Salt)
+          // 4. Simpan SEMUA ID ke Sheet_Sekolah (database App 1)
+          //    Pastikan Sheet_Sekolah punya Kolom M
           sheetSekolah.appendRow([
             newSekolahID, 
             namaSekolah.toUpperCase(), 
             jenjang, 
             email, 
-            dbPassword, // <-- Simpan plain password (Kolom E)
-            newSSID,    // (Kolom F)
-            "",         // <-- Salt kosong (Kolom G)
-            "'" + npsn, // (Kolom H)
-            "NONE",     // DonasiStatus (Kolom I)
-            "",         // DonasiFileID (Kolom J)
-            "",         // DonasiDataJSON (Kolom K)
-            ""          // DonasiAlasanTolak (Kolom L)
+            dbPassword,     // Kolom E (Password)
+            newSSID_App1,   // Kolom F (ID DB App 1 - Ijazah)
+            "",             // Kolom G (Salt kosong)
+            "'" + npsn,     // Kolom H (NPSN)
+            "NONE",         // Kolom I (DonasiStatus)
+            "",             // Kolom J (DonasiFileID)
+            "",             // Kolom K (DonasiDataJSON)
+            "",             // Kolom L (DonasiAlasanTolak)
+            newSSID_App2    // <--- [BARU] Kolom M (ID DB App 2 - Nilai Ujian)
           ]);
-          // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
 
           // Hapus dari antrian pending
           sheetPending.deleteRow(i + 1);
           clearMasterSheetCache();
           
-          // --- [TAMBAHAN INTEGRASI APLIKASI 2] ---
-          // Daftarkan sekolah dan admin ini ke database Aplikasi 2
-          Logger.log(`Mulai integrasi App 2 untuk: ${newSekolahID}`);
+          // 5. [MODIFIKASI] Integrasi Aplikasi 2 (Global)
+          //    Daftarkan sekolah dan guru ini ke DB App 2 GLOBAL
+          Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
           registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPassword);
-          // --- [AKHIR TAMBAHAN] ---
+          
+          // ===============================================
+          // ===== PERUBAHAN SELESAI =====
+          // ===============================================
           
           const appUrl = ScriptApp.getService().getUrl();
           return `<h1>Verifikasi Berhasil!</h1>
@@ -5855,5 +5784,155 @@ function generateSiswaLoginCards(token) {
   } catch (e) {
     Logger.log("Error generateSiswaLoginCards: " + e.message);
     return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * [BARU] Membuat spreadsheet baru untuk data Aplikasi 2 (Nilai Ujian)
+ * dan mengisinya dengan semua sheet yang diperlukan.
+ * @param {string} namaSekolah Nama sekolah untuk judul spreadsheet.
+ * @returns {string} ID dari Spreadsheet baru yang dibuat.
+ */
+function buatDatabaseAplikasi2Baru(namaSekolah) {
+  let newSS;
+  try {
+    // 1. Buat Spreadsheet baru
+    const ssName = `Database Nilai Ujian - ${namaSekolah}`;
+    newSS = SpreadsheetApp.create(ssName);
+    const newSSID = newSS.getId();
+    
+    // 2. Pindahkan ke Folder Target (Opsional tapi disarankan)
+    try {
+      const targetFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
+      const newFile = DriveApp.getFileById(newSSID);
+      targetFolder.addFile(newFile);
+      DriveApp.getRootFolder().removeFile(newFile);
+    } catch (e) {
+      Logger.log(`Peringatan: Gagal memindahkan DB App 2 baru ke folder target. Error: ${e.message}`);
+    }
+
+    // 3. Buat semua sheet yang diperlukan oleh Aplikasi 2
+    
+    const defaultSheet = newSS.getSheets()[0];
+    
+    // db_guru (Hanya untuk referensi, tidak dipakai di model ini)
+    newSS.insertSheet('db_guru').appendRow(["email", "password", "nama", "id_sekolah", "role"]).setFrozenRows(1);
+
+    // db_siswa
+    const siswaSheet = newSS.insertSheet('db_siswa');
+    siswaSheet.appendRow(["nomor_ujian", "nama"]);
+    siswaSheet.setFrozenRows(1);
+    siswaSheet.getRange("A:A").setNumberFormat('@');
+
+    // db_tahun_ajaran
+    const taSheet = newSS.insertSheet('db_tahun_ajaran');
+    taSheet.appendRow(["id_tahun_ajaran", "deskripsi", "status_kunci"]);
+    taSheet.appendRow(["TA-DEFAULT-1", "2024/2025", false]); // Tambahkan T.A. default
+    taSheet.setFrozenRows(1);
+
+    // db_enrollment
+    newSS.insertSheet('db_enrollment').appendRow(["id_enrollment", "nomor_ujian", "id_sekolah", "id_tahun_ajaran", "ruang_ujian"]).setFrozenRows(1);
+
+    // db_mapel
+    newSS.insertSheet('db_mapel').appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan"]).setFrozenRows(1);
+
+    // db_sekolah (Hanya untuk referensi)
+    newSS.insertSheet('db_sekolah').appendRow(["id_sekolah", "nama_sekolah", "tempat_ttd", "kepala_sekolah", "nip_kepsek", "template_id", "tanggal_sistem", "template_rekap", "pengumuman"]).setFrozenRows(1);
+
+    // db_pengaturan_cetak
+    newSS.insertSheet('db_pengaturan_cetak').appendRow(["email_guru", "preferensi_tanggal", "tanggal_manual_OBSOLETE"]).setFrozenRows(1);
+
+    // db_status_kirim
+    newSS.insertSheet('db_status_kirim').appendRow(["key", "id_tahun_ajaran", "email_guru", "nama_mapel", "timestamp_kirim", "tanggal_ttd"]).setFrozenRows(1);
+
+    // db_pengaturan_katrol
+    newSS.insertSheet('db_pengaturan_katrol').appendRow(["email", "id_tahun_ajaran", "min_hasil_katrol", "max_hasil_katrol"]).setFrozenRows(1);
+
+    // db_ott_cache (PENTING UNTUK SSO)
+    // Walaupun SSO dicek di global, kita buat sheet ini agar App 2 tidak error jika kodenya masih merujuk ke sini
+    newSS.insertSheet('db_ott_cache').appendRow(["Token", "EmailPayload", "Timestamp"]).setFrozenRows(1);
+    
+    newSS.deleteSheet(defaultSheet);
+
+    Logger.log(`Database Aplikasi 2 baru berhasil dibuat untuk ${namaSekolah} dengan ID: ${newSSID}`);
+    return newSSID;
+    
+  } catch (e) {
+    Logger.log(`FATAL: Gagal membuat Database Aplikasi 2 baru. Error: ${e.message}`);
+    if (newSS) {
+      DriveApp.getFileById(newSS.getId()).setTrashed(true);
+    }
+    throw new Error(`Gagal membuat database sekunder (App 2): ${e.message}`);
+  }
+}
+
+/**
+ * [BARU-MODIFIKASI] Mendaftarkan sekolah baru di database Aplikasi 2 (GLOBAL).
+ * Fungsi ini membuka DB App 2 global dan menambahkan baris di 'db_sekolah'.
+ */
+function registerSchoolInApp2(sekolahID, namaSekolah) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2); // Buka DB App 2 Global
+    const sheetSekolah_app2 = ss_app2.getSheetByName('db_sekolah');
+    if (!sheetSekolah_app2) throw new Error("Sheet 'db_sekolah' di Aplikasi 2 (Global) tidak ditemukan.");
+
+    // Cek duplikat
+    const data = sheetSekolah_app2.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == sekolahID) {
+        Logger.log(`Sekolah ${sekolahID} sudah ada di App 2 (Global).`);
+        return; 
+      }
+    }
+    
+    // Tambah data sekolah ini ke 'db_sekolah' GLOBAL
+    sheetSekolah_app2.appendRow([
+      sekolahID,          // id_sekolah (pakai ID dari App 1)
+      namaSekolah,        // nama_sekolah
+      'Belum Diatur',     // tempat_ttd (Kolom C)
+      'Belum Diatur',     // kepala_sekolah (Kolom D)
+      '-',                // nip_kepsek (Kolom E)
+      'ID_TEMPLATE_HARUS_DIISI_MANUAL_OLEH_SA', // template_id (Kolom F)
+      null,               // tanggal_sistem (Kolom G)
+      '',                 // template_rekap (Kolom H)
+      ''                  // pengumuman (Kolom I)
+    ]);
+    Logger.log(`Data sekolah ${namaSekolah} (ID: ${sekolahID}) berhasil didaftarkan di App 2 (Global).`);
+
+  } catch (e) {
+    Logger.log(`GAGAL mendaftarkan data sekolah ${namaSekolah} di App 2 (Global): ${e.message}`);
+  }
+}
+
+/**
+ * [BARU-MODIFIKASI] Mendaftarkan admin sekolah sebagai 'guru' di App 2 (GLOBAL).
+ */
+function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2); // Buka DB App 2 Global
+    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
+    if (!sheetGuru_app2) throw new Error("Sheet 'db_guru' di Aplikasi 2 (Global) tidak ditemukan.");
+
+    // Cek duplikat
+    const data = sheetGuru_app2.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toLowerCase() == email.toLowerCase()) {
+        Logger.log(`Guru ${email} sudah ada di App 2 (Global).`);
+        return; // Guru sudah ada
+      }
+    }
+    
+    // Tambah guru baru (sebagai 'guru' biasa) ke 'db_guru' GLOBAL
+    sheetGuru_app2.appendRow([
+      email,
+      plainPassword, // Simpan password plain text (sesuai logika App 2)
+      `Admin ${namaSekolah}`, // Nama
+      sekolahID,           // id_sekolah
+      'guru'               // role
+    ]);
+    Logger.log(`Admin ${email} berhasil didaftarkan sebagai guru di App 2 (Global).`);
+
+  } catch (e) {
+    Logger.log(`GAGAL mendaftarkan admin ${email} di App 2 (Global): ${e.message}`);
   }
 }
