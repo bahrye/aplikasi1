@@ -50,7 +50,7 @@
         <p>Anda akan dialihkan ke Aplikasi Input Nilai.</p>
         
         <a id="btn-redirect-guru-lanjutkan" href="#" class="button-login" 
-            style="display: inline-block; width: auto; text-decoration: none; background-color: var(--success-color); margin-top: 15px;"
+            style="display: inline-block; width: auto; text-decoration: none; background-color: var(--success-color); color: white; margin-top: 15px;"
             target="_top"> <i class="fas fa-arrow-right"></i> Lanjutkan ke Aplikasi Nilai
         </a>
         
@@ -814,7 +814,17 @@
         <div id="penempatan-container" class="penempatan-container" style="display: none;">
           <div class="penempatan-list-box">
             <h4>Siswa di Sekolah (Belum Terdaftar)</h4>
-            <input type="text" id="filter-siswa-tersedia" class="penempatan-filter" placeholder="Cari nama siswa...">
+            <div class="penempatan-filter-controls">
+              <select id="filter-penempatan-kelas" class="penempatan-filter-kelas">
+                <option value="semua">-- Semua Kelas --</option>
+              </select>
+              <input type="text" id="filter-siswa-tersedia" class="penempatan-filter" placeholder="Cari nama siswa...">
+            </div>
+            
+            <div class="penempatan-list-header">
+              <span class="header-siswa">Siswa</span>
+              <span class="header-kelas-ruang">Kelas</span>
+            </div>
             <div id="list-siswa-tersedia" class="penempatan-list">
               </div>
           </div>
@@ -826,7 +836,14 @@
 
           <div class="penempatan-list-box">
             <h4>Siswa Terdaftar di T.A. Ini</h4>
-            <input type="text" id="filter-siswa-terdaftar" class="penempatan-filter" placeholder="Cari nama siswa...">
+            <div class="penempatan-filter-controls">
+              <input type="text" id="filter-siswa-terdaftar" class="penempatan-filter" placeholder="Cari nama siswa...">
+            </div>
+            
+            <div class="penempatan-list-header">
+              <span class="header-siswa">Nama Siswa</span>
+              <span class="header-kelas-ruang" style="width: 70px; text-align: center;">Ruang</span>
+            </div>
             <div id="list-siswa-terdaftar" class="penempatan-list">
               </div>
           </div>
