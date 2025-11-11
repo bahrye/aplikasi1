@@ -6084,9 +6084,10 @@ function getTahunAjaranList(token) {
   }
 }
 
+// --- FUNGSI BARU ---
 /**
  * [API BARU] Mengambil semua data yang diperlukan untuk halaman "Kelola Penempatan".
- * VERSI REVISI: Mengambil master mapel (App1) dan mapel yang sudah ditugaskan (App2).
+ * Menggabungkan data dari Aplikasi 1 (Siswa, Mapel, Guru) dan Aplikasi 2 (Enrollment, Mapel Assignment).
  */
 function getPenempatanData(token, id_tahun_ajaran) {
   try {
@@ -6111,9 +6112,18 @@ function getPenempatanData(token, id_tahun_ajaran) {
       nama: m.nama
     }));
     
+    // Ambil Guru (baca langsung)
+    const sheetGuruApp1 = getGuruSheet(ss_app1);
+    const guruDataApp1 = sheetGuruApp1.getDataRange().getValues();
+    guruDataApp1.shift();
+    const guruListApp1 = guruDataApp1.map(row => ({
+      email: row[0],
+      nama: row[1]
+    })).filter(g => g.email && g.nama);
+    
     // 3. Ambil Data Penempatan dari Aplikasi 2
     let enrolledSiswaMap = new Map();
-    let assignedMapelIds = new Set(); // <-- DIUBAH: Hanya butuh ID Mapel
+    let mapelAssignments = [];
     let app2SiswaMap = new Map();
 
     if (id_tahun_ajaran) {
@@ -6123,10 +6133,11 @@ function getPenempatanData(token, id_tahun_ajaran) {
         const dataEnroll = sheetEnrollment.getDataRange().getValues();
         dataEnroll.shift();
         dataEnroll.forEach(row => {
+          // row[3] = id_tahun_ajaran, row[0] = id_enrollment (SiswaID App 1)
           if (row[3] === id_tahun_ajaran) {
             enrolledSiswaMap.set(row[0], {
-              id_enrollment_app2: row[0],
-              nomor_ujian_app2: row[1],
+              id_enrollment_app2: row[0], // Ini ID Siswa App 1
+              nomor_ujian_app2: row[1], // Ini Nomor Ujian App 2
               ruang_ujian: row[4] || ''
             });
           }
@@ -6140,7 +6151,11 @@ function getPenempatanData(token, id_tahun_ajaran) {
         dataMapel.shift();
         dataMapel.forEach(row => {
           if (row[2] === id_tahun_ajaran) {
-            assignedMapelIds.add(row[1]); // <-- DIUBAH: Kumpulkan ID Mapel (kolom B)
+            mapelAssignments.push({
+              email_guru: row[0],
+              mapel: row[1],
+              singkatan: row[3] || ''
+            });
           }
         });
       }
@@ -6156,7 +6171,7 @@ function getPenempatanData(token, id_tahun_ajaran) {
       }
     }
     
-    // 4. Gabungkan Data Siswa (Logika ini tetap sama)
+    // 4. Gabungkan Data Siswa
     const siswaDataGabungan = siswaListApp1.map(siswaApp1 => {
       const enrollmentInfo = enrolledSiswaMap.get(siswaApp1.id);
       const isEnrolled = !!enrollmentInfo;
@@ -6166,6 +6181,7 @@ function getPenempatanData(token, id_tahun_ajaran) {
         ...siswaApp1,
         isEnrolled: isEnrolled,
         nomor_ujian_app2: nomorUjianApp2,
+        // Cek apakah nama di App 2 (jika ada) beda
         nama_app2: (isEnrolled && app2SiswaMap.has(nomorUjianApp2)) ? app2SiswaMap.get(nomorUjianApp2) : null, 
         ruang_ujian: isEnrolled ? enrollmentInfo.ruang_ujian : ''
       };
@@ -6175,8 +6191,8 @@ function getPenempatanData(token, id_tahun_ajaran) {
       status: "sukses",
       siswaData: siswaDataGabungan,
       mapelList: mapelListApp1,
-      // guruList: guruListApp1, // <-- DIHAPUS: Tidak perlu dikirim ke client
-      assignedMapelIds: Array.from(assignedMapelIds) // <-- DIUBAH
+      guruList: guruListApp1,
+      mapelAssignments: mapelAssignments
     };
     
   } catch (e) {
@@ -6301,104 +6317,53 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
   }
 }
 
-// --- FUNGSI DIPERBARUI ---
+// --- FUNGSI BARU ---
 /**
  * [API BARU] Menyimpan perubahan pada db_mapel di Aplikasi 2.
- * VERSI REVISI: Menerima array Mapel ID, lalu mencari Guru & Singkatan dari App 1.
+ * Ini akan menghapus semua data mapel T.A. ini dan menulis ulang.
  */
-function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) { // assignmentsToSave sekarang [ "MTK", "PAI", ... ]
+function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   
   try {
-    const { sessionData, spreadsheetID: app1DbId } = validateAdminSession(token);
     const app2DbId = getApp2DatabaseId(token);
-    
-    const ss_app1 = SpreadsheetApp.openById(app1DbId);
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const sheetMapel = getMapelSheet_App2(ss_app2);
     
     if (!id_tahun_ajaran) {
       throw new Error("ID Tahun Ajaran tidak valid.");
     }
     
-    const mapelIdSetToSave = new Set(assignmentsToSave.map(id => id.toUpperCase()));
-
-    // 1. Buat Peta Singkatan dari "Kelola Mapel" (App 1)
-    const sheetMapelApp1 = getMapelSheet(ss_app1); // Helper App 1
-    const mapelDataApp1 = sheetMapelApp1.getDataRange().getValues();
-    mapelDataApp1.shift();
-    const singkatanMap = new Map();
-    mapelDataApp1.forEach(row => {
-      singkatanMap.set(row[0], row[3] || ''); // Map[MapelID] -> Singkatan (Kolom D)
-    });
-
-    // 2. Buat Peta Hubungan Mapel -> Guru dari "Kelola Guru" (App 1)
-    const sheetGuruApp1 = getGuruSheet(ss_app1); // Helper App 1
-    const guruDataApp1 = sheetGuruApp1.getDataRange().getValues();
-    guruDataApp1.shift();
-    
-    const mapelToGuruList = []; // Akan berisi [ {email, mapel, singkatan}, ... ]
-    
-    guruDataApp1.forEach(row => {
-      const emailGuru = row[0];
-      const mapelJson = row[4]; // Kolom E (MapelKelasJSON)
-      
-      if (emailGuru && mapelJson) {
-        try {
-          const mapelData = JSON.parse(mapelJson);
-          const mapelIdsAssignedToGuru = Object.keys(mapelData); // [ "MTK", "IPA" ]
-          
-          for (const mapelId of mapelIdsAssignedToGuru) {
-            // Cek apakah mapel ini adalah salah satu yang ingin kita simpan
-            if (mapelIdSetToSave.has(mapelId.toUpperCase())) {
-              mapelToGuruList.push({
-                email: emailGuru,
-                mapel: mapelId,
-                singkatan: singkatanMap.get(mapelId) || ''
-              });
-            }
-          }
-        } catch (e) {
-          // Abaikan jika format JSON salah atau format lama
-        }
-      }
-    });
-
-    // 3. Ambil data db_mapel (App 2) yang ada
-    const sheetMapelApp2 = getMapelSheet_App2(ss_app2); // Helper App 2
-    let allDataApp2 = [];
-    if (sheetMapelApp2.getLastRow() > 1) {
-      allDataApp2 = sheetMapelApp2.getDataRange().getValues();
-      allDataApp2.shift(); // Hapus header
+    let allData = [];
+    if (sheetMapel.getLastRow() > 1) {
+      allData = sheetMapel.getDataRange().getValues();
+      allData.shift(); // Hapus header
     }
     
-    // 4. Filter data: simpan data dari T.A. LAIN
-    const dataLain = allDataApp2.filter(row => row[2] !== id_tahun_ajaran);
+    // 1. Filter data: simpan data dari T.A. LAIN
+    const dataLain = allData.filter(row => row[2] !== id_tahun_ajaran);
     
-    // 5. Format data baru (hasil dari lookup)
-    const dataBaru = mapelToGuruList.map(item => [
-      item.email,
+    // 2. Siapkan data baru
+    const dataBaru = assignmentsToSave.map(item => [
+      item.email_guru,
       item.mapel,
       id_tahun_ajaran,
-      item.singkatan
+      item.singkatan || ''
     ]);
     
-    // 6. Gabungkan data T.A. lain dengan data baru
+    // 3. Gabungkan data T.A. lain dengan data baru
     const dataFinal = dataLain.concat(dataBaru);
     
-    // 7. Hapus semua data (kecuali header)
-    if (sheetMapelApp2.getLastRow() > 1) {
-      sheetMapelApp2.deleteRows(2, sheetMapelApp2.getLastRow() - 1);
+    // 4. Hapus semua data (kecuali header)
+    if (sheetMapel.getLastRow() > 1) {
+      sheetMapel.deleteRows(2, sheetMapel.getLastRow() - 1);
     }
     
-    // 8. Tulis ulang data gabungan
+    // 5. Tulis ulang data gabungan
     if (dataFinal.length > 0) {
-      sheetMapelApp2.getRange(2, 1, dataFinal.length, 4).setValues(dataFinal);
+      sheetMapel.getRange(2, 1, dataFinal.length, 4).setValues(dataFinal);
     }
-    
-    // 9. Bersihkan cache di App 1 (untuk data guru) dan App 2 (untuk data mapel)
-    clearGuruCache(sessionData.sekolahID); // Panggil fungsi clear cache guru App 1
-    // (Pembersihan cache App 2 akan dilakukan oleh fungsi helper di App 2 jika diperlukan)
     
     return { status: "sukses" };
     
