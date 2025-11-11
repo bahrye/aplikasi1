@@ -83,13 +83,20 @@ function getSheetRegistrasiPending(masterSS) {
   let sheet = masterSS.getSheetByName(SHEET_REGISTRASI_PENDING);
   if (!sheet) {
     sheet = masterSS.insertSheet(SHEET_REGISTRASI_PENDING);
-    sheet.appendRow(['Email', 'NamaSekolah', 'NPSN', 'Jenjang', 'HashedPassword', 'Salt', 'VerificationToken', 'Timestamp']);
+    // [PERBAIKAN] Tambah kolom 'PlainPassword' di Kolom I (index 8)
+    sheet.appendRow(['Email', 'NamaSekolah', 'NPSN', 'Jenjang', 'HashedPassword', 'Salt', 'VerificationToken', 'Timestamp', 'PlainPassword']);
     sheet.setFrozenRows(1);
   } else {
+    // Cek header lama (NPSN)
     const header = sheet.getRange(1, 3).getValue();
     if (header !== "NPSN") {
        sheet.insertColumnBefore(3);
        sheet.getRange(1, 3).setValue("NPSN");
+    }
+    // [PERBAIKAN] Cek header baru (PlainPassword)
+    const headerPlain = sheet.getRange(1, 9).getValue();
+    if (headerPlain !== "PlainPassword") {
+      sheet.getRange(1, 9).setValue("PlainPassword");
     }
   }
   return sheet;
@@ -357,7 +364,6 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
   }
 }
 
-// --- [GANTI FUNGSI INI] ---
 function prosesVerifikasiToken(token) {
   if (!token) {
     return `<h1>Permintaan Tidak Valid</h1>
@@ -398,9 +404,11 @@ function prosesVerifikasiToken(token) {
         const jenjang = row[3]; // Kolom D
         
         // --- [PERUBAHAN LOGIKA PASSWORD] ---
-        // BACA PASSWORD PLAIN TEXT (dari kolom E, index 4)
-        const dbPassword = row[4]; 
-        // Kolom Salt (row[5]) sekarang diabaikan
+        // BACA HASH (Kolom E, index 4) dan SALT (Kolom F, index 5)
+        const dbHashedPassword = row[4]; 
+        const dbSalt = row[5];
+        // BACA PLAIN PASSWORD (Kolom I, index 8) untuk App 2
+        const dbPlainPassword = row[8]; 
         // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
         
         // Cek duplikat di sheetSekolah (aktif)
@@ -420,6 +428,7 @@ function prosesVerifikasiToken(token) {
           // ===============================================
 
           // 1. Buat Database Aplikasi 1 (Ijazah)
+          // (Fungsi ini tidak lagi membutuhkan password, kirim "dummy")
           const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS);
           
           // 2. [BARU] Buat Database Aplikasi 2 (Nilai Ujian)
@@ -435,9 +444,9 @@ function prosesVerifikasiToken(token) {
             namaSekolah.toUpperCase(), 
             jenjang, 
             email, 
-            dbPassword,     // Kolom E (Password)
-            newSSID_App1,   // Kolom F (ID DB App 1 - Ijazah)
-            "",             // Kolom G (Salt kosong)
+            dbHashedPassword, // Kolom E (Password HASHED)
+            newSSID_App1,     // Kolom F (ID DB App 1 - Ijazah)
+            dbSalt,           // Kolom G (Salt)
             "'" + npsn,     // Kolom H (NPSN)
             "NONE",         // Kolom I (DonasiStatus)
             "",             // Kolom J (DonasiFileID)
@@ -454,7 +463,8 @@ function prosesVerifikasiToken(token) {
           //    Daftarkan sekolah dan guru ini ke DB App 2 GLOBAL
           Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
-          registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPassword);
+          // [PERUBAHAN] Kirim PLAIN PASSWORD (dbPlainPassword) ke App 2
+          registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPlainPassword); 
           
           // ===============================================
           // ===== PERUBAHAN SELESAI =====
@@ -705,7 +715,6 @@ function clearMapelCache(sekolahID, spreadsheetID) { // <--- TAMBAHKAN spreadshe
   }
 }
 
-// --- [GANTI FUNGSI INI] ---
 function prosesLogin(email, password) {
   try {
     const appUrl = ScriptApp.getService().getUrl();
@@ -717,6 +726,7 @@ function prosesLogin(email, password) {
     if (superadminEmailFinder.length > 0) {
       const rowNum = superadminEmailFinder[0].getRow();
       const rowData = sheetSuperadmin.getRange(rowNum, 1, 1, sheetSuperadmin.getLastColumn()).getValues()[0];
+      // Verifikasi password HASHED Superadmin (Kolom C = Hash, Kolom D = Salt)
       if (verifyPassword(password, rowData[2], rowData[3])) {
         const token = Utilities.getUuid();
         const sessionData = {
@@ -746,8 +756,17 @@ function prosesLogin(email, password) {
       const rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
       
       // --- [PERUBAHAN LOGIKA PASSWORD] ---
-      // Cek plain text di Kolom E (index 4)
-      passwordIsValid = (rowData[4] === password);
+      // Verifikasi HASHED password (Kolom E = Hash, Kolom G = Salt)
+      const storedHash = rowData[4]; // Kolom E (index 4)
+      const storedSalt = rowData[6]; // Kolom G (index 6)
+      
+      if (storedHash && storedSalt) {
+         // Jika HASH ADA, gunakan verifikasi hash
+         passwordIsValid = verifyPassword(password, storedHash, storedSalt);
+      } else if (storedHash && !storedSalt) {
+         // Fallback ke PLAIN TEXT (untuk akun lama sebelum migrasi)
+         passwordIsValid = (storedHash === password);
+      }
       // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
 
       if (passwordIsValid) {
@@ -764,9 +783,7 @@ function prosesLogin(email, password) {
     const userSpreadsheetID = cachedRow[5];
     const jenjangPilihan = getJenjangPilihanFromSheet(userSpreadsheetID);
 
-    // --- TAMBAHKAN BARIS INI ---
     const donasiStatus = cachedRow[8] || "NONE"; // Kolom I adalah DonasiStatus
-    // --- AKHIR TAMBAHAN ---
 
     const sessionData = {
       role: 'admin',
@@ -794,7 +811,6 @@ function prosesLogin(email, password) {
   }
 }
 
-// --- [GANTI FUNGSI INI] ---
 function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -838,7 +854,8 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
        }
     } else {
        sheetSekolah = masterSS.insertSheet('Sheet_Sekolah');
-       sheetSekolah.appendRow(['SekolahID', 'NamaSekolah', 'Jenjang', 'EmailAdmin', 'HashedPassword', 'SpreadsheetID', 'Salt', 'NPSN']);
+       // [PERBAIKAN] Sesuaikan header dengan 13 kolom
+       sheetSekolah.appendRow(['SekolahID', 'NamaSekolah', 'Jenjang', 'EmailAdmin', 'HashedPassword', 'SpreadsheetID', 'Salt', 'NPSN', 'DonasiStatus', 'DonasiFileID', 'DonasiDataJSON', 'DonasiAlasanTolak', 'App2_DB_ID']);
     }
 
     const sheetPending = getSheetRegistrasiPending(masterSS);
@@ -873,16 +890,21 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
     const namaSekolahUpper = namaSekolah.toUpperCase();
 
     // --- [PERUBAHAN LOGIKA PASSWORD] ---
-    // Simpan password plain text di kolom HashedPassword (indeks 4), kolom Salt (indeks 5) kosong
+    // Buat HASH dan SALT
+    const newSalt = generateSalt();
+    const newHash = hashPassword(password, newSalt);
+    
+    // Simpan HASH (kolom E), SALT (kolom F), dan PLAIN (kolom I)
     sheetPending.appendRow([
       email,
       namaSekolahUpper,
       "'" + npsn,
       jenjang,
-      password, // <-- Simpan plain password
-      "", // <-- Salt kosong
+      newHash,  // <-- Simpan HASH
+      newSalt,  // <-- Simpan SALT
       verificationToken,
-      now 
+      now,
+      password  // <-- Simpan PLAIN (untuk App 2)
     ]);
     // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
     
@@ -4750,15 +4772,13 @@ function saveGuru(token, guruData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    const { spreadsheetID } = validateAdminSession(token);
+    // [PERBAIKAN] Ambil 'sessionData' lengkap
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
 
-    // --- PERUBAHAN LOGIKA ---
-    // 'mapelIds' sekarang adalah objek JSON
     const mapelKelasJSON = JSON.stringify(guruData.mapelKelas); 
-    // --- AKHIR PERUBAHAN ---
 
     let rowIndex = -1;
     if (guruData.mode === 'edit') {
@@ -4771,29 +4791,46 @@ function saveGuru(token, guruData) {
        if (rowIndex === -1) return { status: "gagal", message: "Guru tidak ditemukan untuk diedit." };
     } else {
        for (let i = 1; i < data.length; i++) {
-         if (data[i][0] === guruData.email) return { status: "gagal", message: "Email guru sudah terdaftar." };
+         if (data[i][0] === guruData.email) return { status: "gagal", message: "Email guru sudah terdaftar (di sheet lokal)." };
        }
     }
 
     if (guruData.mode === 'add') {
       if (!guruData.password) return { status: "gagal", message: "Password wajib untuk guru baru." };
-      const newSalt = generateSalt();
-      const newHash = hashPassword(guruData.password, newSalt);
-      // --- PERUBAHAN DISINI ---
-      sheet.appendRow([guruData.email, guruData.nama, newHash, newSalt, mapelKelasJSON]);
+      
+      // 1. Simpan ke sheet LOKAL (plain text)
+      sheet.appendRow([guruData.email, guruData.nama, guruData.password, "", mapelKelasJSON]);
+      
+      // --- [PERBAIKAN] Sinkronisasi ke GLOBAL (App 2) ---
+      addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru');
+      // --- [AKHIR PERBAIKAN] ---
+      
     } else {
       // Mode Edit
-      sheet.getRange(rowIndex, 1).setValue(guruData.email);
+      const originalEmail = guruData.originalEmail;
+      const newEmail = guruData.email;
+      
+      // 1. Simpan ke sheet LOKAL (plain text)
+      sheet.getRange(rowIndex, 1).setValue(newEmail);
       sheet.getRange(rowIndex, 2).setValue(guruData.nama);
-      // --- PERUBAHAN DISINI ---
-      sheet.getRange(rowIndex, 5).setValue(mapelKelasJSON); // Update mapel
+      sheet.getRange(rowIndex, 5).setValue(mapelKelasJSON); 
+      
+      let passwordToSync = data[rowIndex-1][2]; // Ambil password lama (Kolom C, index 2)
 
       if (guruData.password) {
-        const newSalt = generateSalt();
-        const newHash = hashPassword(guruData.password, newSalt);
-        sheet.getRange(rowIndex, 3).setValue(newHash);
-        sheet.getRange(rowIndex, 4).setValue(newSalt);
+        sheet.getRange(rowIndex, 3).setValue(guruData.password); 
+        sheet.getRange(rowIndex, 4).setValue(""); // Salt kosong
+        passwordToSync = guruData.password; // Gunakan password baru
       }
+
+      // --- [PERBAIKAN] Sinkronisasi ke GLOBAL (App 2) ---
+      // Jika email berubah, hapus yang lama dulu
+      if (originalEmail.toLowerCase() !== newEmail.toLowerCase()) {
+        deleteGuruFromApp2(originalEmail);
+      }
+      // Tambah/Update dengan data baru (email baru, password baru/lama, nama baru)
+      addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru');
+      // --- [AKHIR PERBAIKAN] ---
     }
 
     return { status: "sukses", message: "Data guru berhasil disimpan." };
@@ -4815,7 +4852,13 @@ function deleteGuru(token, emailGuru) {
     
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === emailGuru) {
+        // 1. Hapus dari sheet LOKAL
         sheet.deleteRow(i + 1);
+        
+        // --- [PERBAIKAN] Sinkronisasi hapus ke GLOBAL (App 2) ---
+        deleteGuruFromApp2(emailGuru);
+        // --- [AKHIR PERBAIKAN] ---
+        
         return { status: "sukses", message: "Guru berhasil dihapus." };
       }
     }
@@ -4900,7 +4943,8 @@ function prosesImportExcelGuru(token, fileData) {
   let tempConvertedSheetId = null;
   
   try {
-    const { spreadsheetID } = validateAdminSession(token);
+    // [PERBAIKAN] Ambil 'sessionData' lengkap
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     
     const sheetGuru = getGuruSheet(ss);
@@ -4910,9 +4954,7 @@ function prosesImportExcelGuru(token, fileData) {
       existingEmailSet.add(String(dataGuru[i][0]).trim().toLowerCase());
     }
 
-    // --- PERBAIKAN DI SINI ---
-    const mapelList = _getMapelInternal(ss, spreadsheetID);
-    // --- AKHIR PERBAIKAN ---
+    const mapelList = _getMapelInternal(ss, sessionData.sekolahID); // [PERBAIKAN] Gunakan sessionData.sekolahID
     
     const validMapelIdSet = new Set(mapelList.map(m => m.id));
 
@@ -4941,6 +4983,8 @@ function prosesImportExcelGuru(token, fileData) {
 
     const gagalList = [];
     const rowsToAppend = [];
+    // [PERBAIKAN] Data untuk sinkronisasi global
+    const gurusToSync = []; 
     
     for (let i = 0; i < excelData.length; i++) {
       const row = excelData[i];
@@ -4982,18 +5026,38 @@ function prosesImportExcelGuru(token, fileData) {
         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: `Kode Mapel '${mapelInvalid}' tidak valid.` });
         continue;
       }
+      
+      // Buat data mapel-kelas (default ke 'Semua Kelas' ["*"])
+      const mapelKelasData = {};
+      mapelIds.forEach(id => {
+        mapelKelasData[id] = ["*"];
+      });
+      const mapelKelasJSON = JSON.stringify(mapelKelasData);
 
-      const newSalt = generateSalt();
-      const newHash = hashPassword(password, newSalt);
-      const finalMapelIdsStr = mapelIds.join(',');
-
-      rowsToAppend.push([email, nama, newHash, newSalt, finalMapelIdsStr]);
+      // [PERBAIKAN] Sesuaikan data untuk sheet lokal (plain text)
+      rowsToAppend.push([email, nama, password, "", mapelKelasJSON]);
       existingEmailSet.add(email);
+      
+      // [PERBAIKAN] Kumpulkan data untuk sinkronisasi global
+      gurusToSync.push({
+        email: email,
+        password: password,
+        nama: nama,
+        sekolahID: sessionData.sekolahID, // Ambil dari sesi
+        role: 'guru'
+      });
     }
 
     if (rowsToAppend.length > 0) {
+      // 1. Simpan ke sheet LOKAL
       sheetGuru.getRange(sheetGuru.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length)
         .setValues(rowsToAppend);
+        
+      // [PERBAIKAN] Jalankan sinkronisasi global setelah data lokal disimpan
+      gurusToSync.forEach(guru => {
+        addOrUpdateGuruInApp2(guru.email, guru.password, guru.nama, guru.sekolahID, guru.role);
+      });
+      // --- [AKHIR PERBAIKAN] ---
     }
 
     DriveApp.getFileById(tempExcelFileId).setTrashed(true);
@@ -5934,5 +5998,76 @@ function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword)
 
   } catch (e) {
     Logger.log(`GAGAL mendaftarkan admin ${email} di App 2 (Global): ${e.message}`);
+  }
+}
+
+/**
+ * [BARU] Helper: Menambah/Memperbarui guru di db_guru global (Aplikasi 2)
+ * Fungsi ini akan dipanggil oleh saveGuru dan prosesImportExcelGuru.
+ */
+function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
+    if (!sheetGuru_app2) throw new Error("db_guru global tidak ditemukan.");
+    
+    const data = sheetGuru_app2.getDataRange().getValues();
+    const emailLower = email.toLowerCase();
+    let foundRowIndex = -1;
+
+    // Cari baris berdasarkan email
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toLowerCase() === emailLower) {
+        foundRowIndex = i + 1; // 1-based index
+        break;
+      }
+    }
+    
+    // Siapkan data baris (Email, Password, Nama, ID Sekolah, Role)
+    const rowData = [email, plainPassword, nama, sekolahID, role];
+
+    if (foundRowIndex > -1) {
+      // Ditemukan -> Update baris yang ada
+      sheetGuru_app2.getRange(foundRowIndex, 1, 1, 5).setValues([rowData]);
+      Logger.log(`Sinkronisasi Update (App 2): Guru ${emailLower} diperbarui.`);
+    } else {
+      // Tidak ditemukan -> Tambah baris baru
+      sheetGuru_app2.appendRow(rowData);
+      Logger.log(`Sinkronisasi Tambah (App 2): Guru ${emailLower} ditambahkan.`);
+    }
+  } catch (e) {
+    // Catat error tapi jangan gagalkan operasi utama
+    Logger.log(`Peringatan: Gagal sinkronisasi 'addOrUpdateGuruInApp2' (App 2) untuk ${email}: ${e.message}`);
+  }
+}
+
+/**
+ * [BARU] Helper: Menghapus guru dari db_guru global (Aplikasi 2)
+ * Fungsi ini akan dipanggil oleh deleteGuru.
+ */
+function deleteGuruFromApp2(email) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
+    if (!sheetGuru_app2) throw new Error("db_guru global tidak ditemukan.");
+
+    const data = sheetGuru_app2.getDataRange().getValues();
+    const emailLower = email.toLowerCase();
+    let rowsToDelete = [];
+
+    // Loop dari BAWAH ke ATAS saat menghapus
+    for (let i = data.length - 1; i >= 1; i--) { 
+      if (data[i][0].toLowerCase() === emailLower) {
+        rowsToDelete.push(i + 1); // 1-based index
+      }
+    }
+
+    if (rowsToDelete.length > 0) {
+      // Hapus baris yang ditemukan
+      rowsToDelete.forEach(rowNum => sheetGuru_app2.deleteRow(rowNum));
+      Logger.log(`Sinkronisasi Hapus (App 2): Guru ${emailLower} dihapus.`);
+    }
+  } catch (e) {
+    Logger.log(`Peringatan: Gagal sinkronisasi 'deleteGuruFromApp2' (App 2) untuk ${email}: ${e.message}`);
   }
 }
