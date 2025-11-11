@@ -44,21 +44,6 @@
         <a id="link-ke-registrasi" class="nav-link">Belum punya akun? Daftar di sini</a>
       </div>
 
-      <div id="halaman-redirect-guru" class="page" style="display: none; text-align: center;">
-        <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success-color); margin-bottom: 20px;"></i>
-        <h3 style="margin-top: 0;">Login Guru Berhasil</h3>
-        <p>Anda akan dialihkan ke Aplikasi Input Nilai.</p>
-        
-        <a id="btn-redirect-guru-lanjutkan" href="#" class="button-login" 
-            style="display: inline-block; width: auto; text-decoration: none; background-color: var(--success-color); color: white; margin-top: 15px;"
-            target="_top"> <i class="fas fa-arrow-right"></i> Lanjutkan ke Aplikasi Nilai
-        </a>
-        
-        <p style="font-size: 12px; color: var(--text-light); margin-top: 15px;">
-          Jika Anda tidak dialihkan, silakan klik tombol di atas.
-        </p>
-      </div>
-
       <div id="halaman-login-guru" class="page auth-tab-content" style="display: none;" data-content="guru">
         <form id="login-guru-form">
           <div class="form-group">
@@ -196,14 +181,6 @@
           <button class="dashboard-card" id="btn-buka-kelas">
             <i class="fas fa-chalkboard-teacher"></i>
             <span>Kelola Kelas</span>
-          </button>
-          <button class="dashboard-card" id="btn-buka-kelola-ta-admin" style="color: #0dcaf0;">
-            <i class="fas fa-calendar-alt"></i>
-            <span>Kelola Tahun Ajaran</span>
-          </button>
-          <button class="dashboard-card" id="btn-buka-penempatan-siswa" style="color: #6f42c1;">
-            <i class="fas fa-user-check"></i>
-            <span>Kelola Penempatan Siswa</span>
           </button>
           <button class="dashboard-card" id="btn-buka-semester">
             <i class="fas fa-layer-group"></i>
@@ -744,115 +721,6 @@
                 <button type="button" id="btn-simpan-pengaturan-guru" disabled><i class="fas fa-save"></i>Simpan Pengaturan</button>
             </div>
         </form>
-
-      </div>
-    </div>
-
-    <div class="container" id="halaman-tahun-ajar-admin" style="display: none;">
-      <div class="page">
-        <div class="page-top-nav">
-          <button type="button" id="btn-kembali-ke-dashboard-14"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
-        </div>
-
-        <div class="page-header">
-          <h2>Kelola Tahun Ajaran (Sekolah)</h2>
-        </div>
-
-        <p>Data Tahun Ajaran ini akan digunakan oleh guru di Aplikasi Input Nilai (Aplikasi 2). Anda juga dapat mengunci T.A. jika input nilai sudah selesai.</p>
-
-        <form id="form-tahun-ajar-admin" onsubmit="return false;">
-          <div class="form-group-grid-header">
-            <label>ID Tahun Ajaran (Wajib, Unik)</label>
-            <label>Deskripsi (Wajib)</label>
-            <label>Status Kunci</label>
-            <label>Aksi</label>
-          </div>
-          
-          <div id="tahun-ajar-admin-list-container">
-            <p>Memuat data tahun ajar...</p>
-            </div>
-          
-          <button type="button" id="btn-add-tahun-ajar-admin" class="btn-aksi" style="background-color: var(--success-color); width: auto; padding: 8px 12px; font-size: 14px; margin-top: 10px;">
-            <i class="fas fa-plus"></i> Tambah Baris
-          </button>
-
-          <p id="tahun-ajar-admin-message" class="message" style="display: none;"></p>
-          <hr>
-          <div class="form-actions">
-              <button type="submit" id="btn-simpan-tahun-ajar-admin" disabled><i class="fas fa-save"></i>Simpan Perubahan</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div class="container" id="halaman-penempatan-siswa" style="display: none;">
-      <div class="page">
-        <div class="page-top-nav">
-          <button type="button" id="btn-kembali-ke-dashboard-15"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
-        </div>
-
-        <div class="page-header">
-          <h2>Kelola Penempatan Siswa</h2>
-        </div>
-
-        <p>Daftarkan siswa ke Tahun Ajaran agar guru dapat menginput nilai di Aplikasi 2. Siswa yang tidak memiliki NISN (diambil dari data siswa) tidak akan muncul di sini.</p>
-
-        <div class="form-group">
-          <label for="penempatan-ta-select">Pilih Tahun Ajaran</label>
-          <select id="penempatan-ta-select">
-            <option value="">-- Memuat Tahun Ajaran... --</option>
-          </select>
-        </div>
-        
-        <p id="penempatan-message" class="message" style="display: none;"></p>
-        
-        <div id="penempatan-loading-spinner" style="display: none; text-align: center; padding: 20px;">
-          <div class="spinner"></div>
-          <p>Memuat data siswa...</p>
-        </div>
-
-        <div id="penempatan-container" class="penempatan-container" style="display: none;">
-          <div class="penempatan-list-box">
-            <h4>Siswa di Sekolah (Belum Terdaftar)</h4>
-            <div class="penempatan-filter-controls">
-              <select id="filter-penempatan-kelas" class="penempatan-filter-kelas">
-                <option value="semua">-- Semua Kelas --</option>
-              </select>
-              <input type="text" id="filter-siswa-tersedia" class="penempatan-filter" placeholder="Cari nama siswa...">
-            </div>
-            
-            <div class="penempatan-list-header">
-              <span class="header-siswa">Siswa</span>
-              <span class="header-kelas-ruang">Kelas</span>
-            </div>
-            <div id="list-siswa-tersedia" class="penempatan-list">
-              </div>
-          </div>
-          
-          <div class="penempatan-actions">
-            <button id="btn-assign-siswa" title="Daftarkan Siswa Terpilih" disabled><i class="fas fa-angle-double-right"></i></button>
-            <button id="btn-unassign-siswa" title="Keluarkan Siswa Terpilih" disabled><i class="fas fa-angle-double-left"></i></button>
-          </div>
-
-          <div class="penempatan-list-box">
-            <h4>Siswa Terdaftar di T.A. Ini</h4>
-            <div class="penempatan-filter-controls">
-              <input type="text" id="filter-siswa-terdaftar" class="penempatan-filter" placeholder="Cari nama siswa...">
-            </div>
-            
-            <div class="penempatan-list-header">
-              <span class="header-siswa">Nama Siswa</span>
-              <span class="header-kelas-ruang" style="width: 70px; text-align: center;">Ruang</span>
-            </div>
-            <div id="list-siswa-terdaftar" class="penempatan-list">
-              </div>
-          </div>
-        </div>
-        
-        <hr>
-        <div class="form-actions">
-            <button type="button" id="btn-simpan-penempatan" disabled><i class="fas fa-save"></i>Simpan Perubahan Penempatan</button>
-        </div>
 
       </div>
     </div>
@@ -1484,9 +1352,6 @@
           <h2 id="salam-superadmin">Selamat Datang, Super Admin</h2>
           <div class="header-buttons">
             <button id="btn-tambah-sekolah-baru"><i class="fas fa-plus"></i>Tambah Sekolah Baru</button>
-            <button id="btn-buka-kelola-ta" style="display: none;" style="background-color: #198754;">
-              <i class="fas fa-calendar-alt"></i>Kelola Tahun Ajaran
-            </button>
           </div>
         </div>
 
@@ -1503,43 +1368,6 @@
           <p>Memuat daftar sekolah...</p>
         </div>
         </div>
-    </div>
-
-    <div class="container" id="halaman-tahun-ajar" style="display: none;">
-      <div class="page">
-        <div class="page-top-nav">
-          <button type="button" id="btn-kembali-ke-superadmin-2"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor Superadmin</button>
-        </div>
-
-        <div class="page-header">
-          <h2>Kelola Tahun Ajaran (Global)</h2>
-        </div>
-
-        <p>Data Tahun Ajaran ini akan digunakan oleh **Aplikasi Input Nilai (Aplikasi 2)**. Klik (+) untuk menambah baris baru.</p>
-
-        <form id="form-tahun-ajar" onsubmit="return false;">
-          <div class="form-group-grid-header">
-            <label>ID Tahun Ajaran (Wajib, Unik)</label>
-            <label>Deskripsi (Wajib)</label>
-            <label>Status Kunci</label>
-            <label>Aksi</label>
-          </div>
-          
-          <div id="tahun-ajar-list-container">
-            <p>Memuat data tahun ajar...</p>
-            </div>
-          
-          <button type="button" id="btn-add-tahun-ajar" class="btn-aksi" style="background-color: var(--success-color); width: auto; padding: 8px 12px; font-size: 14px; margin-top: 10px;">
-            <i class="fas fa-plus"></i> Tambah Baris
-          </button>
-
-          <p id="tahun-ajar-message" class="message" style="display: none;"></p>
-          <hr>
-          <div class="form-actions">
-              <button type="submit" id="btn-simpan-tahun-ajar" disabled><i class="fas fa-save"></i>Simpan Perubahan</button>
-          </div>
-        </form>
-      </div>
     </div>
 
     <div id="superadmin-sekolah-modal" class="modal">
