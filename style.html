@@ -4694,62 +4694,16 @@
     cursor: help;
   }
 
-  /* --- GAYA BARU UNTUK CHECKLIST PENEMPATAN --- */
-  .penempatan-checklist-container {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr); /* 2 kolom di layar kecil */
-    gap: 15px;
-    margin-top: 20px;
-    padding: 20px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background-color: var(--bg-light);
-    max-height: 50vh;
-    overflow-y: auto;
+  /* Style untuk modal tambah mapel app 2 */
+  #modal-mapel-app2 .modal-content {
+    max-width: 450px;
   }
-  
-  @media (min-width: 576px) {
-    .penempatan-checklist-container {
-      grid-template-columns: repeat(3, 1fr); /* 3 kolom di layar sedang */
-    }
+  #btn-batal-modal-mapel-app2 {
+    background-color: var(--secondary-color);
   }
-  @media (min-width: 768px) {
-    .penempatan-checklist-container {
-      grid-template-columns: repeat(4, 1fr); /* 4 kolom di layar besar */
-    }
+  #btn-simpan-modal-mapel-app2:disabled {
+    background-color: var(--secondary-color) !important;
+    opacity: 0.65;
+    cursor: not-allowed;
   }
-  
-  .penempatan-checklist-container .checklist-item {
-    display: flex;
-    align-items: center;
-    background-color: var(--bg-white);
-    padding: 12px 15px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  
-  .penempatan-checklist-container .checklist-item:has(input:checked) {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
-  }
-  
-  .penempatan-checklist-container .checklist-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    margin-right: 12px;
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-  
-  .penempatan-checklist-container .checklist-item label {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-dark);
-    margin-bottom: 0;
-    cursor: pointer;
-    line-height: 1.3;
-  }
-  /* --- AKHIR GAYA BARU --- */
-
 </style>
