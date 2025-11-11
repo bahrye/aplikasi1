@@ -1,3 +1,11 @@
+// --- [TAMBAHAN BARU] ---
+// Ganti dengan ID spreadsheet "Aplikasi 2" Anda (yang berisi db_guru, db_sekolah, dll.)
+const ID_SPREADSHEET_APLIKASI_2 = "1vNp3tvy9Ahy0apVBzcg7BClHsrJG85W3z-kSMjlzWuQ";
+
+// Ganti dengan URL Web App *Aplikasi 2* yang sudah Anda deploy
+const URL_WEB_APP_APLIKASI_2 = "https://script.google.com/macros/s/AKfycbyg88rh88j0De3CKrQ3MkqvOccCl6qoXwbUOplLdysikNkou7vXReOxzvP0ZyTsEnFzDQ/exec";
+// --- [AKHIR TAMBAHAN] ---
+
 // --- TAMBAHAN BARU ---
 const SHEET_SUPERADMIN = "Sheet_Superadmin";
 // --- AKHIR TAMBAHAN ---
@@ -349,6 +357,87 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
   }
 }
 
+// --- [FUNGSI BARU] ---
+/**
+ * Helper untuk mendaftarkan sekolah baru di database Aplikasi 2.
+ * Dijalankan oleh prosesVerifikasiToken.
+ */
+function registerSchoolInApp2(sekolahID, namaSekolah) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetSekolah_app2 = ss_app2.getSheetByName('db_sekolah');
+    if (!sheetSekolah_app2) throw new Error("Sheet 'db_sekolah' di Aplikasi 2 tidak ditemukan.");
+
+    // Cek duplikat
+    const data = sheetSekolah_app2.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == sekolahID) {
+        Logger.log(`Sekolah ${sekolahID} sudah ada di App 2.`);
+        return; // Sudah ada, jangan lakukan apa-apa
+      }
+    }
+    
+    // Tambah sekolah baru (dengan data minimal)
+    // Asumsi App 2: A-I (id, nama, tempat, kepsek, nip, template_id, tgl_sistem, template_rekap, pengumuman)
+    sheetSekolah_app2.appendRow([
+      sekolahID,          // id_sekolah (pakai ID dari App 1)
+      namaSekolah,        // nama_sekolah
+      'Belum Diatur',     // tempat_ttd (Kolom C)
+      'Belum Diatur',     // kepala_sekolah (Kolom D)
+      '-',                // nip_kepsek (Kolom E)
+      'ID_TEMPLATE_HARUS_DIISI_MANUAL', // template_id (Kolom F)
+      null,               // tanggal_sistem (Kolom G)
+      '',                 // template_rekap (Kolom H)
+      ''                  // pengumuman (Kolom I)
+    ]);
+    Logger.log(`Sekolah ${namaSekolah} (ID: ${sekolahID}) berhasil didaftarkan di App 2.`);
+
+  } catch (e) {
+    Logger.log(`GAGAL mendaftarkan sekolah ${namaSekolah} di App 2: ${e.message}`);
+    // Jangan gagalkan registrasi utama, cukup log error ini.
+  }
+}
+
+// --- [PASTIKAN FUNGSI INI ADA di aplikasi1/Kode.gs.html] ---
+
+/**
+ * [FUNGSI BARU]
+ * Helper untuk mendaftarkan admin sekolah sebagai 'guru' di App 2.
+ * Dijalankan oleh prosesVerifikasiToken.
+ */
+function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
+    if (!sheetGuru_app2) throw new Error("Sheet 'db_guru' di Aplikasi 2 tidak ditemukan.");
+
+    // Cek duplikat
+    const data = sheetGuru_app2.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toLowerCase() == email.toLowerCase()) {
+        Logger.log(`Guru ${email} sudah ada di App 2.`);
+        return; // Guru sudah ada
+      }
+    }
+    
+    // Tambah guru baru (sebagai 'guru' biasa)
+    // Asumsi App 2: A-E (email, password, nama, id_sekolah, role)
+    sheetGuru_app2.appendRow([
+      email,
+      plainPassword, // Simpan password plain text (sesuai logika App 2)
+      `Admin ${namaSekolah}`, // Nama
+      sekolahID,           // id_sekolah
+      'guru'               // role
+    ]);
+    Logger.log(`Admin ${email} berhasil didaftarkan sebagai guru di App 2.`);
+
+  } catch (e) {
+    Logger.log(`GAGAL mendaftarkan admin ${email} di App 2: ${e.message}`);
+  }
+}
+// --- [AKHIR FUNGSI BARU] ---
+
+// --- [GANTI FUNGSI INI] ---
 function prosesVerifikasiToken(token) {
   if (!token) {
     return `<h1>Permintaan Tidak Valid</h1>
@@ -373,8 +462,8 @@ function prosesVerifikasiToken(token) {
 
     for (let i = dataPending.length - 1; i >= 1; i--) {
       const row = dataPending[i];
-      const dbToken = row[6];
-      const dbTimestamp = new Date(row[7]).getTime();
+      const dbToken = row[6]; // Kolom G
+      const dbTimestamp = new Date(row[7]).getTime(); // Kolom H
 
       if (dbToken === token) {
         if (dbTimestamp < expiryLimit) {
@@ -383,13 +472,18 @@ function prosesVerifikasiToken(token) {
                   <p>Link verifikasi Anda sudah tidak berlaku (lebih dari ${TOKEN_EXPIRY_HOURS} jam). Untuk keamanan, silakan lakukan registrasi ulang.</p>`;
         }
 
-        const email = row[0];
-        const namaSekolah = row[1];
-        const npsn = row[2];
-        const jenjang = row[3];
-        const dbHash = row[4];
-        const dbSalt = row[5];
+        const email = row[0]; // Kolom A
+        const namaSekolah = row[1]; // Kolom B
+        const npsn = row[2]; // Kolom C
+        const jenjang = row[3]; // Kolom D
         
+        // --- [PERUBAHAN LOGIKA PASSWORD] ---
+        // BACA PASSWORD PLAIN TEXT (dari kolom E, index 4)
+        const dbPassword = row[4]; 
+        // Kolom Salt (row[5]) sekarang diabaikan
+        // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
+        
+        // Cek duplikat di sheetSekolah (aktif)
         const emailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
         
         if (emailFinder.length > 0) {
@@ -401,30 +495,41 @@ function prosesVerifikasiToken(token) {
         }
 
         try {
-          // --- PERBAIKAN DI SINI ---
-          // Menambahkan 'npsn' sebagai parameter ketiga
-          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy_password_not_used", masterSS);
-          // --- AKHIR PERBAIKAN ---
+          // Buat Database Aplikasi 1 (Ijazah)
+          // (menggunakan npsn dari data pending)
+          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS);
           
+          // Buat ID Sekolah Unik (App 1)
           const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
+          
+          // --- [PERUBAHAN LOGIKA PASSWORD] ---
+          // Simpan password plain text di Kolom E (HashedPassword) dan string kosong di Kolom G (Salt)
           sheetSekolah.appendRow([
             newSekolahID, 
             namaSekolah.toUpperCase(), 
             jenjang, 
             email, 
-            dbHash, 
-            newSSID,
-            dbSalt,
-            "'" + npsn,
-            "NONE", // DonasiStatus
-            "",     // DonasiFileID
-            "",     // DonasiDataJSON
-            ""      // DonasiAlasanTolak
+            dbPassword, // <-- Simpan plain password (Kolom E)
+            newSSID,    // (Kolom F)
+            "",         // <-- Salt kosong (Kolom G)
+            "'" + npsn, // (Kolom H)
+            "NONE",     // DonasiStatus (Kolom I)
+            "",         // DonasiFileID (Kolom J)
+            "",         // DonasiDataJSON (Kolom K)
+            ""          // DonasiAlasanTolak (Kolom L)
           ]);
+          // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
 
+          // Hapus dari antrian pending
           sheetPending.deleteRow(i + 1);
-          
           clearMasterSheetCache();
+          
+          // --- [TAMBAHAN INTEGRASI APLIKASI 2] ---
+          // Daftarkan sekolah dan admin ini ke database Aplikasi 2
+          Logger.log(`Mulai integrasi App 2 untuk: ${newSekolahID}`);
+          registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
+          registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPassword);
+          // --- [AKHIR TAMBAHAN] ---
           
           const appUrl = ScriptApp.getService().getUrl();
           return `<h1>Verifikasi Berhasil!</h1>
@@ -671,6 +776,7 @@ function clearMapelCache(sekolahID, spreadsheetID) { // <--- TAMBAHKAN spreadshe
   }
 }
 
+// --- [GANTI FUNGSI INI] ---
 function prosesLogin(email, password) {
   try {
     const appUrl = ScriptApp.getService().getUrl();
@@ -710,11 +816,11 @@ function prosesLogin(email, password) {
       const rowNum = adminEmailFinder[0].getRow();
       const rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
       
-      if (rowData[6]) {
-        passwordIsValid = verifyPassword(password, rowData[4], rowData[6]);
-      } else {
-        passwordIsValid = (rowData[4] === password);
-      }
+      // --- [PERUBAHAN LOGIKA PASSWORD] ---
+      // Cek plain text di Kolom E (index 4)
+      passwordIsValid = (rowData[4] === password);
+      // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
+
       if (passwordIsValid) {
         cachedRow = rowData;
       }
@@ -759,6 +865,7 @@ function prosesLogin(email, password) {
   }
 }
 
+// --- [GANTI FUNGSI INI] ---
 function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -835,19 +942,20 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
 
     const verificationToken = Utilities.getUuid() + Utilities.getUuid();
     const namaSekolahUpper = namaSekolah.toUpperCase();
-    const newSalt = generateSalt();
-    const newHash = hashPassword(password, newSalt);
 
+    // --- [PERUBAHAN LOGIKA PASSWORD] ---
+    // Simpan password plain text di kolom HashedPassword (indeks 4), kolom Salt (indeks 5) kosong
     sheetPending.appendRow([
       email,
       namaSekolahUpper,
       "'" + npsn,
       jenjang,
-      newHash, 
-      newSalt, 
+      password, // <-- Simpan plain password
+      "", // <-- Salt kosong
       verificationToken,
       now 
     ]);
+    // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
     
     kirimEmailVerifikasi(email, namaSekolahUpper, verificationToken);
 
@@ -4525,143 +4633,122 @@ function rebuildKelulusanCacheFromDB() {
   return { masterIndex, allHasilWrappers };
 }
 
+/**
+ * [MODIFIKASI BESAR UNTUK SSO]
+ * Mengautentikasi guru ke database Aplikasi 2
+ * dan MENCATAT One-Time Token (OTT) di spreadsheet Aplikasi 2.
+ */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    // 1. Validasi NPSN/Kode Sekolah terhadap database Aplikasi 1
+    // (Mencari SekolahID berdasarkan NPSN/Nama dari App 1)
+    const masterSS_App1 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah_App1 = masterSS_App1.getSheetByName('Sheet_Sekolah');
+    let npsnFinder = sheetSekolah_App1.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
     
-    let targetSekolah = null;
-    let rowData = null;
-    
-    const npsnFinder = sheetSekolah.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
-    
+    let idSekolahApp1 = null;
     if (npsnFinder.length > 0) {
-      const rowNum = npsnFinder[0].getRow();
-      rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
-      targetSekolah = rowData;
+        const rowNum = npsnFinder[0].getRow();
+        idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue(); // Ambil SekolahID (Kolom A)
     } else {
-      const namaFinder = sheetSekolah.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
-      if (namaFinder.length > 0) {
-        const rowNum = namaFinder[0].getRow();
-        rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
-        targetSekolah = rowData;
-      }
+         const namaFinder = sheetSekolah_App1.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
+         if (namaFinder.length > 0) {
+            const rowNum = namaFinder[0].getRow();
+            idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue(); // Ambil SekolahID (Kolom A)
+         } else {
+            return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan di Aplikasi 1." };
+         }
     }
 
-    if (!targetSekolah) {
-      return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
-    }
-
-    const donasiStatus = targetSekolah[8] || "NONE"; // Kolom I
-    if (donasiStatus !== "APPROVED") {
-      return { status: "gagal", message: "Fitur Login Guru adalah fitur premium. Silakan minta Admin Sekolah Anda untuk mengaktifkan donasi." };
-    }
-
-    const spreadsheetID = targetSekolah[5];
-    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    const sheetGuru = getGuruSheet(ss);
-    if (!sheetGuru) {
-      return { status: "gagal", message: "Fitur guru belum diaktifkan di sekolah ini. Hubungi Admin." };
-    }
-
-    const guruEmailFinder = sheetGuru.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
-
-    const appUrl = ScriptApp.getService().getUrl();
+    // 2. Buka database Aplikasi 2 (Pusat Guru)
+    // Pastikan ID_SPREADSHEET_APLIKASI_2 sudah diisi di atas
+    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
+    if (!sheetGuru_app2) throw new Error("Database Guru (db_guru) di Aplikasi 2 tidak ditemukan.");
     
-    if (guruEmailFinder.length > 0) {
-      const rowNum = guruEmailFinder[0].getRow();
-      const guruData = sheetGuru.getRange(rowNum, 1, 1, sheetGuru.getLastColumn()).getValues()[0];
-      
-      if (verifyPassword(password, guruData[2], guruData[3])) {
+    const dataGuru_app2 = sheetGuru_app2.getDataRange().getValues();
+    
+    // 3. Cari guru di Aplikasi 2
+    const userEmailLower = email.toLowerCase();
+    let foundGuruData = null;
+    
+    for (let i = 1; i < dataGuru_app2.length; i++) {
+      const row = dataGuru_app2[i];
+      // Cek Email (Kolom A, index 0)
+      if (row[0].toLowerCase() === userEmailLower) {
         
-        const dataMapel = guruData[4]; // Kolom E (MapelKelasJSON)
-        let mapelKelasData = {};
-        let assignedMapel = [];
-        let assignedKelas = new Set(); 
-
-        if (dataMapel) {
-          try {
-            mapelKelasData = JSON.parse(dataMapel);
-          } catch (e) {
-            mapelKelasData = {};
-            const mapelArray = String(dataMapel).split(',').map(s => s.trim());
-            mapelArray.forEach(mapelId => {
-              if (mapelId) {
-                mapelKelasData[mapelId] = ["*"]; 
-              }
-            });
-          }
-        }
-
-        assignedMapel = Object.keys(mapelKelasData);
-        for (const mapel in mapelKelasData) {
-          const kelasArray = mapelKelasData[mapel];
-          if (kelasArray.includes("*")) {
-            const kelasSheet = getKelasSheet(ss);
-            const semuaKelas = kelasSheet.getDataRange().getValues();
-            semuaKelas.shift(); 
-            semuaKelas.forEach(row => assignedKelas.add(row[0]));
+        // Cek password (plain text, Kolom B, index 1)
+        if (row[1] === password) {
+          
+          // Cek apakah guru ini terdaftar di sekolah yang benar (Kolom D vs ID App 1)
+          if (row[3] == idSekolahApp1) { 
+            foundGuruData = {
+              email: row[0],
+              nama: row[2],
+              id_sekolah: row[3],
+              role: row[4] || 'guru'
+            };
+            break;
           } else {
-            kelasArray.forEach(k => assignedKelas.add(k));
+              return { status: "gagal", message: "Login berhasil, tetapi guru ini tidak terdaftar di sekolah (NPSN) ini." };
           }
         }
-
-        // --- PERBAIKAN DI SINI ---
-        const allMapel = _getMapelInternal(ss, targetSekolah[0]);
-        // --- AKHIR PERBAIKAN ---
-        
-        const mapelUPSet = new Set();
-        const mapelUMSet = new Set();
-        
-        allMapel.forEach(m => {
-          if (m.isUP) mapelUPSet.add(m.id);
-          if (m.isUS) mapelUMSet.add(m.id);
-        });
-        
-        let hasPraktek = false;
-        let hasMadrasah = false;
-        
-        for (const mapelId of assignedMapel) {
-          if (mapelUPSet.has(mapelId)) hasPraktek = true;
-          if (mapelUMSet.has(mapelId)) hasMadrasah = true;
-          if (hasPraktek && hasMadrasah) break;
-        }
-        
-        const token = Utilities.getUuid();
-        const sessionData = {
-          role: 'guru',
-          sekolahID: targetSekolah[0],
-          namaSekolah: targetSekolah[1],
-          jenjang: targetSekolah[2],
-          spreadsheetID: spreadsheetID,
-          jenjangPilihan: jenjangPilihan,
-          namaGuru: guruData[1],
-          assignedMapel: assignedMapel, 
-          assignedKelas: Array.from(assignedKelas), 
-          mapelKelasData: mapelKelasData, 
-          hasUjianPraktek: hasPraktek,
-          hasUjianMadrasah: hasMadrasah,
-          lastActivity: new Date().getTime()
-        };
-        CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
-        
-        return {
-          status: "sukses",
-          role: "guru",
-          namaSekolah: targetSekolah[1],
-          namaGuru: guruData[1],
-          jenjangPilihan: jenjangPilihan,
-          hasUjianPraktek: hasPraktek,
-          hasUjianMadrasah: hasMadrasah,
-          token: token,
-          appUrl: appUrl
-        };
       }
     }
-    return { status: "gagal", message: "Email atau password guru salah." };
+
+    if (!foundGuruData) {
+      return { status: "gagal", message: "Email atau password guru salah." };
+    }
+
+    // 4. Buat One-Time Token (OTT)
+    const ott = 'ott-' + Utilities.getUuid();
+    const emailPayload = foundGuruData.email;
+    const timestamp = new Date();
+    
+    // 5. [PERUBAHAN] Simpan OTT ke SPREADSHEET Aplikasi 2, bukan Cache
+    const ottSheet = ss_app2.getSheetByName('db_ott_cache'); // Kita akan buat sheet ini di App 2
+    if (!ottSheet) {
+      throw new Error("Sheet 'db_ott_cache' tidak ditemukan di Aplikasi 2.");
+    }
+    
+    // Kunci sheet App 2 untuk penulisan
+    const lock = LockService.getScriptLock();
+    lock.waitLock(10000); // Tunggu 10 detik
+    try {
+      // Tulis token di sheet App 2 (Token, Email, Timestamp)
+      ottSheet.appendRow([ott, emailPayload, timestamp]);
+      
+      // Hapus token lama (lebih dari 5 menit)
+      const data = ottSheet.getDataRange().getValues();
+      const now = timestamp.getTime();
+      const expiryLimit = 5 * 60 * 1000; // 5 menit
+      const rowsToDelete = [];
+      
+      for (let i = data.length - 1; i >= 1; i--) { // Loop dari bawah
+        if (data[i][2] instanceof Date && (now - data[i][2].getTime() > expiryLimit)) {
+          rowsToDelete.push(i + 1);
+        }
+      }
+      rowsToDelete.forEach(rowNum => ottSheet.deleteRow(rowNum));
+      
+    } catch(e) {
+      throw e;
+    } finally {
+      lock.releaseLock();
+    }
+    // --- [AKHIR PERUBAHAN] ---
+
+    // 6. Buat URL Redirect
+    const redirectUrl = URL_WEB_APP_APLIKASI_2 + (URL_WEB_APP_APLIKASI_2.includes('?') ? '&' : '?') + 'ott=' + ott;
+
+    return {
+      status: "sso_redirect",
+      redirectUrl: redirectUrl
+    };
+
   } catch (e) {
-    return { status: "gagal", message: "Terjadi error: " + e.message };
+    Logger.log(`Error prosesLoginGuru (SSO): ${e.message}`);
+    return { status: "gagal", message: "Terjadi error server: " + e.message };
   }
 }
 
