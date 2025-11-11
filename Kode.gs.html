@@ -5,8 +5,6 @@ const SHEET_SUPERADMIN = "Sheet_Superadmin";
 const MASTER_SHEET_ID = "191TzI0vRzK8xg7kGym8qUnvXz_edlCH_IJmmwMZMK_M"; 
 const TARGET_FOLDER_ID = "1Xu9vSZQKAxVCNDuAXI8W5l-3xb58cQm9";
 
-const APP2_TEMPLATE_SS_ID = "1yxe9XF26FijlXQLD_-mZ00MPpcVuYdy5uMGqCh7A7Ls";
-
 // --- TAMBAHAN BARU ---
 const DONASI_FOLDER_ID = "1ETK_gUuPQsuSeNu_XbIctkvVb9JSPmS9"; // <== PENTING: Ganti ID ini
 // --- AKHIR TAMBAHAN ---
@@ -327,15 +325,6 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
 
     sheetDataSekolah.getRange('A2:P2').setNumberFormat('@');
 
-    // ===== TAMBAHKAN BLOK INI =====
-    // Buat sheet Tahun_Ajaran agar siap untuk App 2
-    const sheetTahunAjaran = newSpreadsheet.insertSheet('Tahun_Ajaran');
-    sheetTahunAjaran.appendRow(['id_tahun_ajaran', 'deskripsi', 'status_kunci']);
-    sheetTahunAjaran.setFrozenRows(1);
-    const defaultTA = `${new Date().getFullYear()-1}/${new Date().getFullYear()}`;
-    sheetTahunAjaran.appendRow([defaultTA, defaultTA, false]);
-    // =============================
-
     // --- PERUBAHAN DI SINI ---
     // Mengubah struktur Sheet Cache Ijazah
     const sheetCacheIjazah = newSpreadsheet.insertSheet(SHEET_CACHE_IJAZAH);
@@ -357,30 +346,6 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
       DriveApp.getFileById(newSSID).setTrashed(true);
     }
     throw new Error("Gagal membuat database: " + e.message);
-  }
-}
-
-/**
- * [BARU] Membuat database (Spreadsheet) baru untuk Aplikasi 2
- * dengan menyalin dari template.
- */
-function buatDatabaseApp2Baru(namaSekolah, npsn) {
-  try {
-    const targetFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
-    const templateFile = DriveApp.getFileById(APP2_TEMPLATE_SS_ID);
-    
-    const namaSekolahUpper = namaSekolah.toUpperCase();
-    const newFileName = `Database Nilai Guru - ${namaSekolahUpper} (NPSN ${npsn})`;
-    
-    const newFile = templateFile.makeCopy(newFileName, targetFolder);
-    const newSSID = newFile.getId();
-    
-    Logger.log("Database App 2 baru dibuat: " + newSSID);
-    return newSSID;
-
-  } catch (e) {
-    Logger.log(e);
-    throw new Error("Gagal membuat database App 2: " + e.message);
   }
 }
 
@@ -437,32 +402,25 @@ function prosesVerifikasiToken(token) {
 
         try {
           // --- PERBAIKAN DI SINI ---
-          // 1. Buat DB untuk App 1
-          const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS);
-
-          // 2. Buat DB untuk App 2
-          const newSSID_App2 = buatDatabaseApp2Baru(namaSekolah, npsn);
+          // Menambahkan 'npsn' sebagai parameter ketiga
+          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy_password_not_used", masterSS);
           // --- AKHIR PERBAIKAN ---
-
+          
           const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
-
-          // ===== MODIFIKASI: Tambahkan newSSID_App2 di Kolom M =====
           sheetSekolah.appendRow([
             newSekolahID, 
             namaSekolah.toUpperCase(), 
             jenjang, 
             email, 
             dbHash, 
-            newSSID_App1, // <-- ID App 1 (Kolom F)
+            newSSID,
             dbSalt,
             "'" + npsn,
             "NONE", // DonasiStatus
             "",     // DonasiFileID
             "",     // DonasiDataJSON
-            "",     // DonasiAlasanTolak
-            newSSID_App2 // <-- ID App 2 BARU (Kolom M)
+            ""      // DonasiAlasanTolak
           ]);
-          // =======================================================
 
           sheetPending.deleteRow(i + 1);
           
@@ -783,8 +741,6 @@ function prosesLogin(email, password) {
       spreadsheetID: userSpreadsheetID,
       jenjangPilihan: jenjangPilihan,
       donasiStatus: donasiStatus,
-      npsn: cachedRow[7],
-      app2_spreadsheetID: cachedRow[12],
       lastActivity: new Date().getTime()
     };
     CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
@@ -973,20 +929,6 @@ function checkToken(tokenFromClient) {
         appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'admin') {
-      // [PERBAIKAN] Kita butuh helper untuk ini jika sesi dibuat sebelum update
-      if (!sessionData.npsn || !sessionData.app2_spreadsheetID) {
-        Logger.log("Sesi App 1 lama terdeteksi, mengambil NPSN/App2ID dari Master Sheet...");
-        const masterData = getCachedMasterSheetData();
-        for (let i = 1; i < masterData.length; i++) {
-          if (masterData[i][0] === sessionData.sekolahID) {
-            sessionData.npsn = masterData[i][7]; // Kolom H
-            sessionData.app2_spreadsheetID = masterData[i][12]; // Kolom M
-            break;
-          }
-        }
-        // Simpan sesi yang diperbarui
-        CacheService.getScriptCache().put('SESSION_' + tokenFromClient, JSON.stringify(sessionData), 21600);
-      }
       return {
         status: "sukses",
         role: "admin",
@@ -995,8 +937,6 @@ function checkToken(tokenFromClient) {
         jenjang: sessionData.jenjang,
         jenjangPilihan: sessionData.jenjangPilihan,
         donasiStatus: sessionData.donasiStatus || "NONE",
-        npsn: sessionData.npsn,
-        app2_spreadsheetID: sessionData.app2_spreadsheetID,
         appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'guru') {
@@ -1062,11 +1002,8 @@ function superadminDeleteSekolah(token, sekolahID, spreadsheetID) {
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const data = sheetSekolah.getDataRange().getValues();
     let rowDeleted = false;
-    let app2_ssid_to_delete = null;
-
     for (let i = data.length - 1; i >= 1; i--) {
       if (data[i][0] === sekolahID) {
-        app2_ssid_to_delete = data[i][12];
         sheetSekolah.deleteRow(i + 1);
         rowDeleted = true;
         break;
@@ -1077,115 +1014,11 @@ function superadminDeleteSekolah(token, sekolahID, spreadsheetID) {
     }
     try {
       DriveApp.getFileById(spreadsheetID).setTrashed(true);
-    } catch (driveError) {}
-    
-    // ===== TAMBAHKAN BLOK INI UNTUK MENGHAPUS DB APP 2 =====
-    if (app2_ssid_to_delete) {
-      try {
-        DriveApp.getFileById(app2_ssid_to_delete).setTrashed(true);
-      } catch (driveError) {}
+    } catch (driveError) {
     }
-    // ====================================================
     clearMasterSheetCache();
     return { status: "sukses", message: "Sekolah berhasil dihapus." };
   } catch (e) {
-    return { status: "gagal", message: e.message };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// =================================================================
-// ===== FUNGSI BARU SUPERADMIN: KELOLA TAHUN AJARAN (GLOBAL) ========
-// =================================================================
-
-/**
- * [SUPERADMIN] Helper: Mendapatkan atau membuat sheet 'db_tahun_ajaran_master' di Master Sheet.
- * Kita beri nama '_master' agar tidak bentrok dengan nama sheet di App 2.
- */
-function getTahunAjaranSheet(masterSS) {
-  const SHEET_NAME = "db_tahun_ajaran_master"; // Nama sheet di Master DB
-  let sheet = masterSS.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = masterSS.insertSheet(SHEET_NAME);
-    // Header: id_tahun_ajaran, deskripsi, status_kunci
-    sheet.appendRow(['id_tahun_ajaran', 'deskripsi', 'status_kunci']);
-    sheet.setFrozenRows(1);
-    // Tambah data contoh
-    const defaultTA = `${new Date().getFullYear()-1}/${new Date().getFullYear()}`;
-    sheet.appendRow([defaultTA, defaultTA, false]);
-  }
-  return sheet;
-}
-
-/**
- * [SUPERADMIN] Mengambil semua data Tahun Ajaran dari Master Sheet.
- */
-function superadmin_getTahunAjaran(token) {
-  return { status: "gagal", message: "Fitur dialihkan ke Admin Sekolah." };
-  try {
-    validateSuperadminSession(token); // Hanya Superadmin
-    
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    const sheet = getTahunAjaranSheet(masterSS);
-    
-    if (sheet.getLastRow() <= 1) {
-      return { status: "sukses", data: [] }; // Kosong jika hanya header
-    }
-
-    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
-    const taList = data.map(row => ({
-      id: row[0],
-      deskripsi: row[1],
-      is_locked: row[2] === true // Pastikan boolean
-    })).sort((a, b) => b.id.localeCompare(a.id)); // Urutkan terbaru di atas
-
-    return { status: "sukses", data: taList };
-  } catch (e) {
-    Logger.log(e);
-    return { status: "gagal", message: e.message };
-  }
-}
-
-/**
- * [SUPERADMIN] Menyimpan (menimpa) semua data Tahun Ajaran di Master Sheet.
- */
-function superadmin_saveTahunAjaran(token, taList) {
-  return { status: "gagal", message: "Fitur dialihkan ke Admin Sekolah." };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    validateSuperadminSession(token); // Hanya Superadmin
-    
-    if (!taList) taList = [];
-
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    const sheet = getTahunAjaranSheet(masterSS);
-
-    // Hapus data lama (baris 2 sampai akhir)
-    if (sheet.getLastRow() > 1) {
-      sheet.deleteRows(2, sheet.getLastRow() - 1);
-    }
-
-    // Tulis data baru jika ada
-    if (taList.length > 0) {
-      const dataToSave = taList.map(ta => [
-        ta.id,
-        ta.deskripsi,
-        ta.is_locked === true // Pastikan boolean
-      ]);
-      sheet.getRange(2, 1, dataToSave.length, 3).setValues(dataToSave);
-    }
-    
-    // Bersihkan cache App 2 jika ada (meskipun tidak akan berpengaruh
-    // sampai App 2 diubah untuk membaca dari sini)
-    try {
-      CacheService.getScriptCache().remove('app2_ta_cache');
-    } catch(e){}
-
-    return { status: "sukses" };
-  } catch (e) {
-    Logger.log(e);
     return { status: "gagal", message: e.message };
   } finally {
     lock.releaseLock();
@@ -1264,29 +1097,26 @@ function superadminSaveSekolah(token, data) {
       }
       
       // --- PERBAIKAN DI SINI ---
-      const newSSID_App1 = buatDatabaseSekolahBaru(nama, jenjang, '', email, password, masterSS);
-      const newSSID_App2 = buatDatabaseApp2Baru(nama, '(NPSN Kosong)'); // Buat juga DB App 2
+      // Menambahkan '' sebagai parameter 'npsn'
+      const newSSID = buatDatabaseSekolahBaru(nama, jenjang, '', email, password, masterSS);
       // --- AKHIR PERBAIKAN ---
 
       const newSalt = generateSalt();
       const newHash = hashPassword(password, newSalt);
       const newSekolahID = generateNewSekolahID(nama, sheetSekolah);
-      
-      // ===== MODIFIKASI: Tambahkan newSSID_App2 di Kolom M =====
       sheetSekolah.appendRow([
         newSekolahID,
         nama.toUpperCase(),
         jenjang,
         email,
         newHash,
-        newSSID_App1, // <-- ID App 1 (Kolom F)
+        newSSID,
         newSalt,
-        "", // NPSN
+        "", // NPSN (kosongkan saja, bisa diisi admin sekolah nanti)
         "NONE", // DonasiStatus
         "",     // DonasiFileID
         "",     // DonasiDataJSON
-        "",     // DonasiAlasanTolak
-        newSSID_App2 // <-- ID App 2 BARU (Kolom M)
+        ""      // DonasiAlasanTolak
       ]);
     } else {
       let rowToUpdate = -1;
@@ -4695,179 +4525,143 @@ function rebuildKelulusanCacheFromDB() {
   return { masterIndex, allHasilWrappers };
 }
 
-/**
- * [MODIFIKASI UNTUK SSO]
- * Memproses login guru, memverifikasi dari 'Akun_Guru' di spreadsheet sekolah.
- * Menyimpan sesi ke UserProperties (bukan Cache) agar bisa dibaca oleh App 2.
- */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    const appUrl = ScriptApp.getService().getUrl();
-
-    // 1. Buka Master Sheet
-    let masterSS;
-    try {
-      masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    } catch (e) {
-      Logger.log(`Gagal membuka Master Sheet ID: ${MASTER_SHEET_ID}. Error: ${e.message}`);
-      throw new Error("Gagal terhubung ke database utama. Hubungi admin.");
-    }
-    
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-    if (!sheetSekolah) {
-      throw new Error("Database Master (Sheet_Sekolah) tidak ditemukan.");
-    }
-
-    // 2. Cari Sekolah berdasarkan NPSN
-    const dataSekolah = sheetSekolah.getDataRange().getValues();
-    let sekolahRow = null;
-    // Kolom H (index 7) adalah NPSN
-    for (let i = 1; i < dataSekolah.length; i++) {
-      if (dataSekolah[i][7] == npsn) { 
-        sekolahRow = dataSekolah[i];
-        break;
+    
+    let targetSekolah = null;
+    let rowData = null;
+    
+    const npsnFinder = sheetSekolah.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
+    
+    if (npsnFinder.length > 0) {
+      const rowNum = npsnFinder[0].getRow();
+      rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
+      targetSekolah = rowData;
+    } else {
+      const namaFinder = sheetSekolah.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
+      if (namaFinder.length > 0) {
+        const rowNum = namaFinder[0].getRow();
+        rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
+        targetSekolah = rowData;
       }
     }
 
-    if (!sekolahRow) {
-      throw new Error("NPSN Sekolah tidak ditemukan di database.");
+    if (!targetSekolah) {
+      return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
     }
 
-    const sekolahId = sekolahRow[0]; // Kolom A (SekolahID)
-    const namaSekolah = sekolahRow[1]; // Kolom B (NamaSekolah)
-    const jenjang = sekolahRow[2]; // Kolom C (Jenjang)
-    const spreadsheetID = sekolahRow[5]; // Kolom F (SpreadsheetID)
-    const app2_spreadsheetID = sekolahRow[12];
-    
-    if (!spreadsheetID || !app2_spreadsheetID) {
-       throw new Error("Sekolah ini belum memiliki database. Hubungi admin.");
+    const donasiStatus = targetSekolah[8] || "NONE"; // Kolom I
+    if (donasiStatus !== "APPROVED") {
+      return { status: "gagal", message: "Fitur Login Guru adalah fitur premium. Silakan minta Admin Sekolah Anda untuk mengaktifkan donasi." };
     }
 
-    // 3. Buka Spreadsheet Sekolah
-    let ssSekolah;
-    try {
-      ssSekolah = SpreadsheetApp.openById(spreadsheetID);
-    } catch (e) {
-      Logger.log(`Gagal membuka Spreadsheet Sekolah ID: ${spreadsheetID}. Error: ${e.message}`);
-      throw new Error("Gagal membuka database sekolah.");
-    }
-    
-    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID); // Ambil jenjang pilihan
-
-    // 4. Cari Guru di sheet 'Akun_Guru'
-    const sheetGuru = getGuruSheet(ssSekolah); // Helper function Anda
+    const spreadsheetID = targetSekolah[5];
+    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheetGuru = getGuruSheet(ss);
     if (!sheetGuru) {
-      throw new Error("Database guru (Akun_Guru) tidak ditemukan di sekolah ini.");
-    }
-    
-    const dataGuru = sheetGuru.getDataRange().getValues();
-    const userEmailLower = email.toLowerCase();
-    let guruRow = null;
-    
-    // Kolom A (index 0) adalah Email
-    for (let i = 1; i < dataGuru.length; i++) {
-      if (dataGuru[i][0].toLowerCase() === userEmailLower) {
-        guruRow = dataGuru[i];
-        break;
-      }
-    }
-    
-    if (!guruRow) {
-      throw new Error("Email guru tidak ditemukan di sekolah ini.");
+      return { status: "gagal", message: "Fitur guru belum diaktifkan di sekolah ini. Hubungi Admin." };
     }
 
-    // 5. Verifikasi Password
-    const namaGuru = guruRow[1]; // Kolom B (Nama)
-    const dbHash = guruRow[2];   // Kolom C (HashedPassword)
-    const dbSalt = guruRow[3];   // Kolom D (Salt)
+    const guruEmailFinder = sheetGuru.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
 
-    const passwordIsValid = verifyPassword(password, dbHash, dbSalt); // Helper function Anda
-
-    if (passwordIsValid) {
-      // 6. Login Berhasil!
-      const dataMapel = guruRow[4]; // Kolom E (MapelKelasJSON)
-      let mapelKelasData = {};
-      let assignedMapel = [];
-      let assignedKelas = new Set(); 
-
-      if (dataMapel) {
-        try {
-          mapelKelasData = JSON.parse(dataMapel);
-        } catch (e) {
-          mapelKelasData = {}; // Gagal parse, reset
-        }
-      }
-
-      assignedMapel = Object.keys(mapelKelasData);
+    const appUrl = ScriptApp.getService().getUrl();
+    
+    if (guruEmailFinder.length > 0) {
+      const rowNum = guruEmailFinder[0].getRow();
+      const guruData = sheetGuru.getRange(rowNum, 1, 1, sheetGuru.getLastColumn()).getValues()[0];
       
-      const kelasSheet = getKelasSheet(ssSekolah); // Helper function Anda
-      const semuaKelasData = kelasSheet.getDataRange().getValues();
-      semuaKelasData.shift();
-      const semuaKelasList = semuaKelasData.map(row => row[0]);
+      if (verifyPassword(password, guruData[2], guruData[3])) {
+        
+        const dataMapel = guruData[4]; // Kolom E (MapelKelasJSON)
+        let mapelKelasData = {};
+        let assignedMapel = [];
+        let assignedKelas = new Set(); 
 
-      for (const mapel in mapelKelasData) {
-        const kelasArray = mapelKelasData[mapel];
-        if (Array.isArray(kelasArray)) {
+        if (dataMapel) {
+          try {
+            mapelKelasData = JSON.parse(dataMapel);
+          } catch (e) {
+            mapelKelasData = {};
+            const mapelArray = String(dataMapel).split(',').map(s => s.trim());
+            mapelArray.forEach(mapelId => {
+              if (mapelId) {
+                mapelKelasData[mapelId] = ["*"]; 
+              }
+            });
+          }
+        }
+
+        assignedMapel = Object.keys(mapelKelasData);
+        for (const mapel in mapelKelasData) {
+          const kelasArray = mapelKelasData[mapel];
           if (kelasArray.includes("*")) {
-            semuaKelasList.forEach(k => assignedKelas.add(k));
+            const kelasSheet = getKelasSheet(ss);
+            const semuaKelas = kelasSheet.getDataRange().getValues();
+            semuaKelas.shift(); 
+            semuaKelas.forEach(row => assignedKelas.add(row[0]));
           } else {
             kelasArray.forEach(k => assignedKelas.add(k));
           }
         }
+
+        // --- PERBAIKAN DI SINI ---
+        const allMapel = _getMapelInternal(ss, targetSekolah[0]);
+        // --- AKHIR PERBAIKAN ---
+        
+        const mapelUPSet = new Set();
+        const mapelUMSet = new Set();
+        
+        allMapel.forEach(m => {
+          if (m.isUP) mapelUPSet.add(m.id);
+          if (m.isUS) mapelUMSet.add(m.id);
+        });
+        
+        let hasPraktek = false;
+        let hasMadrasah = false;
+        
+        for (const mapelId of assignedMapel) {
+          if (mapelUPSet.has(mapelId)) hasPraktek = true;
+          if (mapelUMSet.has(mapelId)) hasMadrasah = true;
+          if (hasPraktek && hasMadrasah) break;
+        }
+        
+        const token = Utilities.getUuid();
+        const sessionData = {
+          role: 'guru',
+          sekolahID: targetSekolah[0],
+          namaSekolah: targetSekolah[1],
+          jenjang: targetSekolah[2],
+          spreadsheetID: spreadsheetID,
+          jenjangPilihan: jenjangPilihan,
+          namaGuru: guruData[1],
+          assignedMapel: assignedMapel, 
+          assignedKelas: Array.from(assignedKelas), 
+          mapelKelasData: mapelKelasData, 
+          hasUjianPraktek: hasPraktek,
+          hasUjianMadrasah: hasMadrasah,
+          lastActivity: new Date().getTime()
+        };
+        CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
+        
+        return {
+          status: "sukses",
+          role: "guru",
+          namaSekolah: targetSekolah[1],
+          namaGuru: guruData[1],
+          jenjangPilihan: jenjangPilihan,
+          hasUjianPraktek: hasPraktek,
+          hasUjianMadrasah: hasMadrasah,
+          token: token,
+          appUrl: appUrl
+        };
       }
-
-      const allMapel = _getMapelInternal(ssSekolah, sekolahId); // Helper function Anda
-      const { hasPraktek, hasMadrasah } = checkGuruMapelTypes(allMapel, assignedMapel);
-      
-      const token = Utilities.getUuid();
-      
-      // === PERUBAHAN UTAMA: Simpan ke Sheet SSO_Tokens ===
-      const sessionData = {
-        role: 'guru',
-        sekolahID: sekolahId,
-        namaSekolah: namaSekolah,
-        jenjang: jenjang,
-        spreadsheetID: spreadsheetID,
-        jenjangPilihan: jenjangPilihan,
-        namaGuru: namaGuru,
-        assignedMapel: assignedMapel,
-        assignedKelas: Array.from(assignedKelas),
-        mapelKelasData: mapelKelasData,
-        hasUjianPraktek: hasPraktek,
-        hasUjianMadrasah: hasMadrasah,
-        lastActivity: new Date().getTime(),
-        email: userEmailLower,
-        app2_spreadsheetID: app2_spreadsheetID 
-      };
-      
-      // Simpan ke sheet bersama
-      const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-      const tokenSheet = masterSS.getSheetByName('SSO_Tokens');
-      if (!tokenSheet) throw new Error("Sheet SSO_Tokens tidak ditemukan di Master Sheet.");
-      
-      // Simpan token (kunci) dan data sesinya
-      tokenSheet.appendRow([token, JSON.stringify(sessionData)]);
-      // === AKHIR PERUBAHAN ===
-
-      return {
-        status: "sukses",
-        role: "guru",
-        namaGuru: namaGuru,
-        namaSekolah: namaSekolah,
-        jenjang: jenjang,
-        jenjangPilihan: jenjangPilihan,
-        token: token,
-        appUrl: appUrl,
-        npsn: npsn, 
-        email: email // 'email' ini (bukan userEmailLower) sudah ada dari return sebelumnya
-      };
-    } else {
-      throw new Error("Password guru salah.");
     }
-
+    return { status: "gagal", message: "Email atau password guru salah." };
   } catch (e) {
-    Logger.log(e);
-    return { status: "gagal", message: e.message };
+    return { status: "gagal", message: "Terjadi error: " + e.message };
   }
 }
 
@@ -5975,481 +5769,4 @@ function generateSiswaLoginCards(token) {
     Logger.log("Error generateSiswaLoginCards: " + e.message);
     return { status: "gagal", message: e.message };
   }
-}
-
-/**
- * [FUNGSI BARU YANG HILANG]
- * Memeriksa daftar mapel yang diampu guru untuk menentukan
- * apakah mereka mengajar Ujian Praktek atau Ujian Madrasah/Sekolah.
- * @param {Array<Object>} allMapel - Daftar semua mapel dari _getMapelInternal.
- * @param {Array<string>} assignedMapel - Array berisi ID mapel yang diampu guru.
- * @returns {Object} { hasPraktek: boolean, hasMadrasah: boolean }
- */
-function checkGuruMapelTypes(allMapel, assignedMapel) {
-  let hasPraktek = false;
-  let hasMadrasah = false;
-
-  if (!allMapel || !assignedMapel || assignedMapel.length === 0) {
-    return { hasPraktek, hasMadrasah };
-  }
-
-  const assignedSet = new Set(assignedMapel);
-
-  for (const mapel of allMapel) {
-    // Cek apakah mapel ini diampu oleh guru
-    if (assignedSet.has(mapel.id)) {
-      if (mapel.isUP) { // isUP = Ujian Praktek
-        hasPraktek = true;
-      }
-      if (mapel.isUS) { // isUS = Ujian Sekolah/Madrasah
-        hasMadrasah = true;
-      }
-    }
-    
-    // Jika sudah ketemu keduanya, tidak perlu loop lagi
-    if (hasPraktek && hasMadrasah) {
-      break;
-    }
-  }
-
-  return { hasPraktek, hasMadrasah };
-}
-
-// =================================================================
-// ===== FUNGSI BARU ADMIN SEKOLAH: KELOLA TAHUN AJARAN ========
-// =================================================================
-
-/**
- * [ADMIN] Helper: Mendapatkan atau membuat sheet 'Tahun_Ajaran' di DB Sekolah.
- * Sheet ini akan dibaca oleh Aplikasi 2.
- */
-function getTahunAjaranSheetAdmin(ss) {
-  const SHEET_NAME = "Tahun_Ajaran"; // Nama sheet di DB Sekolah
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    // Header: id_tahun_ajaran, deskripsi, status_kunci
-    sheet.appendRow(['id_tahun_ajaran', 'deskripsi', 'status_kunci']);
-    sheet.setFrozenRows(1);
-    // Tambah data contoh
-    const defaultTA = `${new Date().getFullYear()-1}/${new Date().getFullYear()}`;
-    sheet.appendRow([defaultTA, defaultTA, false]);
-  } else {
-    // Pastikan kolom status_kunci ada
-    const header = sheet.getRange(1, 3).getValue();
-    if (header !== 'status_kunci') {
-      sheet.getRange(1, 3).setValue('status_kunci');
-    }
-  }
-  return sheet;
-}
-
-/**
- * [ADMIN - DIPERBARUI] Mengambil semua data Tahun Ajaran dari DB Sekolah
- * DAN mengecek apakah T.A. tersebut sudah digunakan di App 2.
- */
-function getTahunAjaranAdmin(token) {
-  try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token); // Validasi Admin
-    
-    const npsn = sessionData.npsn;
-    const app2_spreadsheetID = sessionData.app2_spreadsheetID;
-
-    if (!npsn || !app2_spreadsheetID) {
-      throw new Error("Sesi tidak lengkap. NPSN atau DB App 2 ID tidak ditemukan. Harap logout dan login kembali.");
-    }
-
-    // 1. Dapatkan Set T.A. yang sudah terpakai dari App 2
-    const taInUseSet = new Set();
-    try {
-      const ssApp2 = SpreadsheetApp.openById(app2_spreadsheetID);
-      const enrollmentSheet = findOrCreateSheet(ssApp2, 'db_enrollment', 
-        ['id_enrollment', 'nomor_ujian', 'id_sekolah_npsn', 'id_tahun_ajaran', 'ruang_ujian']);
-      
-      if (enrollmentSheet.getLastRow() > 1) {
-        // Baca kolom C (NPSN) dan D (TA)
-        const enrollmentData = enrollmentSheet.getRange(2, 3, enrollmentSheet.getLastRow() - 1, 2).getValues();
-        enrollmentData.forEach(row => {
-          // Jika NPSN cocok, tambahkan ID T.A. ke Set
-          if (String(row[0]).trim() == String(npsn).trim()) {
-            taInUseSet.add(String(row[1]).trim());
-          }
-        });
-      }
-    } catch (e) {
-      Logger.log(`Gagal membaca App 2 DB (${app2_spreadsheetID}) untuk cek T.A.: ${e.message}`);
-      // Tidak melempar error, anggap saja tidak ada T.A. yang terpakai jika gagal
-    }
-
-    // 2. Dapatkan daftar T.A. dari App 1 (seperti sebelumnya)
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    const sheet = getTahunAjaranSheetAdmin(ss);
-    
-    if (sheet.getLastRow() <= 1) {
-      return { status: "sukses", data: [] }; // Kosong jika hanya header
-    }
-
-    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
-    
-    // 3. Gabungkan data
-    const taList = data.map(row => {
-      const ta_id = String(row[0]);
-      return {
-        id: ta_id,
-        deskripsi: row[1],
-        is_locked: row[2] === true, // Cek is_locked
-        is_in_use: taInUseSet.has(ta_id) // [BARU] Cek is_in_use
-      };
-    }).sort((a, b) => b.id.localeCompare(a.id)); // Urutkan terbaru di atas
-
-    return { status: "sukses", data: taList };
-
-  } catch (e) {
-    Logger.log(e);
-    return { status: "gagal", message: e.message };
-  }
-}
-
-/**
- * [ADMIN - DIPERBARUI] Menyimpan (menimpa) semua data Tahun Ajaran di DB Sekolah.
- * Logika ini sekarang melakukan 'diff' untuk mencegah penghapusan T.A. yang terkunci/digunakan.
- */
-function saveTahunAjaranAdmin(token, newListFromClient) {
-  const lock = LockService.getDocumentLock();
-  lock.waitLock(30000); // Kunci 30 detik
-  
-  let spreadsheetID, sessionData;
-  try {
-    sessionData = validateAdminSession(token).sessionData; // Validasi Admin
-    spreadsheetID = sessionData.spreadsheetID;
-    
-    if (!newListFromClient) newListFromClient = [];
-
-    const npsn = sessionData.npsn;
-    const app2_spreadsheetID = sessionData.app2_spreadsheetID;
-
-    if (!npsn || !app2_spreadsheetID) {
-      throw new Error("Sesi tidak lengkap. NPSN atau DB App 2 ID tidak ditemukan. Harap logout dan login kembali.");
-    }
-
-    // 1. Dapatkan Set T.A. yang sudah terpakai dari App 2
-    const taInUseSet = new Set();
-    try {
-      const ssApp2 = SpreadsheetApp.openById(app2_spreadsheetID);
-      const enrollmentSheet = findOrCreateSheet(ssApp2, 'db_enrollment', 
-        ['id_enrollment', 'nomor_ujian', 'id_sekolah_npsn', 'id_tahun_ajaran', 'ruang_ujian']);
-      
-      if (enrollmentSheet.getLastRow() > 1) {
-        const enrollmentData = enrollmentSheet.getRange(2, 3, enrollmentSheet.getLastRow() - 1, 2).getValues();
-        enrollmentData.forEach(row => {
-          if (String(row[0]).trim() == String(npsn).trim()) {
-            taInUseSet.add(String(row[1]).trim());
-          }
-        });
-      }
-    } catch (e) {
-      Logger.log(`Gagal membaca App 2 DB (${app2_spreadsheetID}) untuk cek T.A.: ${e.message}`);
-      // Jika App 2 gagal diakses, lempar error agar data tidak disimpan
-      throw new Error("Gagal memverifikasi data App 2: " + e.message);
-    }
-
-    // 2. Dapatkan data lama dari sheet App 1
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    const sheet = getTahunAjaranSheetAdmin(ss);
-    const oldDataFromSheet = (sheet.getLastRow() > 1) 
-      ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() 
-      : [];
-      
-    // 3. Buat Peta (Maps) untuk perbandingan
-    const oldDataMap = new Map(oldDataFromSheet.map((row, index) => {
-      // row[0] = id, row[1] = deskripsi, row[2] = is_locked
-      return [String(row[0]), { id: String(row[0]), deskripsi: row[1], is_locked: row[2] === true, sheetRow: index + 2 }];
-    }));
-    
-    const newDataMap = new Map(newListFromClient.map(item => {
-      const newItemId = String(item.id);
-      return [newItemId, { id: newItemId, deskripsi: item.deskripsi, is_locked: item.is_locked === true }];
-    }));
-
-    // 4. Siapkan batch operasi
-    const rowsToDelete = [];
-    const rowsToUpdate = [];
-    const rowsToAdd = [];
-
-    // 5. Iterasi data LAMA (Cek Hapus & Update)
-    oldDataMap.forEach((oldItem, oldId) => {
-      const newItem = newDataMap.get(oldId);
-      const isUsed = taInUseSet.has(oldId);
-      
-      if (newItem) {
-        // --- UPDATE ---
-        // Cek jika ada perubahan
-        if (oldItem.deskripsi !== newItem.deskripsi || oldItem.is_locked !== newItem.is_locked) {
-          // Jika T.A. sedang digunakan, HANYA status 'is_locked' yang boleh berubah.
-          // ID dan Deskripsi tidak boleh berubah jika sedang digunakan.
-          if (isUsed && oldItem.deskripsi !== newItem.deskripsi) {
-             throw new Error(`Gagal: Deskripsi untuk T.A. '${oldItem.deskripsi}' tidak dapat diubah karena sedang digunakan.`);
-          }
-          rowsToUpdate.push({
-            sheetRow: oldItem.sheetRow,
-            values: [oldItem.id, newItem.deskripsi, newItem.is_locked]
-          });
-        }
-        // Hapus dari newDataMap agar kita tahu sisanya adalah 'Add'
-        newDataMap.delete(oldId);
-        
-      } else {
-        // --- DELETE ---
-        // Cek apakah penghapusan legal
-        if (oldItem.is_locked || isUsed) {
-          throw new Error(`Gagal: Tahun Ajaran '${oldItem.deskripsi}' tidak dapat dihapus karena terkunci atau sedang digunakan.`);
-        } else {
-          rowsToDelete.push(oldItem.sheetRow);
-        }
-      }
-    });
-
-    // 6. Iterasi data BARU (Cek Tambah)
-    newDataMap.forEach((newItem, newId) => {
-      // Semua yang tersisa di newDataMap adalah item baru
-      rowsToAdd.push([newItem.id, newItem.deskripsi, newItem.is_locked]);
-    });
-    
-    // 7. Eksekusi operasi ke Spreadsheet (PENTING: Hapus dari bawah ke atas)
-    if (rowsToDelete.length > 0) {
-      rowsToDelete.sort((a, b) => b - a); // Urutkan descending (9, 5, 2)
-      rowsToDelete.forEach(rowNum => {
-        sheet.deleteRow(rowNum);
-      });
-    }
-    
-    if (rowsToUpdate.length > 0) {
-      rowsToUpdate.forEach(update => {
-        // Kolom A, B, C
-        sheet.getRange(update.sheetRow, 1, 1, 3).setValues([update.values]);
-      });
-    }
-
-    if (rowsToAdd.length > 0) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAdd.length, 3).setValues(rowsToAdd);
-    }
-    
-    // 8. Hapus cache App 2 jika ada (meskipun tidak akan berpengaruh)
-    try {
-      CacheService.getScriptCache().remove('app2_ta_cache_' + spreadsheetID); 
-    } catch(e){}
-
-    return { status: "sukses" };
-  } catch (e) {
-    Logger.log(e);
-    return { status: "gagal", message: e.message };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// =================================================================
-// ===== FUNGSI BARU ADMIN SEKOLAH: KELOLA PENEMPATAN SISWA ========
-// =================================================================
-
-/**
- * [ADMIN] Helper: Mengambil data NIPSN sekolah dari Master DB
- */
-function getNPSNFromSekolahID(sekolahID) {
-   const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-   const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-   const data = sheetSekolah.getRange("A2:H" + sheetSekolah.getLastRow()).getValues();
-   for (let i = 0; i < data.length; i++) {
-     if (data[i][0] === sekolahID) {
-       return data[i][7]; // Kolom H (NPSN)
-     }
-   }
-   throw new Error("NPSN untuk SekolahID " + sekolahID + " tidak ditemukan.");
-}
-
-/**
- * [HELPER BARU] Mengambil ID Spreadsheet Aplikasi 2 milik sekolah
- * dari Master Sheet (Kolom M).
- */
-function getApp2SpreadsheetIdForSchool(sekolahID) {
-  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-  const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-  
-  // Baca data dari Kolom A (SekolahID) s/d Kolom M (App2_SpreadsheetID)
-  const data = sheetSekolah.getRange("A2:M" + sheetSekolah.getLastRow()).getValues(); 
-  
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0] === sekolahID) { // Kolom A (index 0)
-      const app2_ssid = data[i][12]; // Kolom M (index 12)
-      if (!app2_ssid) {
-        throw new Error("Database App 2 (Kolom M) belum terkonfigurasi untuk sekolah " + sekolahID + ". Harap hubungi Superadmin.");
-      }
-      return app2_ssid;
-    }
-  }
-  throw new Error("SekolahID " + sekolahID + " tidak ditemukan di Master Sheet.");
-}
-
-/**
- * [ADMIN] Mengambil data siswa dari DB Sekolah (App 1) dan
- * data siswa yang sudah terdaftar di T.A. (dari DB App 2)
- */
-function getEnrollmentDataAdmin(token, id_tahun_ajaran) {
-  try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const npsn = getNPSNFromSekolahID(sessionData.sekolahID);
-
-    // 1. Ambil semua siswa dari DB Sekolah (App 1)
-    const ssSekolah = SpreadsheetApp.openById(spreadsheetID);
-    const sheetSiswa = getSiswaSheet(ssSekolah); // Helper App 1
-    let siswaSekolahList = [];
-    if (sheetSiswa.getLastRow() > 1) {
-      
-      // ===== PERBAIKAN 1: Ganti getValues() menjadi getDisplayValues() =====
-      siswaSekolahList = sheetSiswa.getRange(2, 1, sheetSiswa.getLastRow() - 1, 8).getDisplayValues()
-        .map(row => ({
-          nomor_ujian: row[2].trim(), // Kolom C (NISN) - sekarang pasti string
-      // ================================================================
-          nama: row[1],        // Kolom B (NamaSiswa)
-          kelas: row[7]        // Kolom H (Kelas)
-        }))
-        .filter(s => s.nomor_ujian && s.nama) 
-        .sort((a, b) => a.nama.localeCompare(b.nama));
-    }
-
-    // 2. Ambil siswa yang sudah terdaftar di T.A. ini (dari DB App 2)
-    const app2_ssid = getApp2SpreadsheetIdForSchool(sessionData.sekolahID);
-    const ssApp2 = SpreadsheetApp.openById(app2_ssid);
-    const enrollmentSheet = ssApp2.getSheetByName('db_enrollment');
-    
-    // ===== PERBAIKAN 2: Ganti getValues() menjadi getDisplayValues() =====
-    const enrollmentData = (enrollmentSheet.getLastRow() > 1)
-      ? enrollmentSheet.getRange(2, 1, enrollmentSheet.getLastRow() - 1, 5).getDisplayValues()
-      : [];
-    // ================================================================
-    
-    const siswaTerdaftarMap = new Map();
-    enrollmentData.forEach(row => {
-      const db_npsn = row[2].trim(); // Kolom C (index 2)
-      const db_ta = row[3].trim();   // Kolom D (index 3)
-      
-      if (db_npsn === npsn && db_ta === id_tahun_ajaran) {
-        siswaTerdaftarMap.set(row[1].trim(), { // Kolom B (index 1) - sekarang pasti string
-          ruang_ujian: row[4] || '' // Kolom E (index 4)
-        });
-      }
-    });
-
-    // 3. Pisahkan siswa
-    const siswaTersedia = [];
-    const siswaTerdaftar = [];
-
-    siswaSekolahList.forEach(siswa => {
-      const detailPendaftaran = siswaTerdaftarMap.get(siswa.nomor_ujian);
-      if (detailPendaftaran) {
-        // Siswa sudah terdaftar
-        siswaTerdaftar.push({
-          ...siswa,
-          ruang_ujian: detailPendaftaran.ruang_ujian
-        });
-      } else {
-        // Siswa belum terdaftar
-        siswaTersedia.push(siswa);
-      }
-    });
-
-    return { 
-      status: "sukses", 
-      siswaTersedia: siswaTersedia, 
-      siswaTerdaftar: siswaTerdaftar 
-    };
-
-  } catch (e) {
-    Logger.log(e);
-    return { status: "gagal", message: e.message };
-  }
-}
-
-
-/**
- * [ADMIN] Menyimpan (menimpa) data enrollment untuk T.A. & Sekolah ini
- * di database Aplikasi 2.
- */
-function saveEnrollmentDataAdmin(token, id_tahun_ajaran, siswaTerdaftarBaru) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000); // Kunci 30 detik untuk operasi lintas-sheet
-  try {
-    const { sessionData } = validateAdminSession(token);
-    const npsn = getNPSNFromSekolahID(sessionData.sekolahID); // ID Sekolah (NPSN)
-
-    if (!id_tahun_ajaran) throw new Error("ID Tahun Ajaran tidak valid.");
-    
-    // ===== PERBAIKAN DI SINI =====
-    const app2_ssid = getApp2SpreadsheetIdForSchool(sessionData.sekolahID);
-    const ssApp2 = SpreadsheetApp.openById(app2_ssid);
-    // =============================
-    const enrollmentSheet = ssApp2.getSheetByName('db_enrollment');
-    
-    // ===== PERBAIKAN 3: Ganti getValues() menjadi getDisplayValues() =====
-    const data = (enrollmentSheet.getLastRow() > 1)
-      ? enrollmentSheet.getRange(1, 1, enrollmentSheet.getLastRow(), 4).getDisplayValues()
-      : enrollmentSheet.getRange(1, 1, 1, 4).getDisplayValues(); // Hanya header jika kosong
-    // ================================================================
-
-    // 1. Hapus semua data LAMA untuk sekolah & T.A. ini (dari bawah ke atas)
-    let rowsDeleted = 0;
-    for (let i = data.length - 1; i >= 1; i--) { // Mulai dari 1 (lewati header)
-      const row = data[i];
-      const db_npsn = row[2].trim(); // Kolom C (index 2)
-      const db_ta = row[3].trim();   // Kolom D (index 3)
-      
-      if (db_npsn === npsn && db_ta === id_tahun_ajaran) {
-        enrollmentSheet.deleteRow(i + 1); // i + 1 karena data 0-based, sheet 1-based
-        rowsDeleted++;
-      }
-    }
-
-    // 2. Tambahkan data BARU (jika ada)
-    if (siswaTerdaftarBaru && siswaTerdaftarBaru.length > 0) {
-      const dataToSave = siswaTerdaftarBaru.map(siswa => {
-        const newId = `enroll-${new Date().getTime()}-${Math.random().toString(36).substring(2, 7)}`;
-        return [
-          newId,
-          "'" + siswa.nomor_ujian, // Kolom B (No Ujian)
-          "'" + npsn,             // Kolom C (ID Sekolah/NPSN)
-          id_tahun_ajaran,        // Kolom D (ID T.A.)
-          siswa.ruang_ujian || '' // Kolom E (Ruang)
-        ];
-      });
-      
-      enrollmentSheet.getRange(enrollmentSheet.getLastRow() + 1, 1, dataToSave.length, 5).setValues(dataToSave);
-    }
-    
-    return { 
-      status: "sukses", 
-      message: `Data penempatan disimpan. ${rowsDeleted} data lama dihapus, ${siswaTerdaftarBaru.length} data baru ditambahkan.`
-    };
-
-  } catch (e) {
-    Logger.log(e);
-    return { status: "gagal", message: e.message };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * [HELPER BARU] Menemukan sheet di spreadsheet, atau membuatnya jika tidak ada.
- */
-function findOrCreateSheet(spreadsheet, sheetName, headers = []) {
-  let sheet = spreadsheet.getSheetByName(sheetName);
-  if (!sheet) {
-    Logger.log(`Membuat sheet '${sheetName}' yang hilang...`);
-    sheet = spreadsheet.insertSheet(sheetName);
-    if (headers.length > 0) {
-      sheet.appendRow(headers);
-      sheet.setFrozenRows(1);
-    }
-  }
-  return sheet;
 }
