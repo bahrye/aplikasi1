@@ -148,7 +148,8 @@
   let globalPenempatanData = {
     siswaData: [],
     mapelList: [],
-    assignedMapelIds: []
+    guruList: [],
+    mapelAssignments: []
   };
   let globalTaList = [];
   let isPenempatanSiswaDirty = false;
@@ -1577,15 +1578,11 @@
     });
 
     // Listener untuk aksi di Tab Mapel
+    document.getElementById('btn-buka-modal-mapel-app2').addEventListener('click', bukaModalTambahMapelApp2);
     document.getElementById('btn-simpan-penempatan-mapel').addEventListener('click', simpanPenempatanMapel);
-
-    // Listener dinamis untuk checklist mapel
-    document.getElementById('penempatan-mapel-checklist-container').addEventListener('input', (e) => {
-      if (e.target.classList.contains('mapel-assign-checkbox')) {
-        isPenempatanMapelDirty = true;
-        document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
-      }
-    });
+    document.getElementById('btn-tutup-modal-mapel-app2').addEventListener('click', tutupModalMapelApp2);
+    document.getElementById('btn-batal-modal-mapel-app2').addEventListener('click', tutupModalMapelApp2);
+    document.getElementById('btn-simpan-modal-mapel-app2').addEventListener('click', tambahkanMapelKeTabel);
 
     // Listener dinamis untuk hapus baris mapel
     document.getElementById('penempatan-mapel-container').addEventListener('click', (e) => {
@@ -10262,10 +10259,8 @@ function populateSiswaFilters() {
       .getPenempatanData(getToken(), id_tahun_ajaran);
   }
 
-
   /**
    * [BARU] Callback setelah semua data penempatan (gabungan) dimuat.
-   * VERSI REVISI: Menghapus `guruList`
    */
   function onPenempatanDataLoaded(response) {
     setLoading(false);
@@ -10274,13 +10269,7 @@ function populateSiswaFilters() {
       return;
     }
     
-    // --- PERUBAHAN DISINI ---
-    globalPenempatanData = {
-      siswaData: response.siswaData || [],
-      mapelList: response.mapelList || [],
-      assignedMapelIds: response.assignedMapelIds || [] // Disimpan sebagai array ID
-    };
-    // --- AKHIR PERUBAHAN ---
+    globalPenempatanData = response;
     
     // Cek status kunci T.A.
     const taId = document.getElementById('penempatan-ta-select').value;
@@ -10296,17 +10285,17 @@ function populateSiswaFilters() {
     renderPenempatanSiswaTable();
     
     // 2. Render Tab Mapel
-    renderPenempatanMapelChecklist();
+    renderPenempatanMapelTable();
     
     // 3. Atur status Kunci (Lock)
     if (isTaLocked) {
       document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
       document.getElementById('btn-simpan-penempatan-mapel').disabled = true;
-      // document.getElementById('btn-buka-modal-mapel-app2').disabled = true;
+      document.getElementById('btn-buka-modal-mapel-app2').disabled = true;
       showToast('Tahun Ajaran ini terkunci. Data tidak dapat diubah.', 'gagal', 5000);
     } else {
       // Tombol simpan akan aktif saat ada perubahan (dirty state)
-      // document.getElementById('btn-buka-modal-mapel-app2').disabled = false;
+      document.getElementById('btn-buka-modal-mapel-app2').disabled = false;
     }
   }
 
@@ -10538,69 +10527,195 @@ function populateSiswaFilters() {
       showMessage('penempatan-message', response.message, true);
     }
   }
-
+  
   /**
-   * [FUNGSI BARU] Render checklist Penempatan Mapel.
+   * [BARU] Render tabel Penempatan Mapel.
    */
-  function renderPenempatanMapelChecklist() {
-    const container = document.getElementById('penempatan-mapel-checklist-container');
-    container.innerHTML = ""; // Kosongkan
+  function renderPenempatanMapelTable() {
+    const container = document.getElementById('penempatan-mapel-container');
+    container.innerHTML = "";
     
-    const { mapelList, assignedMapelIds } = globalPenempatanData;
+    const { mapelAssignments, guruList, mapelList } = globalPenempatanData;
     
-    if (!mapelList || mapelList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px; grid-column: 1 / -1;">Tidak ada data Mapel di "Kelola Mapel".</p>';
+    if (mapelAssignments.length === 0) {
+      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada mapel yang ditempatkan untuk T.A. ini.</p>';
       return;
     }
     
-    const assignedSet = new Set(assignedMapelIds);
+    const table = document.createElement('table');
+    table.className = 'mapel-table'; // Pakai style yang mirip
+    
+    const thead = table.createTHead();
+    thead.innerHTML = `
+      <tr>
+        <th>Guru Pengampu</th>
+        <th>Mata Pelajaran</th>
+        <th>Singkatan</th>
+        <th style="width: 80px;">Aksi</th>
+      </tr>
+    `;
+    
+    const tbody = table.createTBody();
     const fragment = document.createDocumentFragment();
     
-    mapelList.forEach(mapel => {
-      const isChecked = assignedSet.has(mapel.id);
+    // Buat map untuk lookup nama
+    const guruMap = new Map(guruList.map(g => [g.email, g.nama]));
+    const mapelMap = new Map(mapelList.map(m => [m.id, m.nama]));
+
+    mapelAssignments.sort((a, b) => {
+      const namaGuruA = guruMap.get(a.email_guru) || a.email_guru;
+      const namaGuruB = guruMap.get(b.email_guru) || b.email_guru;
+      return namaGuruA.localeCompare(namaGuruB) || a.mapel.localeCompare(b.mapel);
+    });
+
+    mapelAssignments.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.dataset.email = item.email_guru;
+      tr.dataset.mapel = item.mapel;
+      tr.dataset.singkatan = item.singkatan;
       
-      const itemDiv = document.createElement('div');
-      itemDiv.className = 'checklist-item';
+      const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
+      const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
       
-      itemDiv.innerHTML = `
-        <input 
-          type="checkbox" 
-          class="mapel-assign-checkbox" 
-          id="mapel_check_${mapel.id}" 
-          data-mapel-id="${mapel.id}"
-          ${isChecked ? 'checked' : ''}
-        >
-        <label for="mapel_check_${mapel.id}">${mapel.nama} (${mapel.id})</label>
+      tr.innerHTML = `
+        <td>${namaGuru}</td>
+        <td>${namaMapel}</td>
+        <td>${item.singkatan || '-'}</td>
+        <td style="text-align: center;">
+          <button class="btn-aksi btn-delete btn-remove-mapel-app2" title="Hapus Penempatan Ini">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </td>
       `;
-      fragment.appendChild(itemDiv);
+      fragment.appendChild(tr);
     });
     
-    container.appendChild(fragment);
+    tbody.appendChild(fragment);
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    container.appendChild(table);
+  }
+  
+  /**
+   * [BARU] Membuka modal untuk menambah penempatan mapel.
+   */
+  function bukaModalTambahMapelApp2() {
+    hideMessage('modal-mapel-app2-error');
+    document.getElementById('form-mapel-app2').reset();
+    
+    const { guruList, mapelList } = globalPenempatanData;
+    
+    const guruSelect = document.getElementById('modal-mapel-app2-guru');
+    guruSelect.innerHTML = '<option value="">-- Pilih Guru --</option>';
+    guruList.sort((a, b) => a.nama.localeCompare(b.nama)).forEach(g => {
+      guruSelect.add(new Option(`${g.nama} (${g.email})`, g.email));
+    });
+    
+    const mapelSelect = document.getElementById('modal-mapel-app2-mapel');
+    mapelSelect.innerHTML = '<option value="">-- Pilih Mapel --</option>';
+    mapelList.sort((a, b) => a.nama.localeCompare(b.nama)).forEach(m => {
+      mapelSelect.add(new Option(`${m.nama} (${m.id})`, m.id));
+    });
+    
+    document.getElementById('modal-mapel-app2').classList.add('show');
   }
 
   /**
-   * [FUNGSI DIPERBARUI] Menyimpan data penempatan mapel (db_mapel).
+   * [BARU] Menutup modal tambah mapel App 2.
+   */
+  function tutupModalMapelApp2() {
+    document.getElementById('modal-mapel-app2').classList.remove('show');
+  }
+
+  /**
+   * [BARU] Menambahkan item dari modal ke tabel penempatan mapel.
+   */
+  function tambahkanMapelKeTabel() {
+    hideMessage('modal-mapel-app2-error');
+    const email = document.getElementById('modal-mapel-app2-guru').value;
+    const mapel = document.getElementById('modal-mapel-app2-mapel').value;
+    const singkatan = document.getElementById('modal-mapel-app2-singkatan').value.trim();
+    
+    if (!email || !mapel) {
+      showMessage('modal-mapel-app2-error', 'Guru dan Mapel wajib dipilih.', true);
+      return;
+    }
+    
+    // Cek duplikat di tabel
+    const existingRow = document.querySelector(`#penempatan-mapel-container tr[data-email="${email}"][data-mapel="${mapel}"]`);
+    if (existingRow) {
+      showMessage('modal-mapel-app2-error', 'Kombinasi Guru dan Mapel ini sudah ada.', true);
+      return;
+    }
+    
+    // Ambil data dari global
+    const guru = globalPenempatanData.guruList.find(g => g.email === email);
+    const mapelData = globalPenempatanData.mapelList.find(m => m.id === mapel);
+    
+    if (!guru || !mapelData) {
+      showMessage('modal-mapel-app2-error', 'Data guru atau mapel tidak valid.', true);
+      return;
+    }
+    
+    // Tambahkan ke tabel
+    const table = document.querySelector('#penempatan-mapel-container table');
+    if (table) {
+      const tbody = table.tBodies[0];
+      // Hapus pesan 'kosong' jika ada
+      const emptyRow = tbody.querySelector('td[colspan="4"]');
+      if (emptyRow) emptyRow.parentElement.remove();
+      
+      const tr = tbody.insertRow();
+      tr.dataset.email = email;
+      tr.dataset.mapel = mapel;
+      tr.dataset.singkatan = singkatan;
+      
+      tr.innerHTML = `
+        <td>${guru.nama}</td>
+        <td>${mapelData.nama}</td>
+        <td>${singkatan || '-'}</td>
+        <td style="text-align: center;">
+          <button class="btn-aksi btn-delete btn-remove-mapel-app2" title="Hapus Penempatan Ini">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </td>
+      `;
+    }
+    
+    isPenempatanMapelDirty = true;
+    document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
+    tutupModalMapelApp2();
+  }
+
+  /**
+   * [BARU] Menyimpan data penempatan mapel (db_mapel).
    */
   function simpanPenempatanMapel() {
     setLoading(true, 'Menyimpan penempatan mapel...', true, true);
     hideMessage('penempatan-message');
     
     const taId = document.getElementById('penempatan-ta-select').value;
-    
-    // Baca dari checklist baru
+    const rows = document.querySelectorAll('#penempatan-mapel-container tbody tr');
     const assignmentsToSave = [];
-    document.querySelectorAll('#penempatan-mapel-checklist-container .mapel-assign-checkbox:checked').forEach(checkbox => {
-      assignmentsToSave.push(checkbox.dataset.mapelId);
+    
+    rows.forEach(tr => {
+      if (tr.dataset.email) { // Pastikan ini baris data
+        assignmentsToSave.push({
+          email_guru: tr.dataset.email,
+          mapel: tr.dataset.mapel,
+          singkatan: tr.dataset.singkatan
+        });
+      }
     });
     
     google.script.run
       .withSuccessHandler(onPenempatanMapelSaved)
       .withFailureHandler(onGagal)
-      .saveMapelAssignment(getToken(), taId, assignmentsToSave); // Kirim array Mapel ID
+      .saveMapelAssignment(getToken(), taId, assignmentsToSave);
   }
 
   /**
-   * [FUNGSI DIPERBARUI] Callback setelah penempatan mapel disimpan.
+   * [BARU] Callback setelah penempatan mapel disimpan.
    */
   function onPenempatanMapelSaved(response) {
     setLoading(false);
