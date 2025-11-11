@@ -182,9 +182,17 @@
             <i class="fas fa-chalkboard-teacher"></i>
             <span>Kelola Kelas</span>
           </button>
+          <button class="dashboard-card" id="btn-buka-penempatan">
+            <i class="fas fa-tasks"></i>
+            <span>Kelola Penempatan</span>
+          </button>
           <button class="dashboard-card" id="btn-buka-semester">
             <i class="fas fa-layer-group"></i>
             <span>Kelola Semester</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-tahun-ajaran">
+            <i class="fas fa-calendar-alt"></i>
+            <span>Kelola Tahun Ajaran</span>
           </button>
           <button class="dashboard-card" id="btn-buka-donasi">
             <i class="fas fa-hand-holding-heart"></i>
@@ -1679,6 +1687,145 @@
           <p>Silakan perbaiki data/bukti transfer Anda dan kirim ulang melalui formulir di bawah ini.</p>
         </div>
 
+      </div>
+    </div>
+
+    <div class="container" id="halaman-tahun-ajaran" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-14"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Tahun Ajaran</h2>
+        </div>
+
+        <p>Kelola Tahun Ajaran yang akan digunakan di <strong>Aplikasi Nilai Ujian (Aplikasi 2)</strong>. ID T.A. harus unik.</p>
+        <p class="message error" style="display: block; text-align: left;">
+          <i class="fas fa-exclamation-triangle"></i> <strong>PENTING:</strong><br>
+          - <strong>Kunci (Checkbox):</strong> Jika dicentang, T.A. ini akan dikunci di Aplikasi 2, dan guru tidak bisa lagi input/edit nilai untuk T.A. ini.<br>
+          - <strong>Hapus (Tombol &times;):</strong> Anda hanya bisa menghapus T.A. jika <strong>belum pernah dipakai</strong> untuk menyimpan nilai atau status kirim di Aplikasi 2.
+        </p>
+
+        <form id="form-ta" onsubmit="return false;">
+          <div id="ta-list-container">
+            <p>Memuat data tahun ajaran...</p>
+          </div>
+          <p id="ta-message" class="message" style="display: none;"></p>
+          <hr>
+          <div class="form-actions">
+              <button type="submit" id="btn-simpan-ta"><i class="fas fa-save"></i>Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-penempatan" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-15"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Penempatan (Siswa & Mapel)</h2>
+        </div>
+        <p>Halaman ini mengelola data penempatan di <strong>Aplikasi 2 (Nilai Ujian)</strong>. Pilih Tahun Ajaran untuk memulai.</p>
+        <p id="penempatan-message" class="message" style="display: none;"></p>
+        
+        <div class="form-group">
+          <label for="penempatan-ta-select"><strong>Pilih Tahun Ajaran (Wajib)</strong></label>
+          <select id="penempatan-ta-select" class="form-control">
+            <option value="">-- Memuat Tahun Ajaran... --</option>
+          </select>
+        </div>
+        
+        <div class="tab-bar" id="penempatan-tab-bar" style="display: none;">
+          <button class="tab-link active" data-tab="siswa">Penempatan Siswa</button>
+          <button class="tab-link" data-tab="mapel">Penempatan Mapel</button>
+        </div>
+
+        <div id="tab-penempatan-siswa" class="tab-content active" style="display: none;">
+          <h3 class="form-section-header">Tab: Penempatan Siswa ke Tahun Ajaran</h3>
+          <p>Tandai siswa yang akan dimasukkan ke Tahun Ajaran yang dipilih. Siswa yang ditandai akan muncul di Aplikasi 2 (Nilai Ujian).</p>
+          
+          <div class="filter-bar">
+            <div class="form-group" style="min-width: 150px;">
+              <label for="penempatan-siswa-filter-kelas">Filter Kelas (App 1)</label>
+              <select id="penempatan-siswa-filter-kelas">
+                <option value="semua">-- Semua Kelas --</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex-grow: 2;">
+              <label for="penempatan-siswa-search">Cari Nama Siswa</label>
+              <input type="text" id="penempatan-siswa-search" placeholder="Ketik nama siswa...">
+            </div>
+          </div>
+          
+          <div class="table-toolbar" style="margin-top: 15px;">
+            <p><strong>Daftar Siswa (dari Aplikasi 1)</strong></p>
+            <div class="header-buttons">
+              <button id="btn-penempatan-siswa-tandai" class="btn-aksi" style="background-color: var(--primary-color);"><i class="fas fa-check-square"></i> Tandai Semua</button>
+              <button id="btn-penempatan-siswa-batal" class="btn-aksi" style="background-color: var(--secondary-color);"><i class="far fa-square"></i> Batal Semua</button>
+            </div>
+          </div>
+          
+          <div class="input-nilai-table-container" id="penempatan-siswa-container" style="max-height: 50vh;">
+            <p>Memuat data siswa...</p>
+          </div>
+          
+          <div class="form-actions">
+            <button type="button" id="btn-simpan-penempatan-siswa"><i class="fas fa-save"></i>Simpan Penempatan Siswa</button>
+          </div>
+        </div>
+        
+        <div id="tab-penempatan-mapel" class="tab-content" style="display: none;">
+          <h3 class="form-section-header">Tab: Penempatan Mapel ke Tahun Ajaran</h3>
+          
+          <p>Tandai mapel (dari "Kelola Mapel") yang akan <strong>diaktifkan</strong> untuk Tahun Ajaran ini. Sistem akan otomatis menugaskan guru yang sesuai (dari "Kelola Guru") ke mapel ini di Aplikasi 2.</p>
+          
+          <div class="penempatan-checklist-container" id="penempatan-mapel-checklist-container">
+            <p>Pilih Tahun Ajaran untuk melihat data.</p>
+          </div>
+          
+          <div class="form-actions">
+            <button type="button" id="btn-simpan-penempatan-mapel"><i class="fas fa-save"></i>Simpan Penempatan Mapel</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    
+    <div id="modal-mapel-app2" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-mapel-app2-title">Tambah Penempatan Mapel</h2>
+          <span class="close-button" id="btn-tutup-modal-mapel-app2">&times;</span>
+        </div>
+        <div class="modal-body">
+          <form id="form-mapel-app2" onsubmit="return false;">
+            <div class="form-group">
+              <label for="modal-mapel-app2-guru">Pilih Guru (dari App 1)</label>
+              <select id="modal-mapel-app2-guru" required>
+                <option value="">-- Memuat Guru... --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="modal-mapel-app2-mapel">Pilih Mapel (dari App 1)</label>
+              <select id="modal-mapel-app2-mapel" required>
+                <option value="">-- Memuat Mapel... --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="modal-mapel-app2-singkatan">Singkatan (Opsional)</label>
+              <input type="text" id="modal-mapel-app2-singkatan" placeholder="Contoh: MTK, BIND (Max 10 char)" maxlength="10">
+            </div>
+            <p id="modal-mapel-app2-error" class="message error"></p>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-mapel-app2"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-simpan-modal-mapel-app2" style="background-color: var(--success-color);"><i class="fas fa-plus"></i>Tambahkan</button>
+        </div>
       </div>
     </div>
 
