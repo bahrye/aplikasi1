@@ -145,6 +145,15 @@
   let showWeightedUjian = true;
   let showWeightedRapor = true;
 
+  let globalPenempatanData = {
+    siswaData: [],
+    mapelList: [],
+    assignedMapelIds: []
+  };
+  let globalTaList = [];
+  let isPenempatanSiswaDirty = false;
+  let isPenempatanMapelDirty = false;
+
   // --- TAMBAHKAN INI ---
   let isFormDirty = false;
   // --- AKHIR TAMBAHAN ---
@@ -606,7 +615,7 @@
       'halaman-superadmin',
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
       'halaman-guru', 'halaman-donasi',
-      'halaman-proses-kelulusan' // <--- PERBAIKAN DI SINI
+      'halaman-proses-kelulusan', 'halaman-tahun-ajaran', 'halaman-penempatan'
     ];
     
     const authSubPages = [
@@ -640,10 +649,14 @@
     hideMessage('modal-sekolah-error'); 
     hideMessage('kelulusan-message');
     hideMessage('login-siswa-error');
+    hideMessage('ta-message');
+    hideMessage('penempatan-message');
     
     // --- TAMBAHAN BARU ---
     hideMessage('pengaturan-guru-message');
-    hideMessage('proses-kelulusan-message'); // <--- PERBAIKAN DI SINI
+    hideMessage('proses-kelulusan-message');
+    hideMessage('ta-message');
+    hideMessage('penempatan-message');
     // --- AKHIR TAMBAHAN ---
 
     const targetElement = document.getElementById(idHalaman);
@@ -858,6 +871,12 @@
             break;
         case 'halaman-validasi-nilai':
             bukaHalamanValidasi();
+            break;
+        case 'halaman-tahun-ajaran':
+            bukaHalamanTahunAjaran();
+            break;
+        case 'halaman-penempatan':
+            bukaHalamanPenempatan();
             break;
         default:
             console.warn("ID halaman tersimpan tidak valid:", pageId, ". Menampilkan dashboard.");
@@ -1453,6 +1472,132 @@
     document.getElementById('btn-buka-semester').addEventListener('click', () => {
       handleNavigationConfirm(bukaHalamanSemester);
     });
+
+    // --- TAMBAHKAN LISTENER BARU ---
+    document.getElementById('btn-buka-tahun-ajaran').addEventListener('click', () => {
+      handleNavigationConfirm(bukaHalamanTahunAjaran);
+    });
+    document.getElementById('btn-kembali-ke-dashboard-14').addEventListener('click', () => {
+      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
+    });
+    document.getElementById('form-ta').addEventListener('submit', (e) => {
+      e.preventDefault();
+      simpanTahunAjaran();
+    });
+    
+    // Tambahkan listener dinamis untuk add/remove row T.A.
+    document.getElementById('ta-list-container').addEventListener('click', (e) => {
+      const target = e.target;
+
+      if (target.classList.contains('btn-add-ta-row') || target.classList.contains('btn-remove-ta-row')) {
+        isFormDirty = true;
+      }
+      
+      if (target.classList.contains('btn-add-ta-row')) {
+        const currentList = getCurrentTahunAjaranList();
+        currentList.push({ id: '', deskripsi: '', isLocked: false, isUsed: false }); // Tambah baris baru
+        renderTahunAjaranList(currentList);
+        
+        // Fokus ke input ID di baris terakhir
+        const lastInput = document.querySelector('#ta-list-container .ta-input-row:last-child input[type="text"]');
+        if (lastInput) {
+          lastInput.focus();
+        }
+      
+      } 
+      else if (target.classList.contains('btn-remove-ta-row')) {
+        const rowToRemove = target.closest('.ta-input-row');
+        const allRows = Array.from(document.querySelectorAll('#ta-list-container .ta-input-row'));
+        const indexToRemove = allRows.indexOf(rowToRemove);
+        
+        const currentList = getCurrentTahunAjaranList(); // Ambil data saat ini
+        
+        if (indexToRemove > -1) {
+          currentList.splice(indexToRemove, 1); // Hapus dari array
+        }
+        
+        renderTahunAjaranList(currentList); // Render ulang
+      }
+    });
+    
+    document.getElementById('ta-list-container').addEventListener('input', (e) => {
+      if (e.target.tagName === 'INPUT') {
+        isFormDirty = true;
+      }
+    });
+    // --- AKHIR TAMBAHAN ---
+
+    // --- TAMBAHKAN LISTENER BARU ---
+    document.getElementById('btn-buka-penempatan').addEventListener('click', () => {
+      handleNavigationConfirm(bukaHalamanPenempatan);
+    });
+    document.getElementById('btn-kembali-ke-dashboard-15').addEventListener('click', () => {
+      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
+    });
+    
+    // Listener untuk filter T.A. utama di halaman penempatan
+    document.getElementById('penempatan-ta-select').addEventListener('change', (e) => {
+      const selectedTaId = e.target.value;
+      if (selectedTaId) {
+        // Panggil data untuk T.A. yang baru dipilih
+        loadPenempatanData(selectedTaId);
+      } else {
+        // Sembunyikan tab jika T.A. tidak dipilih
+        document.getElementById('penempatan-tab-bar').style.display = 'none';
+        document.getElementById('tab-penempatan-siswa').style.display = 'none';
+        document.getElementById('tab-penempatan-mapel').style.display = 'none';
+      }
+    });
+
+    // Listener untuk tab penempatan
+    document.getElementById('penempatan-tab-bar').addEventListener('click', (e) => {
+      if (e.target.classList.contains('tab-link')) {
+        const tabName = e.target.dataset.tab;
+        activatePenempatanTab(tabName);
+      }
+    });
+    
+    // Listener untuk filter dan aksi di Tab Siswa
+    document.getElementById('penempatan-siswa-search').addEventListener('input', () => renderPenempatanSiswaTable());
+    document.getElementById('penempatan-siswa-filter-kelas').addEventListener('change', () => renderPenempatanSiswaTable());
+    document.getElementById('btn-penempatan-siswa-tandai').addEventListener('click', () => toggleEnrollAll(true));
+    document.getElementById('btn-penempatan-siswa-batal').addEventListener('click', () => toggleEnrollAll(false));
+    document.getElementById('btn-simpan-penempatan-siswa').addEventListener('click', simpanPenempatanSiswa);
+    
+    // Listener dinamis untuk tabel siswa
+    document.getElementById('penempatan-siswa-container').addEventListener('input', (e) => {
+      if (e.target.classList.contains('enroll-checkbox') || e.target.classList.contains('enroll-ruang-input')) {
+        isPenempatanSiswaDirty = true;
+        document.getElementById('btn-simpan-penempatan-siswa').disabled = false;
+        // Update Nomor Ujian App 2 saat checkbox diubah
+        if(e.target.classList.contains('enroll-checkbox')) {
+          updateNomorUjianApp2(e.target);
+        }
+      }
+    });
+
+    // Listener untuk aksi di Tab Mapel
+    document.getElementById('btn-simpan-penempatan-mapel').addEventListener('click', simpanPenempatanMapel);
+
+    // Listener dinamis untuk checklist mapel
+    document.getElementById('penempatan-mapel-checklist-container').addEventListener('input', (e) => {
+      if (e.target.classList.contains('mapel-assign-checkbox')) {
+        isPenempatanMapelDirty = true;
+        document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
+      }
+    });
+
+    // Listener dinamis untuk hapus baris mapel
+    document.getElementById('penempatan-mapel-container').addEventListener('click', (e) => {
+      const target = e.target.closest('.btn-remove-mapel-app2');
+      if (target) {
+        target.closest('tr').remove();
+        isPenempatanMapelDirty = true;
+        document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
+      }
+    });
+    // --- AKHIR TAMBAHAN ---
+
     document.getElementById('btn-kembali-ke-dashboard-7').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
     });
@@ -9857,5 +10002,621 @@ function populateSiswaFilters() {
     
     showToast(`Berhasil membuat ${cardData.length} kartu siswa.`, 'sukses');
   }
+
+  // --- ============================================= ---
+  // ---      FUNGSI-FUNGSI BARU KELOLA TAHUN AJARAN   ---
+  // --- ============================================= ---
+
+  /**
+   * [BARU] Membuka halaman Kelola Tahun Ajaran.
+   */
+  function bukaHalamanTahunAjaran() {
+    tampilHalaman('halaman-tahun-ajaran');
+    setLoading(true, 'Memuat data tahun ajaran...', false, false);
+    isFormDirty = false;
+    hideMessage('ta-message');
+    document.getElementById('ta-list-container').innerHTML = "<p>Memuat data tahun ajaran...</p>";
+    setFormDisabled('form-ta', true);
+    google.script.run
+      .withSuccessHandler(onTahunAjaranLoaded)
+      .withFailureHandler(onGagal)
+      .getTahunAjaran(getToken());
+  }
+
+  /**
+   * [BARU] Callback setelah data T.A. dimuat.
+   */
+  function onTahunAjaranLoaded(response) {
+    setLoading(false);
+    setFormDisabled('form-ta', false);
+
+    if (response.status !== 'sukses') {
+      showMessage('ta-message', response.message, true);
+      document.getElementById('ta-list-container').innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
+      return;
+    }
+    
+    renderTahunAjaranList(response.data || []);
+  }
+
+  /**
+   * [BARU] Membaca data T.A. saat ini dari DOM.
+   */
+  function getCurrentTahunAjaranList() {
+    const allRows = document.querySelectorAll('#ta-list-container .ta-input-row');
+    const list = [];
+    
+    allRows.forEach(row => {
+      const idInput = row.querySelector('.ta-id-input');
+      const deskripsiInput = row.querySelector('.ta-deskripsi-input');
+      const kunciInput = row.querySelector('.ta-kunci-input');
+      
+      // Lewati header row
+      if (idInput && deskripsiInput && kunciInput) {
+        list.push({
+          id: idInput.value,
+          deskripsi: deskripsiInput.value,
+          isLocked: kunciInput.checked
+          // isUsed tidak perlu dibaca dari DOM, server akan validasi
+        });
+      }
+    });
+    
+    return list;
+  }
+
+  /**
+   * [BARU] Merender list T.A. ke DOM.
+   */
+  function renderTahunAjaranList(taList) {
+    const container = document.getElementById('ta-list-container');
+    container.innerHTML = '';
+
+    let listToRender = taList;
+    if (listToRender.length === 0) {
+      // Jika kosong, tambahkan satu baris baru default
+      listToRender = [{ id: '', deskripsi: '', isLocked: false, isUsed: false }];
+    }
+
+    // Buat header
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'ta-input-row';
+    headerDiv.innerHTML = `
+      <label style="font-weight: 700;">ID Tahun Ajaran</label>
+      <label style="font-weight: 700;">Deskripsi (Cth: 2024/2025)</label>
+      <label style="font-weight: 700; text-align: center;">Kunci</label>
+      <label style="font-weight: 700;">Aksi</label>
+    `;
+    container.appendChild(headerDiv);
+
+    listToRender.forEach((ta, index) => {
+      const div = document.createElement('div');
+      div.className = 'ta-input-row';
+      
+      const isUsed = ta.isUsed || false;
+      const isLocked = ta.isLocked || false;
+      
+      // Jika sudah dipakai (ada nilai), ID tidak bisa diedit
+      const idInputHtml = isUsed ? 
+        `<input type="text" class="ta-id-input" value="${ta.id}" readonly style="background-color: var(--bg-light); cursor: not-allowed;" title="ID tidak bisa diubah karena T.A. sudah dipakai.">` :
+        `<input type="text" class="ta-id-input" value="${ta.id}" placeholder="TA-2024-2025">`;
+        
+      // Jika sudah dipakai, tombol hapus dinonaktifkan
+      const removeButtonHtml = (isUsed || listToRender.length <= 1) ? 
+        `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" disabled title="Tidak bisa dihapus karena T.A. sudah dipakai atau hanya tersisa satu baris.">&times;</button>` :
+        `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" title="Hapus Baris">&times;</button>`;
+        
+      const checkboxHtml = isUsed ? 
+        `<input type="checkbox" class="ta-kunci-input" id="kunci_${index}" ${isLocked ? 'checked' : ''} title="Kunci/Buka Kunci T.A.">` :
+        `<input type="checkbox" class="ta-kunci-input" id="kunci_${index}" ${isLocked ? 'checked' : ''} title="Kunci/Buka Kunci T.A. (Hanya berdampak jika T.A. sudah dipakai)">`;
+        
+      let html = `
+        ${idInputHtml}
+        <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A.">
+        <div class="ta-lock-wrapper">
+          <label for="kunci_${index}">Kunci</label>
+          ${checkboxHtml}
+        </div>
+        ${removeButtonHtml}
+      `;
+
+      if (index === listToRender.length - 1) {
+        // Ganti tombol hapus dengan tombol tambah di baris terakhir
+        html = `
+          ${idInputHtml}
+          <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A.">
+          <div class="ta-lock-wrapper">
+            <label for="kunci_${index}">Kunci</label>
+            ${checkboxHtml}
+          </div>
+          <button type="button" class="btn-aksi-kelas btn-add-ta-row btn-add-kelas" title="Tambah Baris Baru">+</button>
+        `;
+      }
+
+      div.innerHTML = html;
+      container.appendChild(div);
+    });
+  }
+
+  /**
+   * [BARU] Menyimpan data T.A. ke server.
+   */
+  function simpanTahunAjaran() {
+    setLoading(true, 'Menyimpan data tahun ajaran...');
+    hideMessage('ta-message');
+    
+    const list = getCurrentTahunAjaranList();
+    
+    // Validasi client-side
+    const idSet = new Set();
+    for (const item of list) {
+      if (!item.id || !item.deskripsi) {
+        setLoading(false);
+        showMessage('ta-message', 'ID dan Deskripsi tidak boleh kosong.', true);
+        return;
+      }
+      const id_upper = item.id.toUpperCase();
+      if (idSet.has(id_upper)) {
+        setLoading(false);
+        showMessage('ta-message', `ID Tahun Ajaran duplikat: '${item.id}'. ID harus unik.`, true);
+        return;
+      }
+      idSet.add(id_upper);
+    }
+    
+    google.script.run
+      .withSuccessHandler(onTahunAjaranSaved)
+      .withFailureHandler(onGagal)
+      .saveTahunAjaran(getToken(), list);
+  }
+
+  /**
+   * [BARU] Callback setelah T.A. disimpan.
+   */
+  function onTahunAjaranSaved(response) {
+      setLoading(false);
+      if (response.status === 'sukses') {
+        isFormDirty = false; 
+        showMessage('ta-message', 'Data Tahun Ajaran berhasil disimpan!', false);
+        // Muat ulang data untuk mendapatkan status 'isUsed' terbaru
+        bukaHalamanTahunAjaran();
+      } else {
+        showMessage('ta-message', response.message, true);
+      }
+  }
+  
+  // --- ============================================= ---
+  // ---      AKHIR FUNGSI-FUNGSI BARU                 ---
+  // --- ============================================= ---
+
+  // --- ============================================= ---
+  // ---      FUNGSI-FUNGSI BARU KELOLA PENEMPATAN     ---
+  // --- ============================================= ---
+  
+  /**
+   * [BARU] Membuka Halaman Kelola Penempatan
+   */
+  function bukaHalamanPenempatan() {
+    tampilHalaman('halaman-penempatan');
+    isPenempatanSiswaDirty = false;
+    isPenempatanMapelDirty = false;
+    hideMessage('penempatan-message');
+    
+    // Reset UI
+    document.getElementById('penempatan-tab-bar').style.display = 'none';
+    document.getElementById('tab-penempatan-siswa').style.display = 'none';
+    document.getElementById('tab-penempatan-mapel').style.display = 'none';
+    document.getElementById('penempatan-siswa-container').innerHTML = '<p>Pilih Tahun Ajaran untuk memuat data.</p>';
+    document.getElementById('penempatan-mapel-container').innerHTML = '<p>Pilih Tahun Ajaran untuk memuat data.</p>';
+    document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
+    document.getElementById('btn-simpan-penempatan-mapel').disabled = true;
+    
+    globalPenempatanData = { siswaData: [], mapelList: [], guruList: [], mapelAssignments: [] };
+
+    // Muat daftar T.A. untuk dropdown
+    const taSelect = document.getElementById('penempatan-ta-select');
+    taSelect.innerHTML = '<option value="">-- Memuat T.A. --</option>';
+    taSelect.disabled = true;
+    
+    google.script.run
+      .withSuccessHandler(onTahunAjaranListLoadedForPenempatan)
+      .withFailureHandler(onGagal)
+      .getTahunAjaranList(getToken()); // Panggil API baru yang ringan
+  }
+
+  /**
+   * [BARU] Callback setelah daftar T.A. dimuat untuk halaman Penempatan.
+   */
+  function onTahunAjaranListLoadedForPenempatan(response) {
+    const taSelect = document.getElementById('penempatan-ta-select');
+    if (response.status === 'sukses' && response.taList.length > 0) {
+      globalTaList = response.taList; // Simpan daftar T.A.
+      taSelect.innerHTML = '<option value="">-- Pilih Tahun Ajaran --</option>';
+      response.taList.forEach(ta => {
+        const lockIcon = ta.isLocked ? ' 🔒 (Terkunci)' : '';
+        taSelect.add(new Option(ta.deskripsi + lockIcon, ta.id));
+      });
+      taSelect.disabled = false;
+    } else {
+      taSelect.innerHTML = '<option value="">-- Tidak ada T.A. --</option>';
+      if(response.message) showMessage('penempatan-message', response.message, true);
+    }
+  }
+
+  /**
+   * [BARU] Memuat data utama (siswa, mapel, guru, assignment)
+   * setelah T.A. dipilih.
+   */
+  function loadPenempatanData(id_tahun_ajaran) {
+    setLoading(true, 'Memuat data penempatan...', false, true);
+    isPenempatanSiswaDirty = false;
+    isPenempatanMapelDirty = false;
+    document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
+    document.getElementById('btn-simpan-penempatan-mapel').disabled = true;
+    document.getElementById('penempatan-siswa-container').innerHTML = '<p>Memuat data siswa...</p>';
+    document.getElementById('penempatan-mapel-container').innerHTML = '<p>Memuat data mapel...</p>';
+    
+    google.script.run
+      .withSuccessHandler(onPenempatanDataLoaded)
+      .withFailureHandler(onGagal)
+      .getPenempatanData(getToken(), id_tahun_ajaran);
+  }
+
+
+  /**
+   * [BARU] Callback setelah semua data penempatan (gabungan) dimuat.
+   * VERSI REVISI: Menghapus `guruList`
+   */
+  function onPenempatanDataLoaded(response) {
+    setLoading(false);
+    if (response.status !== 'sukses') {
+      showMessage('penempatan-message', response.message, true);
+      return;
+    }
+    
+    // --- PERUBAHAN DISINI ---
+    globalPenempatanData = {
+      siswaData: response.siswaData || [],
+      mapelList: response.mapelList || [],
+      assignedMapelIds: response.assignedMapelIds || [] // Disimpan sebagai array ID
+    };
+    // --- AKHIR PERUBAHAN ---
+    
+    // Cek status kunci T.A.
+    const taId = document.getElementById('penempatan-ta-select').value;
+    const taData = globalTaList.find(ta => ta.id === taId);
+    const isTaLocked = taData ? taData.isLocked : false;
+
+    // Tampilkan UI Tab
+    document.getElementById('penempatan-tab-bar').style.display = 'flex';
+    activatePenempatanTab('siswa'); // Default ke tab siswa
+    
+    // 1. Render Tab Siswa
+    populatePenempatanSiswaFilters(globalPenempatanData.siswaData);
+    renderPenempatanSiswaTable();
+    
+    // 2. Render Tab Mapel
+    renderPenempatanMapelChecklist();
+    
+    // 3. Atur status Kunci (Lock)
+    if (isTaLocked) {
+      document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
+      document.getElementById('btn-simpan-penempatan-mapel').disabled = true;
+      // document.getElementById('btn-buka-modal-mapel-app2').disabled = true;
+      showToast('Tahun Ajaran ini terkunci. Data tidak dapat diubah.', 'gagal', 5000);
+    } else {
+      // Tombol simpan akan aktif saat ada perubahan (dirty state)
+      // document.getElementById('btn-buka-modal-mapel-app2').disabled = false;
+    }
+  }
+
+  /**
+   * [BARU] Mengaktifkan tab di halaman Penempatan.
+   */
+  function activatePenempatanTab(tabName) {
+    document.querySelectorAll('#penempatan-tab-bar .tab-link').forEach(link => link.classList.remove('active'));
+    document.querySelectorAll('#halaman-penempatan .tab-content').forEach(content => content.style.display = 'none');
+    
+    document.querySelector(`.tab-link[data-tab="${tabName}"]`).classList.add('active');
+    document.getElementById(`tab-penempatan-${tabName}`).style.display = 'block';
+  }
+
+  /**
+   * [BARU] Populate filter kelas di tab Penempatan Siswa.
+   */
+  function populatePenempatanSiswaFilters(siswaList) {
+    const selectKelas = document.getElementById('penempatan-siswa-filter-kelas');
+    selectKelas.innerHTML = '';
+    
+    const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
+    const kelasList = Array.from(kelasSet).sort();
+  
+    let optionsHtml = '<option value="semua">-- Semua Kelas --</option>';
+    kelasList.forEach(kelas => {
+      optionsHtml += `<option value="${kelas}">${kelas}</option>`;
+    });
+    selectKelas.innerHTML = optionsHtml;
+    selectKelas.value = 'semua';
+  }
+
+  /**
+   * [BARU] Render tabel Penempatan Siswa.
+   */
+  function renderPenempatanSiswaTable() {
+    const container = document.getElementById('penempatan-siswa-container');
+    container.innerHTML = "";
+    
+    const { siswaData } = globalPenempatanData;
+    const filterKelas = document.getElementById('penempatan-siswa-filter-kelas').value;
+    const filterNama = document.getElementById('penempatan-siswa-search').value.toLowerCase();
+    
+    let filteredSiswa = siswaData;
+    if (filterKelas !== 'semua') {
+      filteredSiswa = filteredSiswa.filter(s => s.kelas === filterKelas);
+    }
+    if (filterNama) {
+      filteredSiswa = filteredSiswa.filter(s => s.nama.toLowerCase().includes(filterNama));
+    }
+    
+    if (filteredSiswa.length === 0) {
+      container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa sesuai filter.</p>';
+      return;
+    }
+    
+    const table = document.createElement('table');
+    table.className = 'penempatan-siswa-table';
+    
+    const thead = table.createTHead();
+    thead.innerHTML = `
+      <tr>
+        <th class="col-cek-enroll"><i class="fas fa-check"></i></th>
+        <th>Nama Siswa (App 1)</th>
+        <th>Kelas (App 1)</th>
+        <th>No. Ujian (App 2)</th>
+        <th class="col-ruang">Ruang Ujian (App 2)</th>
+      </tr>
+    `;
+    
+    const tbody = table.createTBody();
+    const fragment = document.createDocumentFragment();
+    
+    filteredSiswa.forEach(siswa => {
+      const tr = document.createElement('tr');
+      tr.dataset.siswaId = siswa.id;
+      
+      const isEnrolled = siswa.isEnrolled;
+      const nomorUjianApp2 = siswa.nomor_ujian_app2 || `NO-UJIAN-${siswa.id}`; // Buat default
+      
+      let statusHtml = '';
+      if (isEnrolled) {
+        if (siswa.nama_app2 && siswa.nama_app2.toLowerCase() !== siswa.nama.toLowerCase()) {
+          statusHtml = `<span class="status-sync-warning" title="Nama di App 2 (${siswa.nama_app2}) beda. Akan disinkronkan.">${nomorUjianApp2}</span>`;
+        } else {
+          statusHtml = `<span class="status-enrolled">${nomorUjianApp2}</span>`;
+        }
+      } else {
+        statusHtml = `<input type="text" class="form-control form-control-sm enroll-noujian-input" value="${nomorUjianApp2}" ${isEnrolled ? '' : 'disabled'} title="Akan dibuat otomatis saat disimpan">`;
+      }
+
+      tr.innerHTML = `
+        <td class="col-cek-enroll">
+          <input type="checkbox" class="enroll-checkbox" ${isEnrolled ? 'checked' : ''} title="Tandai untuk ditempatkan">
+        </td>
+        <td>${siswa.nama}</td>
+        <td>${siswa.kelas}</td>
+        <td>${statusHtml}</td>
+        <td class="col-ruang">
+          <input type="text" class="form-control form-control-sm enroll-ruang-input" value="${siswa.ruang_ujian}" placeholder="Contoh: R-01" ${isEnrolled ? '' : 'disabled'}>
+        </td>
+      `;
+      
+      // Update disable/enable input berdasarkan checkbox
+      const checkbox = tr.querySelector('.enroll-checkbox');
+      const ruangInput = tr.querySelector('.enroll-ruang-input');
+      const noujianInput = tr.querySelector('.enroll-noujian-input');
+      
+      checkbox.addEventListener('change', () => {
+        ruangInput.disabled = !checkbox.checked;
+        if (noujianInput) noujianInput.disabled = !checkbox.checked;
+      });
+      
+      fragment.appendChild(tr);
+    });
+    
+    tbody.appendChild(fragment);
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    container.appendChild(table);
+  }
+  
+  /**
+   * [BARU] Update input Nomor Ujian App 2 saat checkbox diubah.
+   */
+  function updateNomorUjianApp2(checkbox) {
+    const tr = checkbox.closest('tr');
+    if (!tr) return;
+    const ruangInput = tr.querySelector('.enroll-ruang-input');
+    const noujianInput = tr.querySelector('.enroll-noujian-input');
+    
+    if (checkbox.checked) {
+      ruangInput.disabled = false;
+      if (noujianInput) noujianInput.disabled = false;
+    } else {
+      ruangInput.disabled = true;
+      if (noujianInput) noujianInput.disabled = true;
+    }
+  }
+
+  /**
+   * [BARU] Tandai/Batal tandai semua siswa yang terlihat di filter.
+   */
+  function toggleEnrollAll(shouldEnroll) {
+    const rows = document.querySelectorAll('#penempatan-siswa-container tbody tr');
+    rows.forEach(tr => {
+      const checkbox = tr.querySelector('.enroll-checkbox');
+      const ruangInput = tr.querySelector('.enroll-ruang-input');
+      const noujianInput = tr.querySelector('.enroll-noujian-input');
+      
+      if (checkbox) {
+        checkbox.checked = shouldEnroll;
+        if(ruangInput) ruangInput.disabled = !shouldEnroll;
+        if(noujianInput) noujianInput.disabled = !shouldEnroll;
+      }
+    });
+    isPenempatanSiswaDirty = true;
+    document.getElementById('btn-simpan-penempatan-siswa').disabled = false;
+  }
+
+  /**
+   * [BARU] Menyimpan data penempatan siswa (db_enrollment).
+   */
+  function simpanPenempatanSiswa() {
+    setLoading(true, 'Menyimpan penempatan siswa...', true, true);
+    hideMessage('penempatan-message');
+    
+    const taId = document.getElementById('penempatan-ta-select').value;
+    const rows = document.querySelectorAll('#penempatan-siswa-container tbody tr');
+    const enrollmentData = [];
+    
+    try {
+      rows.forEach(tr => {
+        const siswaId = tr.dataset.siswaId;
+        if (!siswaId) return; // Bukan baris data
+        
+        const checkbox = tr.querySelector('.enroll-checkbox');
+        const ruangInput = tr.querySelector('.enroll-ruang-input');
+        
+        // Dapatkan No Ujian. Cari <span> dulu (jika sudah ada), baru <input> (jika baru)
+        let nomorUjianApp2;
+        const noUjianSpan = tr.querySelector('.status-enrolled, .status-sync-warning');
+        if (noUjianSpan) {
+          nomorUjianApp2 = noUjianSpan.textContent.trim();
+        } else {
+          const noUjianInput = tr.querySelector('.enroll-noujian-input');
+          nomorUjianApp2 = noUjianInput.value.trim();
+        }
+        
+        // Dapatkan Nama App 1
+        const namaApp1 = tr.cells[1].textContent.trim();
+        
+        if (!nomorUjianApp2) {
+          throw new Error(`Nomor Ujian untuk siswa ${namaApp1} tidak boleh kosong.`);
+        }
+        
+        enrollmentData.push({
+          id_siswa_app1: siswaId,
+          isEnrolled: checkbox.checked,
+          nomor_ujian_app2: nomorUjianApp2,
+          ruang_ujian: ruangInput.value.trim(),
+          nama_app1: namaApp1 // Untuk sinkronisasi db_siswa App 2
+        });
+      });
+      
+      google.script.run
+        .withSuccessHandler(onPenempatanSiswaSaved)
+        .withFailureHandler(onGagal)
+        .saveSiswaEnrollment(getToken(), taId, enrollmentData);
+        
+    } catch (e) {
+      setLoading(false);
+      showMessage('penempatan-message', e.message, true);
+    }
+  }
+
+  /**
+   * [BARU] Callback setelah penempatan siswa disimpan.
+   */
+  function onPenempatanSiswaSaved(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      isPenempatanSiswaDirty = false;
+      document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
+      showToast('Penempatan siswa berhasil disimpan.', 'sukses');
+      // Muat ulang data untuk T.A. ini
+      loadPenempatanData(document.getElementById('penempatan-ta-select').value);
+    } else {
+      showMessage('penempatan-message', response.message, true);
+    }
+  }
+
+  /**
+   * [FUNGSI BARU] Render checklist Penempatan Mapel.
+   */
+  function renderPenempatanMapelChecklist() {
+    const container = document.getElementById('penempatan-mapel-checklist-container');
+    container.innerHTML = ""; // Kosongkan
+    
+    const { mapelList, assignedMapelIds } = globalPenempatanData;
+    
+    if (!mapelList || mapelList.length === 0) {
+      container.innerHTML = '<p style="text-align: center; padding: 20px; grid-column: 1 / -1;">Tidak ada data Mapel di "Kelola Mapel".</p>';
+      return;
+    }
+    
+    const assignedSet = new Set(assignedMapelIds);
+    const fragment = document.createDocumentFragment();
+    
+    mapelList.forEach(mapel => {
+      const isChecked = assignedSet.has(mapel.id);
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'checklist-item';
+      
+      itemDiv.innerHTML = `
+        <input 
+          type="checkbox" 
+          class="mapel-assign-checkbox" 
+          id="mapel_check_${mapel.id}" 
+          data-mapel-id="${mapel.id}"
+          ${isChecked ? 'checked' : ''}
+        >
+        <label for="mapel_check_${mapel.id}">${mapel.nama} (${mapel.id})</label>
+      `;
+      fragment.appendChild(itemDiv);
+    });
+    
+    container.appendChild(fragment);
+  }
+
+  /**
+   * [FUNGSI DIPERBARUI] Menyimpan data penempatan mapel (db_mapel).
+   */
+  function simpanPenempatanMapel() {
+    setLoading(true, 'Menyimpan penempatan mapel...', true, true);
+    hideMessage('penempatan-message');
+    
+    const taId = document.getElementById('penempatan-ta-select').value;
+    
+    // Baca dari checklist baru
+    const assignmentsToSave = [];
+    document.querySelectorAll('#penempatan-mapel-checklist-container .mapel-assign-checkbox:checked').forEach(checkbox => {
+      assignmentsToSave.push(checkbox.dataset.mapelId);
+    });
+    
+    google.script.run
+      .withSuccessHandler(onPenempatanMapelSaved)
+      .withFailureHandler(onGagal)
+      .saveMapelAssignment(getToken(), taId, assignmentsToSave); // Kirim array Mapel ID
+  }
+
+  /**
+   * [FUNGSI DIPERBARUI] Callback setelah penempatan mapel disimpan.
+   */
+  function onPenempatanMapelSaved(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      isPenempatanMapelDirty = false;
+      document.getElementById('btn-simpan-penempatan-mapel').disabled = true;
+      showToast('Penempatan mapel berhasil disimpan.', 'sukses');
+      // Muat ulang data untuk T.A. ini
+      loadPenempatanData(document.getElementById('penempatan-ta-select').value);
+    } else {
+      showMessage('penempatan-message', response.message, true);
+    }
+  }
+
+  // --- ============================================= ---
+  // ---      AKHIR FUNGSI-FUNGSI BARU                 ---
+  // --- ============================================= ---
 
 </script>
