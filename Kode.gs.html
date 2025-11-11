@@ -5888,11 +5888,18 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
     siswaSheet.setFrozenRows(1);
     siswaSheet.getRange("A:A").setNumberFormat('@');
 
+    // === TAMBAHAN BARU ===
     // db_tahun_ajaran
     const taSheet = newSS.insertSheet('db_tahun_ajaran');
     taSheet.appendRow(["id_tahun_ajaran", "deskripsi", "status_kunci"]);
-    taSheet.appendRow(["TA-DEFAULT-1", "2024/2025", false]); // Tambahkan T.A. default
+    // Tambahkan T.A. default
+    const currentYear = new Date().getFullYear();
+    const nextYear = currentYear + 1;
+    const defaultTaDeskripsi = `${currentYear}/${nextYear}`;
+    const defaultTaId = `TA-${currentYear}-${nextYear}`;
+    taSheet.appendRow([defaultTaId, defaultTaDeskripsi, false]); 
     taSheet.setFrozenRows(1);
+    // === AKHIR TAMBAHAN ===
 
     // db_enrollment
     newSS.insertSheet('db_enrollment').appendRow(["id_enrollment", "nomor_ujian", "id_sekolah", "id_tahun_ajaran", "ruang_ujian"]).setFrozenRows(1);
@@ -5927,6 +5934,557 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
       DriveApp.getFileById(newSS.getId()).setTrashed(true);
     }
     throw new Error(`Gagal membuat database sekunder (App 2): ${e.message}`);
+  }
+}
+
+// Helper to get App2 DB ID
+function getApp2DatabaseId(token) {
+  const sessionData = validateAndRefreshSession(token);
+  if (sessionData.role !== 'admin') {
+    throw new Error("Akses ditolak.");
+  }
+  
+  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+  const data = sheetSekolah.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === sessionData.sekolahID) { // Kolom A (SekolahID)
+      const app2DbId = data[i][12]; // Kolom M (App2_DB_ID)
+      if (!app2DbId) {
+        throw new Error("Database Aplikasi 2 (Nilai Ujian) tidak tertaut untuk sekolah ini.");
+      }
+      return app2DbId;
+    }
+  }
+  throw new Error("Data sekolah tidak ditemukan.");
+}
+
+// Helper to get/create db_tahun_ajaran sheet in App2 DB
+function getTahunAjaranSheet(ss_app2) {
+  let sheet = ss_app2.getSheetByName('db_tahun_ajaran');
+  if (!sheet) {
+    sheet = ss_app2.insertSheet('db_tahun_ajaran');
+    sheet.appendRow(["id_tahun_ajaran", "deskripsi", "status_kunci"]);
+    // Add default if empty
+    const currentYear = new Date().getFullYear();
+    const nextYear = currentYear + 1;
+    const defaultTaDeskripsi = `${currentYear}/${nextYear}`;
+    const defaultTaId = `TA-${currentYear}-${nextYear}`;
+    sheet.appendRow([defaultTaId, defaultTaDeskripsi, false]); 
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// --- FUNGSI BARU ---
+// Helper to get/create db_enrollment sheet in App2 DB
+function getEnrollmentSheet_App2(ss_app2) {
+  let sheet = ss_app2.getSheetByName('db_enrollment');
+  if (!sheet) {
+    sheet = ss_app2.insertSheet('db_enrollment');
+    sheet.appendRow(["id_enrollment", "nomor_ujian", "id_sekolah", "id_tahun_ajaran", "ruang_ujian"]);
+    sheet.setFrozenRows(1);
+    sheet.getRange("B:B").setNumberFormat('@'); // Format Nomor Ujian sebagai Teks
+  }
+  return sheet;
+}
+
+// --- FUNGSI BARU ---
+// Helper to get/create db_mapel sheet in App2 DB
+function getMapelSheet_App2(ss_app2) {
+  let sheet = ss_app2.getSheetByName('db_mapel');
+  if (!sheet) {
+    sheet = ss_app2.insertSheet('db_mapel');
+    sheet.appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan"]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// --- FUNGSI BARU ---
+// Helper to get/create db_siswa sheet in App2 DB
+function getSiswaSheet_App2(ss_app2) {
+  let sheet = ss_app2.getSheetByName('db_siswa');
+  if (!sheet) {
+    sheet = ss_app2.insertSheet('db_siswa');
+    sheet.appendRow(["nomor_ujian", "nama"]);
+    sheet.setFrozenRows(1);
+    sheet.getRange("A:A").setNumberFormat('@'); // Format Nomor Ujian sebagai Teks
+  }
+  return sheet;
+}
+
+// New API function: getTahunAjaran
+function getTahunAjaran(token) {
+  try {
+    const app2DbId = getApp2DatabaseId(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const sheet = getTahunAjaranSheet(ss_app2);
+    
+    if (sheet.getLastRow() <= 1) {
+      return { status: "sukses", data: [] }; // Kosong
+    }
+    
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    
+    // Cek data nilai/status kirim untuk menentukan 'isLocked'
+    const statusKirimSheet = ss_app2.getSheetByName('db_status_kirim');
+    const lockedTaIds = new Set();
+    if (statusKirimSheet && statusKirimSheet.getLastRow() > 1) {
+      const statusData = statusKirimSheet.getRange(2, 2, statusKirimSheet.getLastRow() - 1, 1).getValues();
+      statusData.forEach(row => lockedTaIds.add(row[0]));
+    }
+
+    const taList = data.map(row => {
+      const id_ta = row[0];
+      const isManuallyLocked = row[2] === true;
+      const isUsed = lockedTaIds.has(id_ta);
+      return {
+        id: id_ta,
+        deskripsi: row[1],
+        isLocked: isManuallyLocked, // Kunci manual dari sheet
+        isUsed: isUsed // Apakah sudah dipakai (tidak bisa dihapus)
+      };
+    }).filter(item => item.id && item.deskripsi); // Filter baris kosong
+    
+    return { status: "sukses", data: taList };
+  } catch (e) {
+    Logger.log(`getTahunAjaran error: ${e.message}`);
+    return { status: "gagal", message: e.message };
+  }
+}
+
+// --- FUNGSI BARU ---
+// API baru untuk HANYA mengambil list T.A. (untuk dropdown)
+function getTahunAjaranList(token) {
+  try {
+    const app2DbId = getApp2DatabaseId(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const sheet = getTahunAjaranSheet(ss_app2);
+    
+    if (sheet.getLastRow() <= 1) {
+      return { status: "sukses", taList: [] }; // Kosong
+    }
+    
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    const taList = data.map(row => {
+      return {
+        id: row[0],
+        deskripsi: row[1],
+        isLocked: row[2] === true
+      };
+    }).filter(item => item.id && item.deskripsi)
+      .sort((a, b) => b.deskripsi.localeCompare(a.deskripsi)); // Urutkan terbaru di atas
+    
+    return { status: "sukses", taList: taList };
+  } catch (e) {
+    Logger.log(`getTahunAjaranList error: ${e.message}`);
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * [API BARU] Mengambil semua data yang diperlukan untuk halaman "Kelola Penempatan".
+ * VERSI REVISI: Mengambil master mapel (App1) dan mapel yang sudah ditugaskan (App2).
+ */
+function getPenempatanData(token, id_tahun_ajaran) {
+  try {
+    const { sessionData, spreadsheetID: app1DbId } = validateAdminSession(token);
+    const app2DbId = getApp2DatabaseId(token); // Helper yang sudah ada
+    
+    // 1. Buka kedua database
+    const ss_app1 = SpreadsheetApp.openById(app1DbId);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    
+    // 2. Ambil Data Master dari Aplikasi 1
+    // Ambil Siswa (sudah di-cache server)
+    const siswaListApp1 = _getSiswaInternal(app1DbId, sessionData.sekolahID).map(s => ({
+      id: s.id,
+      nama: s.nama,
+      kelas: s.kelas
+    }));
+    
+    // Ambil Mapel (sudah di-cache server)
+    const mapelListApp1 = _getMapelInternal(ss_app1, sessionData.sekolahID).map(m => ({
+      id: m.id,
+      nama: m.nama
+    }));
+    
+    // 3. Ambil Data Penempatan dari Aplikasi 2
+    let enrolledSiswaMap = new Map();
+    let assignedMapelIds = new Set(); // <-- DIUBAH: Hanya butuh ID Mapel
+    let app2SiswaMap = new Map();
+
+    if (id_tahun_ajaran) {
+      // Ambil data db_enrollment
+      const sheetEnrollment = getEnrollmentSheet_App2(ss_app2);
+      if (sheetEnrollment.getLastRow() > 1) {
+        const dataEnroll = sheetEnrollment.getDataRange().getValues();
+        dataEnroll.shift();
+        dataEnroll.forEach(row => {
+          if (row[3] === id_tahun_ajaran) {
+            enrolledSiswaMap.set(row[0], {
+              id_enrollment_app2: row[0],
+              nomor_ujian_app2: row[1],
+              ruang_ujian: row[4] || ''
+            });
+          }
+        });
+      }
+      
+      // Ambil data db_mapel
+      const sheetMapelApp2 = getMapelSheet_App2(ss_app2);
+      if (sheetMapelApp2.getLastRow() > 1) {
+        const dataMapel = sheetMapelApp2.getDataRange().getValues();
+        dataMapel.shift();
+        dataMapel.forEach(row => {
+          if (row[2] === id_tahun_ajaran) {
+            assignedMapelIds.add(row[1]); // <-- DIUBAH: Kumpulkan ID Mapel (kolom B)
+          }
+        });
+      }
+
+      // Ambil data db_siswa (App 2)
+      const sheetSiswaApp2 = getSiswaSheet_App2(ss_app2);
+      if (sheetSiswaApp2.getLastRow() > 1) {
+        const dataSiswa = sheetSiswaApp2.getDataRange().getValues();
+        dataSiswa.shift();
+        dataSiswa.forEach(row => {
+          app2SiswaMap.set(row[0], row[1]); // Map[nomor_ujian] = nama
+        });
+      }
+    }
+    
+    // 4. Gabungkan Data Siswa (Logika ini tetap sama)
+    const siswaDataGabungan = siswaListApp1.map(siswaApp1 => {
+      const enrollmentInfo = enrolledSiswaMap.get(siswaApp1.id);
+      const isEnrolled = !!enrollmentInfo;
+      const nomorUjianApp2 = isEnrolled ? enrollmentInfo.nomor_ujian_app2 : null;
+      
+      return {
+        ...siswaApp1,
+        isEnrolled: isEnrolled,
+        nomor_ujian_app2: nomorUjianApp2,
+        nama_app2: (isEnrolled && app2SiswaMap.has(nomorUjianApp2)) ? app2SiswaMap.get(nomorUjianApp2) : null, 
+        ruang_ujian: isEnrolled ? enrollmentInfo.ruang_ujian : ''
+      };
+    });
+    
+    return {
+      status: "sukses",
+      siswaData: siswaDataGabungan,
+      mapelList: mapelListApp1,
+      // guruList: guruListApp1, // <-- DIHAPUS: Tidak perlu dikirim ke client
+      assignedMapelIds: Array.from(assignedMapelIds) // <-- DIUBAH
+    };
+    
+  } catch (e) {
+    Logger.log(`getPenempatanData error: ${e.message}`);
+    return { status: "gagal", message: e.message };
+  }
+}
+
+// --- FUNGSI BARU ---
+/**
+ * [API BARU] Menyimpan perubahan pada db_enrollment dan db_siswa di Aplikasi 2.
+ */
+function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000); // Kunci 30 detik
+  
+  try {
+    const { sessionData } = validateAdminSession(token);
+    const app2DbId = getApp2DatabaseId(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    
+    const sheetEnroll = getEnrollmentSheet_App2(ss_app2);
+    const sheetSiswa = getSiswaSheet_App2(ss_app2);
+    
+    const idSekolahApp1 = sessionData.sekolahID;
+    
+    // 1. Ambil data db_siswa (App 2) yang ada
+    const siswaApp2Map = new Map();
+    if (sheetSiswa.getLastRow() > 1) {
+      const siswaData = sheetSiswa.getRange(2, 1, sheetSiswa.getLastRow() - 1, 2).getValues();
+      siswaData.forEach(row => siswaApp2Map.set(row[0], row[1])); // Map[nomor_ujian] = nama
+    }
+    
+    // 2. Ambil data db_enrollment (App 2) yang ada
+    const enrollMap = new Map(); // Key: SiswaID (App 1)
+    let allEnrollData = [];
+    if (sheetEnroll.getLastRow() > 1) {
+      allEnrollData = sheetEnroll.getDataRange().getValues();
+      allEnrollData.shift(); // Hapus header
+      allEnrollData.forEach((row, index) => {
+        // row[0] = id_siswa_app1, row[3] = id_ta
+        if (row[3] === id_tahun_ajaran) {
+          enrollMap.set(row[0], {
+            sheetRow: index + 2, // 1-based row index
+            nomor_ujian: row[1],
+            ruang_ujian: row[4]
+          });
+        }
+      });
+    }
+
+    const siswaBaruUntukApp2 = new Map(); // Map[nomor_ujian] = nama
+    const enrollBaruUntukApp2 = [];
+    const enrollUntukUpdate = [];
+    const enrollUntukDihapus = new Set(enrollMap.keys()); // Asumsikan semua dihapus
+    
+    // 3. Proses data dari client
+    for (const item of enrollmentData) {
+      enrollUntukDihapus.delete(item.id_siswa_app1); // Hapus dari daftar hapus (berarti dipertahankan)
+      
+      const existingEnroll = enrollMap.get(item.id_siswa_app1);
+      
+      if (item.isEnrolled) {
+        if (existingEnroll) {
+          // Update
+          if (existingEnroll.nomor_ujian !== item.nomor_ujian_app2 || existingEnroll.ruang_ujian !== item.ruang_ujian) {
+            enrollUntukUpdate.push({
+              row: existingEnroll.sheetRow,
+              nomor_ujian: item.nomor_ujian_app2,
+              ruang_ujian: item.ruang_ujian
+            });
+          }
+        } else {
+          // Insert
+          enrollBaruUntukApp2.push([
+            item.id_siswa_app1,     // id_enrollment (pakai SiswaID App 1)
+            item.nomor_ujian_app2,  // nomor_ujian
+            idSekolahApp1,          // id_sekolah (dari App 1)
+            id_tahun_ajaran,        // id_tahun_ajaran
+            item.ruang_ujian        // ruang_ujian
+          ]);
+        }
+        
+        // Cek db_siswa App 2
+        if (!siswaApp2Map.has(item.nomor_ujian_app2)) {
+          siswaBaruUntukApp2.set(item.nomor_ujian_app2, item.nama_app1);
+        }
+      }
+    }
+    
+    // 4. Eksekusi Hapus (dari Bawah ke Atas)
+    const rowsToDelete = Array.from(enrollUntukDihapus).map(id => enrollMap.get(id).sheetRow);
+    rowsToDelete.sort((a, b) => b - a); // Sort descending
+    rowsToDelete.forEach(rowNum => {
+      sheetEnroll.deleteRow(rowNum);
+    });
+
+    // 5. Eksekusi Update
+    enrollUntukUpdate.forEach(item => {
+      sheetEnroll.getRange(item.row, 2).setValue(item.nomor_ujian); // Kolom B
+      sheetEnroll.getRange(item.row, 5).setValue(item.ruang_ujian); // Kolom E
+    });
+    
+    // 6. Eksekusi Tambah
+    if (enrollBaruUntukApp2.length > 0) {
+      sheetEnroll.getRange(sheetEnroll.getLastRow() + 1, 1, enrollBaruUntukApp2.length, 5).setValues(enrollBaruUntukApp2);
+    }
+    
+    // 7. Eksekusi Tambah Siswa ke db_siswa App 2
+    const siswaBaruArray = Array.from(siswaBaruUntukApp2.entries()); // [ [no_ujian, nama], ... ]
+    if (siswaBaruArray.length > 0) {
+      sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, siswaBaruArray.length, 2).setValues(siswaBaruArray);
+    }
+    
+    return { status: "sukses" };
+    
+  } catch (e) {
+    Logger.log(`saveSiswaEnrollment error: ${e.message}`);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// --- FUNGSI DIPERBARUI ---
+/**
+ * [API BARU] Menyimpan perubahan pada db_mapel di Aplikasi 2.
+ * VERSI REVISI: Menerima array Mapel ID, lalu mencari Guru & Singkatan dari App 1.
+ */
+function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) { // assignmentsToSave sekarang [ "MTK", "PAI", ... ]
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
+  
+  try {
+    const { sessionData, spreadsheetID: app1DbId } = validateAdminSession(token);
+    const app2DbId = getApp2DatabaseId(token);
+    
+    const ss_app1 = SpreadsheetApp.openById(app1DbId);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    
+    if (!id_tahun_ajaran) {
+      throw new Error("ID Tahun Ajaran tidak valid.");
+    }
+    
+    const mapelIdSetToSave = new Set(assignmentsToSave.map(id => id.toUpperCase()));
+
+    // 1. Buat Peta Singkatan dari "Kelola Mapel" (App 1)
+    const sheetMapelApp1 = getMapelSheet(ss_app1); // Helper App 1
+    const mapelDataApp1 = sheetMapelApp1.getDataRange().getValues();
+    mapelDataApp1.shift();
+    const singkatanMap = new Map();
+    mapelDataApp1.forEach(row => {
+      singkatanMap.set(row[0], row[3] || ''); // Map[MapelID] -> Singkatan (Kolom D)
+    });
+
+    // 2. Buat Peta Hubungan Mapel -> Guru dari "Kelola Guru" (App 1)
+    const sheetGuruApp1 = getGuruSheet(ss_app1); // Helper App 1
+    const guruDataApp1 = sheetGuruApp1.getDataRange().getValues();
+    guruDataApp1.shift();
+    
+    const mapelToGuruList = []; // Akan berisi [ {email, mapel, singkatan}, ... ]
+    
+    guruDataApp1.forEach(row => {
+      const emailGuru = row[0];
+      const mapelJson = row[4]; // Kolom E (MapelKelasJSON)
+      
+      if (emailGuru && mapelJson) {
+        try {
+          const mapelData = JSON.parse(mapelJson);
+          const mapelIdsAssignedToGuru = Object.keys(mapelData); // [ "MTK", "IPA" ]
+          
+          for (const mapelId of mapelIdsAssignedToGuru) {
+            // Cek apakah mapel ini adalah salah satu yang ingin kita simpan
+            if (mapelIdSetToSave.has(mapelId.toUpperCase())) {
+              mapelToGuruList.push({
+                email: emailGuru,
+                mapel: mapelId,
+                singkatan: singkatanMap.get(mapelId) || ''
+              });
+            }
+          }
+        } catch (e) {
+          // Abaikan jika format JSON salah atau format lama
+        }
+      }
+    });
+
+    // 3. Ambil data db_mapel (App 2) yang ada
+    const sheetMapelApp2 = getMapelSheet_App2(ss_app2); // Helper App 2
+    let allDataApp2 = [];
+    if (sheetMapelApp2.getLastRow() > 1) {
+      allDataApp2 = sheetMapelApp2.getDataRange().getValues();
+      allDataApp2.shift(); // Hapus header
+    }
+    
+    // 4. Filter data: simpan data dari T.A. LAIN
+    const dataLain = allDataApp2.filter(row => row[2] !== id_tahun_ajaran);
+    
+    // 5. Format data baru (hasil dari lookup)
+    const dataBaru = mapelToGuruList.map(item => [
+      item.email,
+      item.mapel,
+      id_tahun_ajaran,
+      item.singkatan
+    ]);
+    
+    // 6. Gabungkan data T.A. lain dengan data baru
+    const dataFinal = dataLain.concat(dataBaru);
+    
+    // 7. Hapus semua data (kecuali header)
+    if (sheetMapelApp2.getLastRow() > 1) {
+      sheetMapelApp2.deleteRows(2, sheetMapelApp2.getLastRow() - 1);
+    }
+    
+    // 8. Tulis ulang data gabungan
+    if (dataFinal.length > 0) {
+      sheetMapelApp2.getRange(2, 1, dataFinal.length, 4).setValues(dataFinal);
+    }
+    
+    // 9. Bersihkan cache di App 1 (untuk data guru) dan App 2 (untuk data mapel)
+    clearGuruCache(sessionData.sekolahID); // Panggil fungsi clear cache guru App 1
+    // (Pembersihan cache App 2 akan dilakukan oleh fungsi helper di App 2 jika diperlukan)
+    
+    return { status: "sukses" };
+    
+  } catch (e) {
+    Logger.log(`saveMapelAssignment error: ${e.message}`);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// New API function: saveTahunAjaran
+function saveTahunAjaran(token, dataToSave) {
+  const lock = LockService.getDocumentLock(); // Gunakan lock pada DB App 2
+  lock.waitLock(15000);
+  
+  try {
+    const app2DbId = getApp2DatabaseId(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const sheet = getTahunAjaranSheet(ss_app2);
+    
+    // 1. Dapatkan data T.A. yang ada dan status 'isUsed'
+    const currentDataResponse = getTahunAjaran(token); // Panggil fungsi internal
+    if (currentDataResponse.status !== 'sukses') {
+      throw new Error(currentDataResponse.message);
+    }
+    const currentDataMap = new Map();
+    currentDataResponse.data.forEach(item => {
+      currentDataMap.set(item.id, { isUsed: item.isUsed, isLocked: item.isLocked });
+    });
+    
+    const newDataSet = new Set();
+    const dataToSet = [];
+    
+    // 2. Validasi data baru
+    for (const item of dataToSave) {
+      if (!item.id || !item.deskripsi) {
+        throw new Error("Data tidak valid. ID dan Deskripsi wajib diisi.");
+      }
+      
+      const id_upper = item.id.toUpperCase();
+      if (newDataSet.has(id_upper)) {
+        throw new Error(`ID Tahun Ajaran duplikat: '${item.id}'. ID harus unik.`);
+      }
+      newDataSet.add(id_upper);
+      
+      const existing = currentDataMap.get(item.id);
+      
+      // Jika T.A. ini sudah dipakai (ada nilai/status)
+      if (existing && existing.isUsed) {
+        // Cek apakah user mencoba MENGUNCI T.A. yang sudah dipakai
+        if (item.isLocked === true && existing.isLocked === false) {
+          // Ini boleh, user sedang mengunci T.A.
+        } 
+        // Cek apakah user mencoba MENGUBAH ID/DESKRIPSI T.A. yang sudah dipakai
+        else if (existing.isLocked === true && item.isLocked === false) {
+          throw new Error(`ID '${item.id}' tidak bisa dibuka kuncinya karena sudah terpakai.`);
+        }
+      }
+      
+      dataToSet.push([item.id, item.deskripsi, item.isLocked === true]);
+    }
+    
+    // 3. Validasi Hapus
+    for (const [id, data] of currentDataMap.entries()) {
+      if (data.isUsed && !newDataSet.has(id.toUpperCase())) {
+        throw new Error(`Tahun Ajaran '${id}' tidak dapat dihapus karena sudah memiliki data nilai.`);
+      }
+    }
+    
+    // 4. Hapus dan Tulis Ulang
+    if (sheet.getLastRow() > 1) {
+      sheet.deleteRows(2, sheet.getLastRow() - 1);
+    }
+    
+    if (dataToSet.length > 0) {
+      sheet.getRange(2, 1, dataToSet.length, 3).setValues(dataToSet);
+    }
+    
+    return { status: "sukses" };
+    
+  } catch (e) {
+    Logger.log(`saveTahunAjaran error: ${e.message}`);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
