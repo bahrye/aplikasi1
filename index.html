@@ -1779,11 +1779,17 @@
         </div>
         
         <div id="tab-penempatan-mapel" class="tab-content" style="display: none;">
-          <h3 class="form-section-header">Tab: Penempatan Mapel ke Tahun Ajaran</h3>
+          <h3 class="form-section-header">Tab: Penempatan Mapel & Guru ke Tahun Ajaran</h3>
+          <p>Tentukan mapel apa saja yang diajarkan pada Tahun Ajaran ini dan siapa guru pengampunya.</p>
           
-          <p>Tandai mapel (dari "Kelola Mapel") yang akan <strong>diaktifkan</strong> untuk Tahun Ajaran ini. Sistem akan otomatis menugaskan guru yang sesuai (dari "Kelola Guru") ke mapel ini di Aplikasi 2.</p>
-          
-          <div class="penempatan-checklist-container" id="penempatan-mapel-checklist-container">
+          <div class="table-toolbar">
+            <p><strong>Daftar Mapel & Guru yang Ditempatkan</strong></p>
+            <div class="header-buttons">
+              <button id="btn-buka-modal-mapel-app2" class="btn-aksi" style="background-color: var(--success-color);"><i class="fas fa-plus"></i> Tambah Penempatan Mapel</Gantt>
+            </div>
+          </div>
+
+          <div class="mapel-table-container" id="penempatan-mapel-container">
             <p>Pilih Tahun Ajaran untuk melihat data.</p>
           </div>
           
