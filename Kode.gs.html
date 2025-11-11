@@ -783,6 +783,8 @@ function prosesLogin(email, password) {
       spreadsheetID: userSpreadsheetID,
       jenjangPilihan: jenjangPilihan,
       donasiStatus: donasiStatus,
+      npsn: cachedRow[7],
+      app2_spreadsheetID: cachedRow[12],
       lastActivity: new Date().getTime()
     };
     CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
@@ -971,6 +973,20 @@ function checkToken(tokenFromClient) {
         appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'admin') {
+      // [PERBAIKAN] Kita butuh helper untuk ini jika sesi dibuat sebelum update
+      if (!sessionData.npsn || !sessionData.app2_spreadsheetID) {
+        Logger.log("Sesi App 1 lama terdeteksi, mengambil NPSN/App2ID dari Master Sheet...");
+        const masterData = getCachedMasterSheetData();
+        for (let i = 1; i < masterData.length; i++) {
+          if (masterData[i][0] === sessionData.sekolahID) {
+            sessionData.npsn = masterData[i][7]; // Kolom H
+            sessionData.app2_spreadsheetID = masterData[i][12]; // Kolom M
+            break;
+          }
+        }
+        // Simpan sesi yang diperbarui
+        CacheService.getScriptCache().put('SESSION_' + tokenFromClient, JSON.stringify(sessionData), 21600);
+      }
       return {
         status: "sukses",
         role: "admin",
@@ -979,6 +995,8 @@ function checkToken(tokenFromClient) {
         jenjang: sessionData.jenjang,
         jenjangPilihan: sessionData.jenjangPilihan,
         donasiStatus: sessionData.donasiStatus || "NONE",
+        npsn: sessionData.npsn,
+        app2_spreadsheetID: sessionData.app2_spreadsheetID,
         appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'guru') {
@@ -6027,12 +6045,43 @@ function getTahunAjaranSheetAdmin(ss) {
 }
 
 /**
- * [ADMIN] Mengambil semua data Tahun Ajaran dari DB Sekolah.
+ * [ADMIN - DIPERBARUI] Mengambil semua data Tahun Ajaran dari DB Sekolah
+ * DAN mengecek apakah T.A. tersebut sudah digunakan di App 2.
  */
 function getTahunAjaranAdmin(token) {
   try {
-    const { spreadsheetID } = validateAdminSession(token); // Validasi Admin
+    const { sessionData, spreadsheetID } = validateAdminSession(token); // Validasi Admin
     
+    const npsn = sessionData.npsn;
+    const app2_spreadsheetID = sessionData.app2_spreadsheetID;
+
+    if (!npsn || !app2_spreadsheetID) {
+      throw new Error("Sesi tidak lengkap. NPSN atau DB App 2 ID tidak ditemukan. Harap logout dan login kembali.");
+    }
+
+    // 1. Dapatkan Set T.A. yang sudah terpakai dari App 2
+    const taInUseSet = new Set();
+    try {
+      const ssApp2 = SpreadsheetApp.openById(app2_spreadsheetID);
+      const enrollmentSheet = findOrCreateSheet(ssApp2, 'db_enrollment', 
+        ['id_enrollment', 'nomor_ujian', 'id_sekolah_npsn', 'id_tahun_ajaran', 'ruang_ujian']);
+      
+      if (enrollmentSheet.getLastRow() > 1) {
+        // Baca kolom C (NPSN) dan D (TA)
+        const enrollmentData = enrollmentSheet.getRange(2, 3, enrollmentSheet.getLastRow() - 1, 2).getValues();
+        enrollmentData.forEach(row => {
+          // Jika NPSN cocok, tambahkan ID T.A. ke Set
+          if (String(row[0]).trim() == String(npsn).trim()) {
+            taInUseSet.add(String(row[1]).trim());
+          }
+        });
+      }
+    } catch (e) {
+      Logger.log(`Gagal membaca App 2 DB (${app2_spreadsheetID}) untuk cek T.A.: ${e.message}`);
+      // Tidak melempar error, anggap saja tidak ada T.A. yang terpakai jika gagal
+    }
+
+    // 2. Dapatkan daftar T.A. dari App 1 (seperti sebelumnya)
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getTahunAjaranSheetAdmin(ss);
     
@@ -6041,13 +6090,20 @@ function getTahunAjaranAdmin(token) {
     }
 
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
-    const taList = data.map(row => ({
-      id: row[0],
-      deskripsi: row[1],
-      is_locked: row[2] === true // Pastikan boolean
-    })).sort((a, b) => b.id.localeCompare(a.id)); // Urutkan terbaru di atas
+    
+    // 3. Gabungkan data
+    const taList = data.map(row => {
+      const ta_id = String(row[0]);
+      return {
+        id: ta_id,
+        deskripsi: row[1],
+        is_locked: row[2] === true, // Cek is_locked
+        is_in_use: taInUseSet.has(ta_id) // [BARU] Cek is_in_use
+      };
+    }).sort((a, b) => b.id.localeCompare(a.id)); // Urutkan terbaru di atas
 
     return { status: "sukses", data: taList };
+
   } catch (e) {
     Logger.log(e);
     return { status: "gagal", message: e.message };
@@ -6055,35 +6111,130 @@ function getTahunAjaranAdmin(token) {
 }
 
 /**
- * [ADMIN] Menyimpan (menimpa) semua data Tahun Ajaran di DB Sekolah.
+ * [ADMIN - DIPERBARUI] Menyimpan (menimpa) semua data Tahun Ajaran di DB Sekolah.
+ * Logika ini sekarang melakukan 'diff' untuk mencegah penghapusan T.A. yang terkunci/digunakan.
  */
-function saveTahunAjaranAdmin(token, taList) {
+function saveTahunAjaranAdmin(token, newListFromClient) {
   const lock = LockService.getDocumentLock();
-  lock.waitLock(15000);
+  lock.waitLock(30000); // Kunci 30 detik
+  
+  let spreadsheetID, sessionData;
   try {
-    const { spreadsheetID } = validateAdminSession(token); // Validasi Admin
+    sessionData = validateAdminSession(token).sessionData; // Validasi Admin
+    spreadsheetID = sessionData.spreadsheetID;
     
-    if (!taList) taList = [];
+    if (!newListFromClient) newListFromClient = [];
 
+    const npsn = sessionData.npsn;
+    const app2_spreadsheetID = sessionData.app2_spreadsheetID;
+
+    if (!npsn || !app2_spreadsheetID) {
+      throw new Error("Sesi tidak lengkap. NPSN atau DB App 2 ID tidak ditemukan. Harap logout dan login kembali.");
+    }
+
+    // 1. Dapatkan Set T.A. yang sudah terpakai dari App 2
+    const taInUseSet = new Set();
+    try {
+      const ssApp2 = SpreadsheetApp.openById(app2_spreadsheetID);
+      const enrollmentSheet = findOrCreateSheet(ssApp2, 'db_enrollment', 
+        ['id_enrollment', 'nomor_ujian', 'id_sekolah_npsn', 'id_tahun_ajaran', 'ruang_ujian']);
+      
+      if (enrollmentSheet.getLastRow() > 1) {
+        const enrollmentData = enrollmentSheet.getRange(2, 3, enrollmentSheet.getLastRow() - 1, 2).getValues();
+        enrollmentData.forEach(row => {
+          if (String(row[0]).trim() == String(npsn).trim()) {
+            taInUseSet.add(String(row[1]).trim());
+          }
+        });
+      }
+    } catch (e) {
+      Logger.log(`Gagal membaca App 2 DB (${app2_spreadsheetID}) untuk cek T.A.: ${e.message}`);
+      // Jika App 2 gagal diakses, lempar error agar data tidak disimpan
+      throw new Error("Gagal memverifikasi data App 2: " + e.message);
+    }
+
+    // 2. Dapatkan data lama dari sheet App 1
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getTahunAjaranSheetAdmin(ss);
+    const oldDataFromSheet = (sheet.getLastRow() > 1) 
+      ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() 
+      : [];
+      
+    // 3. Buat Peta (Maps) untuk perbandingan
+    const oldDataMap = new Map(oldDataFromSheet.map((row, index) => {
+      // row[0] = id, row[1] = deskripsi, row[2] = is_locked
+      return [String(row[0]), { id: String(row[0]), deskripsi: row[1], is_locked: row[2] === true, sheetRow: index + 2 }];
+    }));
+    
+    const newDataMap = new Map(newListFromClient.map(item => {
+      const newItemId = String(item.id);
+      return [newItemId, { id: newItemId, deskripsi: item.deskripsi, is_locked: item.is_locked === true }];
+    }));
 
-    // Hapus data lama (baris 2 sampai akhir)
-    if (sheet.getLastRow() > 1) {
-      sheet.deleteRows(2, sheet.getLastRow() - 1);
-    }
+    // 4. Siapkan batch operasi
+    const rowsToDelete = [];
+    const rowsToUpdate = [];
+    const rowsToAdd = [];
 
-    // Tulis data baru jika ada
-    if (taList.length > 0) {
-      const dataToSave = taList.map(ta => [
-        ta.id,
-        ta.deskripsi,
-        ta.is_locked === true // Pastikan boolean
-      ]);
-      sheet.getRange(2, 1, dataToSave.length, 3).setValues(dataToSave);
+    // 5. Iterasi data LAMA (Cek Hapus & Update)
+    oldDataMap.forEach((oldItem, oldId) => {
+      const newItem = newDataMap.get(oldId);
+      const isUsed = taInUseSet.has(oldId);
+      
+      if (newItem) {
+        // --- UPDATE ---
+        // Cek jika ada perubahan
+        if (oldItem.deskripsi !== newItem.deskripsi || oldItem.is_locked !== newItem.is_locked) {
+          // Jika T.A. sedang digunakan, HANYA status 'is_locked' yang boleh berubah.
+          // ID dan Deskripsi tidak boleh berubah jika sedang digunakan.
+          if (isUsed && oldItem.deskripsi !== newItem.deskripsi) {
+             throw new Error(`Gagal: Deskripsi untuk T.A. '${oldItem.deskripsi}' tidak dapat diubah karena sedang digunakan.`);
+          }
+          rowsToUpdate.push({
+            sheetRow: oldItem.sheetRow,
+            values: [oldItem.id, newItem.deskripsi, newItem.is_locked]
+          });
+        }
+        // Hapus dari newDataMap agar kita tahu sisanya adalah 'Add'
+        newDataMap.delete(oldId);
+        
+      } else {
+        // --- DELETE ---
+        // Cek apakah penghapusan legal
+        if (oldItem.is_locked || isUsed) {
+          throw new Error(`Gagal: Tahun Ajaran '${oldItem.deskripsi}' tidak dapat dihapus karena terkunci atau sedang digunakan.`);
+        } else {
+          rowsToDelete.push(oldItem.sheetRow);
+        }
+      }
+    });
+
+    // 6. Iterasi data BARU (Cek Tambah)
+    newDataMap.forEach((newItem, newId) => {
+      // Semua yang tersisa di newDataMap adalah item baru
+      rowsToAdd.push([newItem.id, newItem.deskripsi, newItem.is_locked]);
+    });
+    
+    // 7. Eksekusi operasi ke Spreadsheet (PENTING: Hapus dari bawah ke atas)
+    if (rowsToDelete.length > 0) {
+      rowsToDelete.sort((a, b) => b - a); // Urutkan descending (9, 5, 2)
+      rowsToDelete.forEach(rowNum => {
+        sheet.deleteRow(rowNum);
+      });
     }
     
-    // Hapus cache T.A. di App 2 (jika ada, meskipun tidak akan berpengaruh)
+    if (rowsToUpdate.length > 0) {
+      rowsToUpdate.forEach(update => {
+        // Kolom A, B, C
+        sheet.getRange(update.sheetRow, 1, 1, 3).setValues([update.values]);
+      });
+    }
+
+    if (rowsToAdd.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAdd.length, 3).setValues(rowsToAdd);
+    }
+    
+    // 8. Hapus cache App 2 jika ada (meskipun tidak akan berpengaruh)
     try {
       CacheService.getScriptCache().remove('app2_ta_cache_' + spreadsheetID); 
     } catch(e){}
@@ -6265,7 +6416,7 @@ function saveEnrollmentDataAdmin(token, id_tahun_ajaran, siswaTerdaftarBaru) {
         return [
           newId,
           "'" + siswa.nomor_ujian, // Kolom B (No Ujian)
-          npsn,                   // Kolom C (ID Sekolah/NPSN)
+          "'" + npsn,             // Kolom C (ID Sekolah/NPSN)
           id_tahun_ajaran,        // Kolom D (ID T.A.)
           siswa.ruang_ujian || '' // Kolom E (Ruang)
         ];
@@ -6285,4 +6436,20 @@ function saveEnrollmentDataAdmin(token, id_tahun_ajaran, siswaTerdaftarBaru) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * [HELPER BARU] Menemukan sheet di spreadsheet, atau membuatnya jika tidak ada.
+ */
+function findOrCreateSheet(spreadsheet, sheetName, headers = []) {
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    Logger.log(`Membuat sheet '${sheetName}' yang hilang...`);
+    sheet = spreadsheet.insertSheet(sheetName);
+    if (headers.length > 0) {
+      sheet.appendRow(headers);
+      sheet.setFrozenRows(1);
+    }
+  }
+  return sheet;
 }
