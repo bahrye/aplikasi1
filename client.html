@@ -113,8 +113,6 @@
   let globalNilaiRaporGridCache = new Map();
   // --- AKHIR TAMBAHAN ---
 
-  let globalTahunAjarAdminCache = [];
-
   let globalRaporData = {
     P: { siswaList: [], mapelList: [], nilaiData: {} },
     K: { siswaList: [], mapelList: [], nilaiData: {} },
@@ -608,17 +606,14 @@
       'halaman-superadmin',
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
       'halaman-guru', 'halaman-donasi',
-      'halaman-proses-kelulusan', // <--- PERBAIKAN DI SINI
-      'halaman-tahun-ajar', 'halaman-tahun-ajar-admin',
-      'halaman-penempatan-siswa'
+      'halaman-proses-kelulusan' // <--- PERBAIKAN DI SINI
     ];
     
     const authSubPages = [
       'halaman-login', 
       'halaman-registrasi',
       'halaman-login-siswa',
-      'halaman-login-guru',
-      'halaman-redirect-guru'
+      'halaman-login-guru' // <-- Pastikan ini ada
     ];
 
     allPages.forEach(id => {
@@ -1458,67 +1453,6 @@
     document.getElementById('btn-buka-semester').addEventListener('click', () => {
       handleNavigationConfirm(bukaHalamanSemester);
     });
-
-    // ===== TAMBAHKAN BLOK LISTENER INI =====
-    document.getElementById('btn-buka-kelola-ta-admin').addEventListener('click', () => {
-      handleNavigationConfirm(bukaHalamanTahunAjarAdmin);
-    });
-    document.getElementById('btn-kembali-ke-dashboard-14').addEventListener('click', () => { // ID tombol kembali yang baru
-      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
-    });
-    document.getElementById('form-tahun-ajar-admin').addEventListener('submit', (e) => {
-      e.preventDefault();
-      simpanTahunAjarAdmin();
-    });
-    document.getElementById('btn-add-tahun-ajar-admin').addEventListener('click', () => {
-      renderTahunAjarAdminList(getCurrentTahunAjarAdminList(), true); // true = add new row
-    });
-    document.getElementById('tahun-ajar-admin-list-container').addEventListener('click', (e) => {
-      if (e.target.classList.contains('btn-remove-ta')) {
-        e.target.closest('.tahun-ajar-input-row').remove();
-        document.getElementById('btn-simpan-tahun-ajar-admin').disabled = false;
-        isFormDirty = true;
-      }
-    });
-    document.getElementById('form-tahun-ajar-admin').addEventListener('input', () => {
-      document.getElementById('btn-simpan-tahun-ajar-admin').disabled = false;
-      isFormDirty = true;
-    });
-    // ===== AKHIR BLOK TAMBAHAN =====
-
-    // ===== TAMBAHKAN BLOK LISTENER INI =====
-    document.getElementById('btn-buka-penempatan-siswa').addEventListener('click', () => {
-      handleNavigationConfirm(bukaHalamanPenempatan);
-    });
-    document.getElementById('btn-kembali-ke-dashboard-15').addEventListener('click', () => {
-      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
-    });
-    document.getElementById('penempatan-ta-select').addEventListener('change', loadEnrollmentData);
-    document.getElementById('btn-assign-siswa').addEventListener('click', () => moveSiswa('assign'));
-    document.getElementById('btn-unassign-siswa').addEventListener('click', () => moveSiswa('unassign'));
-    document.getElementById('btn-simpan-penempatan').addEventListener('click', simpanPenempatanSiswa);
-    
-    // Listener untuk filter
-    document.getElementById('filter-siswa-tersedia').addEventListener('input', filterPenempatanList);
-    document.getElementById('filter-siswa-terdaftar').addEventListener('input', filterPenempatanList);
-    document.getElementById('filter-penempatan-kelas').addEventListener('change', filterPenempatanList); // <-- [PERBAIKAN]
-    
-    // Listener untuk seleksi item (toggle)
-    document.getElementById('list-siswa-tersedia').addEventListener('click', togglePenempatanItem);
-    document.getElementById('list-siswa-terdaftar').addEventListener('click', togglePenempatanItem);
-
-    // ===== TAMBAHKAN BLOK BARU DI SINI (PERBAIKAN) =====
-    document.getElementById('list-siswa-terdaftar').addEventListener('input', (e) => {
-      // Cek apakah event berasal dari input 'ruang_ujian'
-      if (e.target.classList.contains('item-ruang')) {
-        // Tandai bahwa ada perubahan yang belum disimpan
-        isFormDirty = true;
-        // Aktifkan tombol Simpan
-        document.getElementById('btn-simpan-penempatan').disabled = false;
-      }
-    });
-    // ===== AKHIR BLOK BARU =====
-
     document.getElementById('btn-kembali-ke-dashboard-7').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
     });
@@ -2331,31 +2265,6 @@
     document.getElementById('btn-tambah-sekolah-baru').addEventListener('click', () => {
       showModalSekolah('add', {});
     });
-
-    // ===== TAMBAHKAN BLOK INI =====
-    document.getElementById('btn-buka-kelola-ta').addEventListener('click', () => {
-      handleNavigationConfirm(bukaHalamanTahunAjar);
-    });
-    document.getElementById('btn-kembali-ke-superadmin-2').addEventListener('click', () => {
-      handleNavigationConfirm(bukaHalamanSuperadmin);
-    });
-    document.getElementById('form-tahun-ajar').addEventListener('submit', (e) => {
-      e.preventDefault();
-      simpanTahunAjar();
-    });
-    document.getElementById('btn-add-tahun-ajar').addEventListener('click', () => {
-      renderTahunAjarList(getCurrentTahunAjarList(), true); // true = add new row
-    });
-    document.getElementById('tahun-ajar-list-container').addEventListener('click', (e) => {
-      if (e.target.classList.contains('btn-remove-ta')) {
-        e.target.closest('.tahun-ajar-input-row').remove();
-        document.getElementById('btn-simpan-tahun-ajar').disabled = false;
-      }
-    });
-    document.getElementById('form-tahun-ajar').addEventListener('input', () => {
-      document.getElementById('btn-simpan-tahun-ajar').disabled = false;
-    });
-    // ===== AKHIR BLOK TAMBAHAN =====
     
     document.getElementById('btn-tutup-modal-sekolah').addEventListener('click', tutupModalSekolah);
     document.getElementById('btn-batal-modal-sekolah').addEventListener('click', tutupModalSekolah);
@@ -2592,8 +2501,7 @@
   }
 
   function hasilLogin(response) {
-    // MODIFIKASI: Hapus setLoading(false) dari sini
-    
+    setLoading(false);
     resetButtonLoading(document.getElementById('btn-login'));
     resetButtonLoading(document.getElementById('btn-login-guru'));
 
@@ -2601,7 +2509,9 @@
       localStorage.setItem('sessionToken', response.token);
       resetInactivityTimer();
       
+      // --- TAMBAHAN BARU: Mendorong state "jebakan" ---
       history.pushState(null, "", location.href);
+      // --- AKHIR TAMBAHAN BARU ---
 
       globalAppUrl = response.appUrl || '';
 
@@ -2611,13 +2521,11 @@
       currentUserRole = response.role;
 
       if (response.role === 'superadmin') {
-        setLoading(false); // Matikan loading untuk superadmin
         document.getElementById('salam-superadmin').innerText = `Selamat Datang, ${response.nama}`;
         tampilHalaman('halaman-superadmin');
         bukaHalamanSuperadmin();
 
       } else if (response.role === 'admin') {
-        setLoading(false); // Matikan loading untuk admin
         jenjangBaseCache = response.jenjang;
         jenjangPilihanCache = response.jenjangPilihan;
         document.getElementById('salam-sekolah').innerText = `Selamat Datang, Admin ${response.namaSekolah}`;
@@ -2627,36 +2535,21 @@
           document.getElementById('btn-kembali-ke-superadmin').style.display = 'inline-flex';
         }
 
+        // --- TAMBAHKAN 2 BARIS INI ---
         globalDonasiStatus = response.donasiStatus || "NONE";
         updatePremiumFeatures(globalDonasiStatus);
-        
+        // --- AKHIR TAMBAHAN ---
+
         tampilHalaman('halaman-utama');
-      
-      // === BLOK PERUBAHAN UTAMA UNTUK SSO ===
+
       } else if (response.role === 'guru') {
-        
-        // JANGAN panggil setLoading(false). Biarkan toast loading tetap tampil
-        // sampai halaman redirect manual muncul.
-        
-        const app2Url = "https://script.google.com/macros/s/AKfycbzLlM6gS4SLd6uSEWXW9BmM78elNyXdi0wNnpfB4roDiVNWLK52ZkFIBZs6CIp4hi4IMg/exec"; // <-- URL APP 2 Anda
-        const app1Token = response.token; 
-        const npsn = response.npsn;
-        const email = response.email;
-        // ===== PERBAIKAN DI SINI =====
-        // Dapatkan URL App 1 (sudah ada di 'response' dari 'globalAppUrl')
-        const app1ReturnUrl = response.appUrl;
-        
-        // Tambahkan 'return_url' ke redirectUrl
-        const redirectUrl = `${app2Url}?app1_token=${encodeURIComponent(app1Token)}&npsn=${encodeURIComponent(npsn)}&email=${encodeURIComponent(email)}&return_url=${encodeURIComponent(app1ReturnUrl)}`;
-        // ===== AKHIR PERBAIKAN =====
-        
-        // Panggil helper BARU untuk menampilkan tombol "Lanjutkan"
-        showRedirectPage(redirectUrl);
-      // === AKHIR BLOK PERUBAHAN ===
+        guruHasPraktek = response.hasUjianPraktek;
+        guruHasMadrasah = response.hasUjianMadrasah;
+        jenjangPilihanCache = response.jenjangPilihan;
+        tampilkanDashboardGuru(response.namaGuru, response.namaSekolah);
       }
 
     } else {
-      setLoading(false); // Matikan loading jika GAGAL
       if (document.getElementById('halaman-login-guru').style.display !== 'none') {
           showMessage('login-guru-error', response.message, true);
       } else {
@@ -7625,11 +7518,6 @@ function populateSiswaFilters() {
     });
     const regPage = document.getElementById('halaman-registrasi');
     if (regPage) regPage.style.display = 'none';
-
-    // ===== PERBAIKAN DI SINI =====
-    const redirectPage = document.getElementById('halaman-redirect-guru');
-    if (redirectPage) redirectPage.style.display = 'none';
-    // ===== AKHIR PERBAIKAN =====
     
     container.querySelector(`.tab-link[data-tab="${tabName}"]`).classList.add('active');
     const contentToShow = container.querySelector(`.auth-tab-content[data-content="${tabName}"]`);
@@ -9970,655 +9858,5 @@ function populateSiswaFilters() {
     
     showToast(`Berhasil membuat ${cardData.length} kartu siswa.`, 'sukses');
   }
-
-  /**
-   * [FUNGSI BARU]
-   * Menampilkan halaman "lanjutkan" manual karena redirect otomatis diblokir.
-   */
-  function showRedirectPage(redirectUrl) {
-    try {
-      // 1. Matikan toast loading
-      setLoading(false); 
-      
-      // 2. Sembunyikan semua form login
-      document.getElementById('halaman-login').style.display = 'none';
-      document.getElementById('halaman-login-guru').style.display = 'none';
-      document.getElementById('halaman-login-siswa').style.display = 'none';
-      
-      // 3. Tampilkan halaman redirect
-      const redirectPage = document.getElementById('halaman-redirect-guru');
-      redirectPage.style.display = 'block';
-      
-      // 4. Atur URL yang benar di tombol "Lanjutkan"
-      const redirectButton = document.getElementById('btn-redirect-guru-lanjutkan');
-      redirectButton.href = redirectUrl;
-      
-      // ===== PERBAIKAN DI SINI =====
-      // Panggil .click() SEGERA tanpa penundaan.
-      // Ini masih bagian dari event 'click' login asli, jadi browser akan mengizinkannya.
-      redirectButton.click();
-      // ===== AKHIR PERBAIKAN =====
-    
-    } catch (e) {
-      console.error("Gagal total menampilkan halaman redirect manual:", e);
-      // Fallback paling akhir jika semua gagal
-      document.body.innerHTML = '<h1>Login Berhasil</h1><p>Silakan <a href="' + redirectUrl + '" target="_top">klik di sini untuk melanjutkan</a>.</p>';
-    }
-  }
-
-  // ===== FUNGSI BARU UNTUK KELOLA TAHUN AJAR (SUPERADMIN) =====
-
-  /**
-   * [SUPERADMIN] Membuka halaman Kelola Tahun Ajaran
-   */
-  function bukaHalamanTahunAjar() {
-    tampilHalaman('halaman-tahun-ajar');
-    setLoading(true, 'Memuat data tahun ajar...', false, false);
-    hideMessage('tahun-ajar-message');
-    document.getElementById('tahun-ajar-list-container').innerHTML = "<p>Memuat...</p>";
-    document.getElementById('btn-simpan-tahun-ajar').disabled = true;
-    google.script.run
-      .withSuccessHandler(onTahunAjarLoaded)
-      .withFailureHandler(onGagal)
-      .superadmin_getTahunAjaran(getToken());
-  }
-
-  /**
-   * [SUPERADMIN] Callback setelah data T.A. dimuat
-   */
-  function onTahunAjarLoaded(response) {
-    setLoading(false);
-    document.getElementById('btn-simpan-tahun-ajar').disabled = true;
-    if (response.status !== 'sukses') {
-      showMessage('tahun-ajar-message', response.message, true);
-      document.getElementById('tahun-ajar-list-container').innerHTML = '';
-      return;
-    }
-    renderTahunAjarList(response.data || []);
-  }
-
-  /**
-   * [SUPERADMIN] Mengambil data T.A. dari form di layar
-   */
-  function getCurrentTahunAjarList() {
-    const container = document.getElementById('tahun-ajar-list-container');
-    const rows = container.querySelectorAll('.tahun-ajar-input-row');
-    const list = [];
-    rows.forEach(row => {
-      const id = row.querySelector('.ta-id').value.trim();
-      const deskripsi = row.querySelector('.ta-deskripsi').value.trim();
-      const is_locked = row.querySelector('.ta-locked').value === 'true';
-      if (id && deskripsi) { // Hanya simpan jika ID dan Deskripsi diisi
-        list.push({ id, deskripsi, is_locked });
-      }
-    });
-    return list;
-  }
-
-  /**
-   * [SUPERADMIN] Merender daftar input T.A.
-   */
-  function renderTahunAjarList(taList, addNew = false) {
-    const container = document.getElementById('tahun-ajar-list-container');
-    container.innerHTML = ''; // Kosongkan
-    
-    if (addNew) {
-      taList.push({ id: '', deskripsi: '', is_locked: false });
-    }
-
-    if (taList.length === 0) {
-      taList.push({ id: '', deskripsi: '', is_locked: false });
-    }
-
-    taList.forEach((ta, index) => {
-      const div = document.createElement('div');
-      div.className = 'tahun-ajar-input-row';
-      
-      const lockedSelected = ta.is_locked ? 'selected' : '';
-      const unlockedSelected = !ta.is_locked ? 'selected' : '';
-
-      div.innerHTML = `
-        <input type="text" class="ta-id" placeholder="ID T.A. (Cth: 2024/2025)" value="${ta.id || ''}">
-        <input type="text" class="ta-deskripsi" placeholder="Deskripsi (Cth: 2024/2025 Genap)" value="${ta.deskripsi || ''}">
-        <select class="ta-locked">
-          <option value="false" ${unlockedSelected}>Terbuka</option>
-          <option value="true" ${lockedSelected}>Terkunci 🔒</option>
-        </select>
-        <button type="button" class="btn-aksi-ta btn-remove-ta">&times;</button>
-      `;
-      container.appendChild(div);
-    });
-    
-    // Fokus ke input ID baru jika 'addNew' true
-    if (addNew) {
-      container.querySelector('.tahun-ajar-input-row:last-child .ta-id').focus();
-    }
-  }
-
-  /**
-   * [SUPERADMIN] Mengirim data T.A. baru ke backend
-   */
-  function simpanTahunAjar() {
-    setButtonLoading(document.getElementById('btn-simpan-tahun-ajar'), 'Menyimpan...');
-    hideMessage('tahun-ajar-message');
-    
-    const list = getCurrentTahunAjarList();
-    
-    // Validasi duplikat ID
-    const idSet = new Set();
-    for (const item of list) {
-      if (idSet.has(item.id)) {
-        resetButtonLoading(document.getElementById('btn-simpan-tahun-ajar'));
-        showMessage('tahun-ajar-message', `ID Tahun Ajaran duplikat: "${item.id}". ID harus unik.`, true);
-        return;
-      }
-      idSet.add(item.id);
-    }
-    
-    google.script.run
-      .withSuccessHandler(onTahunAjarSaved)
-      .withFailureHandler(onGagal) // onGagal akan mereset tombol
-      .superadmin_saveTahunAjaran(getToken(), list);
-  }
-
-  /**
-   * [SUPERADMIN] Callback setelah T.A. disimpan
-   */
-  function onTahunAjarSaved(response) {
-    resetButtonLoading(document.getElementById('btn-simpan-tahun-ajar'));
-    if (response.status === 'sukses') {
-      showMessage('tahun-ajar-message', 'Data Tahun Ajaran berhasil disimpan!', false);
-      document.getElementById('btn-simpan-tahun-ajar').disabled = true; // Nonaktifkan tombol simpan
-      // Muat ulang data untuk membersihkan baris kosong
-      bukaHalamanTahunAjar(); 
-    } else {
-      showMessage('tahun-ajar-message', response.message, true);
-    }
-  }
-
-  // ===== AKHIR FUNGSI BARU =====
-
-  // ===== FUNGSI BARU UNTUK KELOLA TAHUN AJAR (ADMIN SEKOLAH) =====
-
-  /**
-   * [ADMIN] Membuka halaman Kelola Tahun Ajaran
-   */
-  function bukaHalamanTahunAjarAdmin() {
-    tampilHalaman('halaman-tahun-ajar-admin');
-    setLoading(true, 'Memuat data tahun ajar...', false, false);
-    isFormDirty = false;
-    hideMessage('tahun-ajar-admin-message');
-    document.getElementById('tahun-ajar-admin-list-container').innerHTML = "<p>Memuat...</p>";
-    document.getElementById('btn-simpan-tahun-ajar-admin').disabled = true;
-    google.script.run
-      .withSuccessHandler(onTahunAjarAdminLoaded)
-      .withFailureHandler(onGagal)
-      .getTahunAjaranAdmin(getToken());
-  }
-
-  function onTahunAjarAdminLoaded(response) {
-    setLoading(false);
-    document.getElementById('btn-simpan-tahun-ajar-admin').disabled = true;
-    if (response.status !== 'sukses') {
-      showMessage('tahun-ajar-admin-message', response.message, true);
-      document.getElementById('tahun-ajar-admin-list-container').innerHTML = '';
-      return;
-    }
-    
-    // ===== TAMBAHKAN BARIS INI =====
-    globalTahunAjarAdminCache = response.data || []; // Simpan data lengkap
-    // ===== AKHIR TAMBAHAN =====
-    
-    renderTahunAjarAdminList(response.data || []);
-  }
-
-  /**
-   * [ADMIN - DIPERBARUI] Mengambil data T.A. dari form di layar
-   * DAN menggabungkannya dengan status 'is_in_use' dari cache.
-   */
-  function getCurrentTahunAjarAdminList() {
-    const container = document.getElementById('tahun-ajar-admin-list-container');
-    const rows = container.querySelectorAll('.tahun-ajar-input-row');
-    const list = [];
-    
-    // Buat Peta (Map) dari cache untuk pencarian cepat berdasarkan ID
-    const cacheMap = new Map(globalTahunAjarAdminCache.map(item => [item.id, item]));
-
-    rows.forEach(row => {
-      const idInput = row.querySelector('.ta-id');
-      const id = idInput.value.trim();
-      const deskripsi = row.querySelector('.ta-deskripsi').value.trim();
-      const is_locked = row.querySelector('.ta-locked').value === 'true';
-      
-      // Ambil data 'is_in_use' dari cache berdasarkan ID
-      // Jika ID-nya baru (kosong), is_in_use otomatis false.
-      const cachedItem = cacheMap.get(id);
-      const is_in_use = (cachedItem && cachedItem.is_in_use) ? true : false;
-      
-      // Hanya proses baris yang memiliki ID dan Deskripsi (baris yang valid)
-      // ATAU jika input ID-nya tidak kosong (untuk baris baru yang sedang diketik)
-      if (id || deskripsi) { 
-        list.push({ 
-          id, 
-          deskripsi, 
-          is_locked, 
-          is_in_use // <-- [PERBAIKAN KUNCI] Sertakan status 'is_in_use'
-        });
-      }
-    });
-    return list;
-  }
-
-  /**
-   * [ADMIN - DIPERBARUI] Merender daftar input T.A.
-   * Tombol Hapus & ID dinonaktifkan jika (Terkunci ATAU Digunakan).
-   * Status Kunci SELALU bisa diubah.
-   */
-  function renderTahunAjarAdminList(taList, addNew = false) {
-    const container = document.getElementById('tahun-ajar-admin-list-container');
-    container.innerHTML = ''; // Kosongkan
-    
-    if (addNew) {
-      taList.push({ id: '', deskripsi: '', is_locked: false, is_in_use: false });
-    }
-
-    if (taList.length === 0) {
-      taList.push({ id: '', deskripsi: '', is_locked: false, is_in_use: false });
-    }
-
-    taList.forEach((ta, index) => {
-      const div = document.createElement('div');
-      div.className = 'tahun-ajar-input-row';
-      
-      const lockedSelected = ta.is_locked ? 'selected' : '';
-      const unlockedSelected = !ta.is_locked ? 'selected' : '';
-
-      // [PERBAIKAN LOGIKA] Tombol Hapus & Input ID dinonaktifkan jika terkunci ATAU sedang digunakan.
-      const isProtected = ta.is_locked || ta.is_in_use;
-      
-      // Tentukan title untuk tombol hapus
-      let deleteTitle = "Hapus baris ini";
-      if (ta.is_locked) {
-        deleteTitle = "Tidak dapat dihapus karena status 'Terkunci'. Buka kuncinya terlebih dahulu.";
-      } else if (ta.is_in_use) {
-        deleteTitle = "Tidak dapat dihapus karena T.A. ini sudah memiliki data penempatan siswa.";
-      }
-      
-      const inputIdReadonly = (isProtected) ? 'readonly' : '';
-      const inputIdTitle = (isProtected) ? 'ID tidak dapat diubah karena T.A. terkunci atau sudah digunakan.' : '';
-      const inputIdStyle = (isProtected) ? 'background-color: #f8f9fa; color: #6c757d; cursor: not-allowed;' : '';
-
-      // [PERBAIKAN UTAMA] Dropdown status kunci sekarang SELALU AKTIF.
-      // Atribut 'disabled' dan 'title' telah dihapus dari <select>.
-      div.innerHTML = `
-        <input type="text" class="ta-id" placeholder="ID T.A. (Cth: 2024/2025)" value="${ta.id || ''}" ${inputIdReadonly} title="${inputIdTitle}" style="${inputIdStyle}">
-        <input type="text" class="ta-deskripsi" placeholder="Deskripsi (Cth: 2024/2025 Genap)" value="${ta.deskripsi || ''}">
-        <select class="ta-locked" title="Ubah status kunci T.A.">
-          <option value="false" ${unlockedSelected}>Terbuka</option>
-          <option value="true" ${lockedSelected}>Terkunci 🔒</option>
-        </select>
-        <button type="button" class="btn-aksi-ta btn-remove-ta" ${isProtected ? 'disabled' : ''} title="${deleteTitle}">&times;</button>
-      `;
-
-      container.appendChild(div);
-    });
-    
-    // Fokus ke input ID baru jika 'addNew' true
-    if (addNew) {
-      const lastInput = container.querySelector('.tahun-ajar-input-row:last-child .ta-id');
-      if(lastInput) lastInput.focus();
-    }
-  }
-
-  /**
-   * [ADMIN] Mengirim data T.A. baru ke backend
-   */
-  function simpanTahunAjarAdmin() {
-    setButtonLoading(document.getElementById('btn-simpan-tahun-ajar-admin'), 'Menyimpan...');
-    hideMessage('tahun-ajar-admin-message');
-    
-    const list = getCurrentTahunAjarAdminList();
-    
-    // Validasi duplikat ID
-    const idSet = new Set();
-    for (const item of list) {
-      if (idSet.has(item.id)) {
-        resetButtonLoading(document.getElementById('btn-simpan-tahun-ajar-admin'));
-        showMessage('tahun-ajar-admin-message', `ID Tahun Ajaran duplikat: "${item.id}". ID harus unik.`, true);
-        return;
-      }
-      idSet.add(item.id);
-    }
-    
-    google.script.run
-      .withSuccessHandler(onTahunAjarAdminSaved)
-      .withFailureHandler(onGagal) // onGagal akan mereset tombol
-      .saveTahunAjaranAdmin(getToken(), list);
-  }
-
-  function onTahunAjarAdminSaved(response) {
-    resetButtonLoading(document.getElementById('btn-simpan-tahun-ajar-admin'));
-    if (response.status === 'sukses') {
-      isFormDirty = false;
-      
-      // ===== TAMBAHKAN BARIS INI =====
-      globalTahunAjarAdminCache = []; // Hapus cache agar dimuat ulang
-      // ===== AKHIR TAMBAHAN =====
-      
-      showMessage('tahun-ajar-admin-message', 'Data Tahun Ajaran berhasil disimpan!', false);
-      document.getElementById('btn-simpan-tahun-ajar-admin').disabled = true; // Nonaktifkan tombol simpan
-      // Muat ulang data untuk membersihkan baris kosong
-      bukaHalamanTahunAjarAdmin(); 
-    } else {
-      showMessage('tahun-ajar-admin-message', response.message, true);
-    }
-  }
-  // ===== AKHIR FUNGSI BARU =====
-
-  // ===== FUNGSI BARU UNTUK KELOLA PENEMPATAN SISWA (ADMIN SEKOLAH) =====
-
-  // Cache global untuk data penempatan
-  let globalEnrollmentData = {
-    siswaTersedia: [],
-    siswaTerdaftar: []
-  };
-
-  /**
-   * [ADMIN] Membuka halaman Kelola Penempatan Siswa
-   */
-  function bukaHalamanPenempatan() {
-    tampilHalaman('halaman-penempatan-siswa');
-    isFormDirty = false;
-    hideMessage('penempatan-message');
-    
-    // Sembunyikan kontainer utama, tampilkan spinner
-    document.getElementById('penempatan-container').style.display = 'none';
-    document.getElementById('penempatan-loading-spinner').style.display = 'block';
-    document.getElementById('btn-simpan-penempatan').disabled = true;
-    
-    // Reset list
-    document.getElementById('list-siswa-tersedia').innerHTML = '';
-    document.getElementById('list-siswa-terdaftar').innerHTML = '';
-    document.getElementById('filter-siswa-tersedia').value = '';
-    document.getElementById('filter-siswa-terdaftar').value = '';
-
-    // Muat dropdown Tahun Ajaran
-    const taSelect = document.getElementById('penempatan-ta-select');
-    taSelect.innerHTML = '<option value="">-- Memuat T.A... --</option>';
-    
-    google.script.run
-      .withSuccessHandler(onTALoadedForPenempatan)
-      .withFailureHandler(onGagal)
-      .getTahunAjaranAdmin(getToken()); // Panggil fungsi T.A. Admin yang sudah ada
-  }
-
-  /**
-   * [ADMIN] Callback setelah T.A. dimuat di halaman Penempatan
-   */
-  function onTALoadedForPenempatan(response) {
-    const taSelect = document.getElementById('penempatan-ta-select');
-    
-    if (response.status !== 'sukses' || !response.data || response.data.length === 0) {
-      taSelect.innerHTML = '<option value="">-- Gagal memuat T.A. --</option>';
-      showMessage('penempatan-message', 'Gagal memuat Tahun Ajaran. Buat T.A. di "Kelola Tahun Ajaran" dulu.', true);
-      document.getElementById('penempatan-loading-spinner').style.display = 'none';
-      return;
-    }
-    
-    taSelect.innerHTML = '<option value="">-- Pilih Tahun Ajaran --</option>';
-    response.data.forEach(ta => {
-      // Hanya tampilkan T.A. yang TERBUKA
-      if (ta.is_locked === false) {
-        taSelect.innerHTML += `<option value="${ta.id}">${ta.deskripsi}</option>`;
-      }
-    });
-    
-    document.getElementById('penempatan-loading-spinner').style.display = 'none';
-  }
-
-  /**
-   * [ADMIN] Memuat data siswa setelah T.A. dipilih
-   */
-  function loadEnrollmentData() {
-    const id_tahun_ajaran = document.getElementById('penempatan-ta-select').value;
-    if (!id_tahun_ajaran) {
-      document.getElementById('penempatan-container').style.display = 'none';
-      return;
-    }
-    
-    document.getElementById('penempatan-container').style.display = 'none';
-    document.getElementById('penempatan-loading-spinner').style.display = 'block';
-    hideMessage('penempatan-message');
-    
-    google.script.run
-      .withSuccessHandler(onEnrollmentDataLoaded)
-      .withFailureHandler(onGagal)
-      .getEnrollmentDataAdmin(getToken(), id_tahun_ajaran);
-  }
-
-  /**
-   * [ADMIN] Callback setelah data siswa & pendaftaran dimuat
-   */
-  function onEnrollmentDataLoaded(response) {
-    document.getElementById('penempatan-loading-spinner').style.display = 'none';
-    
-    if (response.status !== 'sukses') {
-      showMessage('penempatan-message', response.message, true);
-      return;
-    }
-    
-    globalEnrollmentData = {
-      siswaTersedia: response.siswaTersedia,
-      siswaTerdaftar: response.siswaTerdaftar
-    };
-
-    populatePenempatanKelasFilter();
-    
-    // Render kedua list
-    renderPenempatanList('tersedia');
-    renderPenempatanList('terdaftar');
-    
-    document.getElementById('penempatan-container').style.display = 'grid';
-    document.getElementById('btn-simpan-penempatan').disabled = true; // Belum ada perubahan
-    isFormDirty = false;
-    
-    // Reset tombol pindah
-    document.getElementById('btn-assign-siswa').disabled = true;
-    document.getElementById('btn-unassign-siswa').disabled = true;
-  }
-
-  /**
-   * [BARU] Mempopulasi dropdown filter kelas di halaman Penempatan Siswa.
-   */
-  function populatePenempatanKelasFilter() {
-    const selectKelas = document.getElementById('filter-penempatan-kelas');
-    // Pastikan globalEnrollmentData dan siswaTersedia ada
-    if (!globalEnrollmentData || !globalEnrollmentData.siswaTersedia) {
-      selectKelas.innerHTML = '<option value="semua">-- Gagal Muat --</option>';
-      return;
-    }
-    
-    const siswaList = globalEnrollmentData.siswaTersedia; // Filter berdasarkan siswa yg tersedia
-    
-    const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
-  
-    let optionsHtml = '<option value="semua">-- Semua Kelas --</option>';
-    kelasList.forEach(kelas => {
-      optionsHtml += `<option value="${kelas}">${kelas}</option>`;
-    });
-  
-    selectKelas.innerHTML = optionsHtml;
-    selectKelas.value = 'semua'; // Default ke "Semua Kelas"
-  }
-
-  /**
-   * [ADMIN] Merender salah satu (atau kedua) list siswa
-   */
-  function renderPenempatanList(listType) {
-    const filterNamaTersedia = document.getElementById('filter-siswa-tersedia').value.toLowerCase();
-    const filterKelasTersedia = document.getElementById('filter-penempatan-kelas').value; // <-- [PERBAIKAN] Ambil filter kelas
-    const filterNamaTerdaftar = document.getElementById('filter-siswa-terdaftar').value.toLowerCase();
-
-    if (listType === 'tersedia' || listType === 'all') {
-      const list = globalEnrollmentData.siswaTersedia;
-      const container = document.getElementById('list-siswa-tersedia');
-      container.innerHTML = '';
-      list.forEach(siswa => {
-        // [PERBAIKAN] Terapkan filter nama DAN filter kelas
-        const matchesNama = siswa.nama.toLowerCase().includes(filterNamaTersedia);
-        const matchesKelas = (filterKelasTersedia === 'semua') || (siswa.kelas === filterKelasTersedia);
-
-        if (matchesNama && matchesKelas) {
-          container.innerHTML += `
-            <div class="penempatan-list-item" data-id="${siswa.nomor_ujian}">
-              <span class="item-nama">${siswa.nama}</span>
-              <span class="item-kelas">${siswa.kelas}</span>
-            </div>`;
-        }
-      });
-    }
-    
-    if (listType === 'terdaftar' || listType === 'all') {
-        const list = globalEnrollmentData.siswaTerdaftar;
-        const container = document.getElementById('list-siswa-terdaftar');
-        container.innerHTML = '';
-        list.forEach(siswa => {
-          // [PERBAIKAN] Ganti variabelnya ke filterNamaTerdaftar
-          if (siswa.nama.toLowerCase().includes(filterNamaTerdaftar) || siswa.kelas.toLowerCase().includes(filterNamaTerdaftar)) {
-            container.innerHTML += `
-              <div class="penempatan-list-item" data-id="${siswa.nomor_ujian}">
-              <div class="item-info-wrapper">
-                <span class="item-nama">${siswa.nama}</span>
-                <span class="item-kelas">${siswa.kelas}</span>
-              </div>
-              <input type="text" class="item-ruang" placeholder="Ruang" value="${siswa.ruang_ujian || ''}" onclick="event.stopPropagation();">
-            </div>`;
-        }
-      });
-    }
-  }
-
-  function filterPenempatanList(event) {
-    // [PERBAIKAN] Jika filter nama 'tersedia' ATAU filter 'kelas' berubah, render ulang 'tersedia'
-    const listType = (event.target.id === 'filter-siswa-tersedia' || event.target.id === 'filter-penempatan-kelas')
-                     ? 'tersedia' 
-                     : 'terdaftar';
-    renderPenempatanList(listType);
-  }
-
-  /**
-   * [ADMIN] Menangani klik pada item siswa (memilih/batal pilih)
-   */
-  function togglePenempatanItem(event) {
-    const item = event.target.closest('.penempatan-list-item');
-    if (!item) return;
-    
-    // Cek jika klik pada input ruang, jangan toggle
-    if (event.target.classList.contains('item-ruang')) {
-      return;
-    }
-    
-    item.classList.toggle('selected');
-    
-    // Update status tombol
-    document.getElementById('btn-assign-siswa').disabled = 
-      document.querySelectorAll('#list-siswa-tersedia .selected').length === 0;
-    document.getElementById('btn-unassign-siswa').disabled = 
-      document.querySelectorAll('#list-siswa-terdaftar .selected').length === 0;
-  }
-
-  /**
-   * [ADMIN] Memindahkan siswa antar list
-   */
-  function moveSiswa(direction) {
-    isFormDirty = true;
-    document.getElementById('btn-simpan-penempatan').disabled = false;
-    
-    if (direction === 'assign') {
-      const selectedSiswa = document.querySelectorAll('#list-siswa-tersedia .selected');
-      selectedSiswa.forEach(item => {
-        const id = item.dataset.id;
-        const index = globalEnrollmentData.siswaTersedia.findIndex(s => s.nomor_ujian === id);
-        if (index > -1) {
-          // Pindahkan dari array Tersedia ke Terdaftar
-          const [siswa] = globalEnrollmentData.siswaTersedia.splice(index, 1);
-          siswa.ruang_ujian = ''; // Set default ruang
-          globalEnrollmentData.siswaTerdaftar.push(siswa);
-        }
-      });
-    } else { // 'unassign'
-      const selectedSiswa = document.querySelectorAll('#list-siswa-terdaftar .selected');
-      selectedSiswa.forEach(item => {
-        const id = item.dataset.id;
-        const index = globalEnrollmentData.siswaTerdaftar.findIndex(s => s.nomor_ujian === id);
-        if (index > -1) {
-          // Pindahkan dari array Terdaftar ke Tersedia
-          const [siswa] = globalEnrollmentData.siswaTerdaftar.splice(index, 1);
-          delete siswa.ruang_ujian; // Hapus properti ruang
-          globalEnrollmentData.siswaTersedia.push(siswa);
-        }
-      });
-    }
-    
-    // Urutkan ulang kedua array
-    globalEnrollmentData.siswaTersedia.sort((a, b) => a.nama.localeCompare(b.nama));
-    globalEnrollmentData.siswaTerdaftar.sort((a, b) => a.nama.localeCompare(b.nama));
-    
-    // [PERBAIKAN] Perbarui filter kelas karena siswa 'tersedia' telah berubah
-    populatePenempatanKelasFilter();
-    
-    // Render ulang kedua list
-    renderPenempatanList('all');
-    
-    // Reset tombol
-    document.getElementById('btn-assign-siswa').disabled = true;
-    document.getElementById('btn-unassign-siswa').disabled = true;
-  }
-
-  /**
-   * [ADMIN] Menyimpan data penempatan baru
-   */
-  function simpanPenempatanSiswa() {
-    const id_tahun_ajaran = document.getElementById('penempatan-ta-select').value;
-    if (!id_tahun_ajaran) {
-      showMessage('penempatan-message', 'Tahun Ajaran tidak valid.', true);
-      return;
-    }
-    
-    setButtonLoading(document.getElementById('btn-simpan-penempatan'), 'Menyimpan...');
-    
-    // Ambil data terbaru dari input 'ruang_ujian'
-    globalEnrollmentData.siswaTerdaftar.forEach(siswa => {
-      const inputRuang = document.querySelector(`#list-siswa-terdaftar .penempatan-list-item[data-id="${siswa.nomor_ujian}"] .item-ruang`);
-      if (inputRuang) {
-        siswa.ruang_ujian = inputRuang.value.trim();
-      }
-    });
-    
-    // Kirim HANYA list siswa terdaftar
-    google.script.run
-      .withSuccessHandler(onPenempatanSaved)
-      .withFailureHandler(onGagal)
-      .saveEnrollmentDataAdmin(getToken(), id_tahun_ajaran, globalEnrollmentData.siswaTerdaftar);
-  }
-
-  /**
-   * [ADMIN] Callback setelah penempatan disimpan
-   */
-  function onPenempatanSaved(response) {
-    resetButtonLoading(document.getElementById('btn-simpan-penempatan'));
-    
-    if (response.status === 'sukses') {
-      isFormDirty = false;
-      document.getElementById('btn-simpan-penempatan').disabled = true;
-      showMessage('penempatan-message', response.message, false);
-      // Muat ulang data untuk konfirmasi
-      loadEnrollmentData();
-    } else {
-      showMessage('penempatan-message', response.message, true);
-    }
-  }
-  // ===== AKHIR FUNGSI BARU =====
 
 </script>
