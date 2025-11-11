@@ -352,6 +352,8 @@
   #btn-kembali-ke-dashboard-11,
   #btn-kembali-ke-dashboard-12,
   #btn-kembali-ke-dashboard-13,
+  #btn-kembali-ke-dashboard-14,
+  #btn-kembali-ke-dashboard-15,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
   #btn-kembali-ke-dashboard-guru {
@@ -380,6 +382,8 @@
   #btn-kembali-ke-dashboard-11:hover,
   #btn-kembali-ke-dashboard-12:hover,
   #btn-kembali-ke-dashboard-13:hover,
+  #btn-kembali-ke-dashboard-14:hover,
+  #btn-kembali-ke-dashboard-15:hover,
   #btn-kembali-ke-input-rapor:hover,
   #btn-kembali-ke-input-rapor-2:hover,
   #btn-kembali-ke-dashboard-guru:hover {
@@ -500,7 +504,9 @@
     #halaman-kelola-kelulusan,
     #halaman-guru,
     #halaman-donasi,
-    #halaman-proses-kelulusan {
+    #halaman-proses-kelulusan,
+    #halaman-tahun-ajar-admin,
+    #halaman-penempatan-siswa {
       max-width: 960px;
     }
 
@@ -2705,6 +2711,8 @@
   #btn-kembali-ke-dashboard-11,
   #btn-kembali-ke-dashboard-12,
   #btn-kembali-ke-dashboard-13,
+  #btn-kembali-ke-dashboard-14,
+  #btn-kembali-ke-dashboard-15,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
   #btn-kembali-ke-dashboard-guru {
@@ -2727,6 +2735,8 @@
   #btn-kembali-ke-dashboard-11 i,
   #btn-kembali-ke-dashboard-12 i,
   #btn-kembali-ke-dashboard-13 i,
+  #btn-kembali-ke-dashboard-14 i,
+  #btn-kembali-ke-dashboard-15 i,
   #btn-kembali-ke-input-rapor i,
   #btn-kembali-ke-input-rapor-2 i,
   #btn-kembali-ke-dashboard-guru i {
@@ -4535,121 +4545,97 @@
     }
   }
 
-  /* --- AKHIR BLOK BARU --- */
-
-  /* Header untuk form grid T.A. */
   .form-group-grid-header {
     display: grid;
-    /* Sesuaikan grid agar cocok dengan .tahun-ajar-input-row */
     grid-template-columns: 1fr 1.5fr 100px 50px; 
     gap: 10px;
-    margin-bottom: 5px;
-    padding: 0 5px;
+    margin-bottom: 0; /* Dihapus */
+    padding: 8px 10px; /* Diubah */
+    border-bottom: 2px solid var(--border-color); /* Ditambah */
+    background-color: var(--bg-light); /* Ditambah */
+    border-radius: 8px 8px 0 0; /* Ditambah */
   }
   .form-group-grid-header label {
-    font-size: 12px;
+    font-size: 13px; /* Diubah */
     font-weight: 700;
-    color: var(--text-light);
+    color: var(--text-dark); /* Diubah */
     margin-bottom: 0;
+    padding-left: 5px; /* Ditambah */
   }
 
-  /* Baris input untuk T.A. */
+  #tahun-ajar-admin-list-container {
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    overflow: hidden; 
+  }
+
   .tahun-ajar-input-row {
     display: grid;
     grid-template-columns: 1fr 1.5fr 100px 50px;
-    gap: 10px;
-    margin-bottom: 10px;
-    align-items: center;
+    gap: 0; /* Diubah */
+    margin-bottom: 0; /* Diubah */
+    align-items: stretch; /* Diubah */
+    border-bottom: 1px solid var(--border-color);
   }
-  .tahun-ajar-input-row input[type="text"] {
-    margin: 0;
-    font-size: 15px;
-    padding: 10px;
+  .tahun-ajar-input-row:last-child {
+    border-bottom: none;
   }
+  .tahun-ajar-input-row:nth-child(even) {
+    background-color: var(--bg-light); /* Zebra striping */
+  }
+
+  .tahun-ajar-input-row input[type="text"],
   .tahun-ajar-input-row select {
     margin: 0;
     font-size: 15px;
-    padding: 10px;
-    height: 44px; /* Samakan tinggi */
-    box-sizing: border-box;
+    padding: 12px 10px; /* Diubah */
+    height: 48px; /* Diubah */
+    box-sizing: border-box; 
+    border: none; /* Diubah */
+    border-radius: 0; /* Diubah */
+    background-color: transparent; /* Diubah */
+    border-left: 1px solid var(--border-color); /* Diubah */
+  }
+  
+  .tahun-ajar-input-row input[type="text"]:first-child {
+    border-left: none; /* Hapus garis di sel pertama */
   }
 
-  /* Tombol aksi di baris T.A. */
-  .btn-aksi-ta {
-    width: 100%; /* Penuhi 50px */
-    padding: 10px 0;
-    font-size: 16px;
-    font-weight: 700;
-    flex-shrink: 0;
-    line-height: 1.2;
-    height: 44px; /* Samakan tinggi input */
-    gap: 0;
-  }
-  .btn-remove-ta {
-    background-color: var(--danger-color);
-  }
-  .btn-remove-ta:hover {
-    background-color: #b02a37;
-  }
-
-  /* Tombol simpan T.A. */
-  #btn-simpan-tahun-ajar {
-    background-color: var(--success-color);
-  }
-  #btn-simpan-tahun-ajar:hover {
-    background-color: #157347;
-  }
-  #btn-simpan-tahun-ajar:disabled {
-    background-color: var(--secondary-color) !important;
-  }
-
-  /* Header untuk form grid T.A. Admin */
-  .form-group-grid-header {
-    display: grid;
-    /* Grid 4 kolom */
-    grid-template-columns: 1fr 1.5fr 100px 50px; 
-    gap: 10px;
-    margin-bottom: 5px;
-    padding: 0 5px;
-  }
-  .form-group-grid-header label {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-light);
-    margin-bottom: 0;
-  }
-
-  /* Baris input untuk T.A. Admin */
-  .tahun-ajar-input-row {
-    display: grid;
-    grid-template-columns: 1fr 1.5fr 100px 50px;
-    gap: 10px;
-    margin-bottom: 10px;
-    align-items: center;
-  }
-  .tahun-ajar-input-row input[type="text"] {
-    margin: 0;
-    font-size: 15px;
-    padding: 10px;
-  }
-  .tahun-ajar-input-row select {
-    margin: 0;
-    font-size: 15px;
-    padding: 10px;
-    height: 44px; /* Samakan tinggi */
-    box-sizing: border-box;
+  .tahun-ajar-input-row input[type="text"]:focus,
+  .tahun-ajar-input-row select:focus {
+    outline: none;
+    background-color: #fff;
+    box-shadow: inset 0 0 0 2px var(--primary-color);
+    z-index: 1;
+    position: relative;
   }
 
   /* Tombol aksi di baris T.A. Admin */
   .btn-aksi-ta {
-    width: 100%; /* Penuhi 50px */
+    width: 100%; 
     padding: 10px 0;
     font-size: 16px;
     font-weight: 700;
     flex-shrink: 0;
     line-height: 1.2;
-    height: 44px; /* Samakan tinggi input */
+    height: 48px; /* Diubah */
     gap: 0;
+    border: none; /* Ditambah */
+    border-radius: 0; /* Ditambah */
+    border-left: 1px solid var(--border-color); /* Ditambah */
+  }
+  #btn-add-tahun-ajar-admin {
+    width: auto;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 15px;
+    background-color: var(--success-color);
+    border-radius: 8px;
+  }
+  #btn-add-tahun-ajar-admin:hover {
+    background-color: #157347;
   }
   .btn-remove-ta {
     background-color: var(--danger-color);
@@ -4706,6 +4692,36 @@
     background-color: var(--bg-light);
   }
 
+  /* [PERBAIKAN] Style untuk filter kelas di halaman penempatan */
+  .penempatan-filter-controls {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .penempatan-filter-kelas {
+    flex: 1; /* Ambil 1 bagian ruang */
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--bg-white);
+  }
+
+  .penempatan-filter {
+    flex: 2; /* Ambil 2 bagian ruang */
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin: 0;
+    border-bottom: none; /* Hapus border-bottom asli */
+  }
+  
+  .penempatan-list-box {
+    height: 450px; /* Sedikit lebih tinggi untuk mengakomodasi filter */
+  }
+
   .penempatan-filter {
     width: 100%;
     padding: 10px 15px;
@@ -4726,47 +4742,62 @@
   }
 
   .penempatan-list-item {
-    display: flex; /* Gunakan flexbox */
-    justify-content: space-between; /* Pisahkan nama dan input */
-    align-items: center; /* Sejajarkan */
-    padding: 8px 10px;
+    display: flex; /* <-- INI KUNCI PERBAIKANNYA */
+    justify-content: space-between; 
+    align-items: center; 
+    padding: 10px 12px; /* Sedikit lebih besar */
     font-size: 14px;
     cursor: pointer;
-    border-radius: 5px;
-    margin: 3px 0;
-    border: 1px solid transparent;
-    gap: 10px; /* Jarak antara nama dan input */
+    border: none; /* Hapus border transparan */
+    border-bottom: 1px solid var(--bg-light); /* Garis pemisah tipis */
+    margin: 0; /* Hapus margin */
+    border-radius: 0; /* Hapus radius */
+    gap: 10px; 
+    transition: background-color 0.1s ease-in-out;
+  }
+  .penempatan-list-item:last-child {
+    border-bottom: none; /* Hapus border untuk item terakhir */
   }
   .penempatan-list-item:hover {
-    background-color: #e9ecef;
+    background-color: #f8f9fa; /* Hover lebih halus */
   }
   .penempatan-list-item.selected {
     background-color: #e7f1ff;
-    border-color: var(--primary-color);
     font-weight: 500;
+    border-bottom-color: #e7f1ff;
   }
 
+  .penempatan-list-item .item-info-wrapper {
+    flex-grow: 1; /* Grup ini yang akan mengambil sisa ruang */
+    display: flex;
+    flex-direction: column; /* Nama di atas, Kelas di bawah */
+    justify-content: center;
+    overflow: hidden; /* Mencegah teks panjang merusak layout */
+  }
   .penempatan-list-item .item-nama {
-    flex-grow: 1; /* Nama ambil ruang sisa */
+    font-weight: 500;
+    color: var(--text-dark);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* Hapus flex-grow: 1 (jika ada) */
   }
   .penempatan-list-item .item-kelas {
-    flex-shrink: 0; /* Kelas tidak mengecil */
-    font-size: 12px;
+    flex-shrink: 0; 
+    font-size: 13px;
     color: var(--text-light);
-    background-color: #e9ecef;
-    padding: 2px 6px;
-    border-radius: 4px;
+    background-color: transparent; /* Hapus background */
+    padding: 0; /* Hapus padding */
+    border-radius: 0; /* Hapus radius */
   }
   .penempatan-list-item .item-ruang {
-    flex-shrink: 0; /* Input ruang tidak mengecil */
-    width: 80px;
-    font-size: 13px;
-    padding: 5px;
+    flex-shrink: 0; 
+    width: 70px; /* <-- PERKECIL UKURANNYA */
+    font-size: 14px; /* Samakan font-size */
+    padding: 8px; /* Samakan padding */
+    text-align: center;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 6px; /* Samakan radius */
   }
 
   .penempatan-actions {
@@ -4785,5 +4816,30 @@
     background-color: var(--secondary-color) !important;
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* [BARU] Style untuk header di atas list penempatan */
+  .penempatan-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 12px;
+    margin-top: 10px;
+    border-bottom: 2px solid var(--border-color);
+    background-color: var(--bg-light);
+  }
+  .penempatan-list-header span {
+    padding: 8px 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dark);
+  }
+  .penempatan-list-header .header-siswa {
+    flex-grow: 1;
+  }
+  .penempatan-list-header .header-kelas-ruang {
+    flex-shrink: 0;
+    width: 70px; /* Samakan dengan lebar input/kelas */
+    text-align: center;
   }
 </style>
