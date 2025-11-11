@@ -2500,24 +2500,20 @@
     }
   }
 
+  // --- [GANTI FUNGSI INI] ---
   function hasilLogin(response) {
     setLoading(false);
     resetButtonLoading(document.getElementById('btn-login'));
     resetButtonLoading(document.getElementById('btn-login-guru'));
 
     if (response.status === "sukses") {
+      // Logika login ADMIN dan SUPERADMIN (App 1) tetap sama
       localStorage.setItem('sessionToken', response.token);
       resetInactivityTimer();
-      
-      // --- TAMBAHAN BARU: Mendorong state "jebakan" ---
       history.pushState(null, "", location.href);
-      // --- AKHIR TAMBAHAN BARU ---
-
       globalAppUrl = response.appUrl || '';
-
       isImpersonatingCache = false;
       document.getElementById('btn-kembali-ke-superadmin').style.display = 'none';
-
       currentUserRole = response.role;
 
       if (response.role === 'superadmin') {
@@ -2534,27 +2530,30 @@
           isImpersonatingCache = true;
           document.getElementById('btn-kembali-ke-superadmin').style.display = 'inline-flex';
         }
-
-        // --- TAMBAHKAN 2 BARIS INI ---
+        
         globalDonasiStatus = response.donasiStatus || "NONE";
         updatePremiumFeatures(globalDonasiStatus);
-        // --- AKHIR TAMBAHAN ---
-
         tampilHalaman('halaman-utama');
-
-      } else if (response.role === 'guru') {
-        guruHasPraktek = response.hasUjianPraktek;
-        guruHasMadrasah = response.hasUjianMadrasah;
-        jenjangPilihanCache = response.jenjangPilihan;
-        tampilkanDashboardGuru(response.namaGuru, response.namaSekolah);
       }
+      // Logika 'else if (response.role === 'guru')' yang lama Dihapus
+
+    } else if (response.status === "sso_redirect") {
+      // --- [INI ADALAH LOGIKA BARU UNTUK GURU] ---
+      // Tampilkan toast sukses sebelum redirect
+      showToast("Login Guru berhasil. Mengalihkan ke Aplikasi Nilai Ujian...", 'sukses', 3000);
+      
+      // Tunggu sebentar agar user bisa baca, lalu redirect
+      setTimeout(() => {
+        window.location.href = response.redirectUrl;
+      }, 1000); 
+      // --- [AKHIR LOGIKA BARU] ---
 
     } else {
+      // Logika 'gagal' tetap sama
       if (document.getElementById('halaman-login-guru').style.display !== 'none') {
           showMessage('login-guru-error', response.message, true);
       } else {
           showMessage('login-error', response.message, true);
-
           const loginPage = document.getElementById('halaman-login');
           if (loginPage.style.display !== 'none') {
             loginPage.classList.remove('login-fail-shake');
