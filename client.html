@@ -2544,7 +2544,7 @@
       
       // Tunggu sebentar agar user bisa baca, lalu redirect
       setTimeout(() => {
-        window.location.href = response.redirectUrl;
+        window.top.location.href = response.redirectUrl;
       }, 1000); 
       // --- [AKHIR LOGIKA BARU] ---
 
