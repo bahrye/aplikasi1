@@ -143,6 +143,8 @@
     dataIjazah: {}
   };
 
+  let lastDashboardScrollPosition = 0;
+
   let showWeightedUjian = true;
   let showWeightedRapor = true;
 
@@ -588,6 +590,16 @@
   }
 
   function tampilHalaman(idHalaman) {
+    // --- [PERBAIKAN BARU V2] ---
+    if (idHalaman === 'halaman-utama') {
+      // Kita KEMBALI ke dashboard, pulihkan scroll
+      window.scrollTo({ top: lastDashboardScrollPosition, behavior: 'auto' });
+    } else {
+      // Kita pergi ke halaman LAIN (siswa, mapel, dll.), scroll ke atas.
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    // --- [AKHIR PERBAIKAN BARU V2] ---
+
     /* --- =================================== --- */
     /* ---      TAMBAHAN BARU: Hentikan Video    --- */
     /* --- =GET-VIDEO-STATE-FAILED================================== --- */
@@ -7099,6 +7111,15 @@ function populateSiswaFilters() {
    * @param {function} targetPageFunction Fungsi yang akan dijalankan jika bersih (misal: bukaHalamanInputUjian)
    */
   function handleNavigationConfirm(targetPageFunction) {
+    
+    // --- [PERBAIKAN BARU] Simpan posisi scroll jika kita ada di dasbor ---
+    const currentPageId = localStorage.getItem(LAST_PAGE_KEY) || 'halaman-utama';
+    if (currentPageId === 'halaman-utama') {
+      // Kita akan meninggalkan 'halaman-utama', simpan posisinya.
+      lastDashboardScrollPosition = window.scrollY;
+    }
+    // --- [AKHIR PERBAIKAN BARU] ---
+
     if (isFormDirty) {
       const callback = function() {
         isFormDirty = false; // Reset flag
