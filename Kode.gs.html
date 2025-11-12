@@ -6219,14 +6219,19 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
     
     const idSekolahApp1 = sessionData.sekolahID;
     
-    // 1. Ambil data db_siswa (App 2) yang ada
+    // 1. Ambil data db_siswa (App 2) yang ada -> Map[nomor_ujian] = { nama, sheetRow }
     const siswaApp2Map = new Map();
     if (sheetSiswa.getLastRow() > 1) {
       const siswaData = sheetSiswa.getRange(2, 1, sheetSiswa.getLastRow() - 1, 2).getValues();
-      siswaData.forEach(row => siswaApp2Map.set(row[0], row[1])); // Map[nomor_ujian] = nama
+      siswaData.forEach((row, index) => {
+         // row[0] = nomor_ujian, row[1] = nama, index + 2 = sheetRow (1-based)
+         if(row[0]) {
+           siswaApp2Map.set(String(row[0]), { nama: row[1], sheetRow: index + 2 });
+         }
+      });
     }
     
-    // 2. Ambil data db_enrollment (App 2) yang ada
+    // 2. Ambil data db_enrollment (App 2) yang ada -> Map[id_siswa_app1] = { ... }
     const enrollMap = new Map(); // Key: SiswaID (App 1)
     let allEnrollData = [];
     if (sheetEnroll.getLastRow() > 1) {
@@ -6237,72 +6242,122 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
         if (row[3] === id_tahun_ajaran) {
           enrollMap.set(row[0], {
             sheetRow: index + 2, // 1-based row index
-            nomor_ujian: row[1],
+            nomor_ujian: String(row[1]), // Pastikan string
             ruang_ujian: row[4]
           });
         }
       });
     }
 
-    const siswaBaruUntukApp2 = new Map(); // Map[nomor_ujian] = nama
-    const enrollBaruUntukApp2 = [];
-    const enrollUntukUpdate = [];
+    // 3. Siapkan batch operasi
+    const siswaBaruUntuk_db_siswa = new Map(); // Map[nomor_ujian] = nama
+    const siswaUntukUpdate_db_siswa = []; // Array of { row, no_ujian, nama }
+    
+    const enrollBaruUntuk_db_enroll = [];
+    const enrollUntukUpdate_db_enroll = [];
     const enrollUntukDihapus = new Set(enrollMap.keys()); // Asumsikan semua dihapus
     
-    // 3. Proses data dari client
+    // 4. Proses data dari client
     for (const item of enrollmentData) {
       enrollUntukDihapus.delete(item.id_siswa_app1); // Hapus dari daftar hapus (berarti dipertahankan)
       
       const existingEnroll = enrollMap.get(item.id_siswa_app1);
       
       if (item.isEnrolled) {
+        const noUjianBaru = String(item.nomor_ujian_app2);
+        const namaBaru = item.nama_app1;
+
         if (existingEnroll) {
-          // Update
-          if (existingEnroll.nomor_ujian !== item.nomor_ujian_app2 || existingEnroll.ruang_ujian !== item.ruang_ujian) {
-            enrollUntukUpdate.push({
+          // === UPDATE PATH ===
+          const noUjianLama = String(existingEnroll.nomor_ujian);
+          
+          // A. Siapkan update untuk db_enrollment (jika ada yg berubah)
+          if (noUjianLama !== noUjianBaru || existingEnroll.ruang_ujian !== item.ruang_ujian) {
+            enrollUntukUpdate_db_enroll.push({
               row: existingEnroll.sheetRow,
-              nomor_ujian: item.nomor_ujian_app2,
+              nomor_ujian: noUjianBaru,
               ruang_ujian: item.ruang_ujian
             });
           }
+          
+          // B. Sinkronisasi db_siswa (App 2)
+          const siswaLamaData = siswaApp2Map.get(noUjianLama);
+
+          if (noUjianLama !== noUjianBaru) {
+            // --- KASUS RENAME ---
+            if (siswaLamaData) {
+              // 1. Siswa lama ada di db_siswa, siapkan untuk di-update (rename)
+              siswaUntukUpdate_db_siswa.push({ row: siswaLamaData.sheetRow, no_ujian: noUjianBaru, nama: namaBaru });
+              // 2. Update map in-memory agar konsisten
+              siswaApp2Map.delete(noUjianLama);
+              siswaApp2Map.set(noUjianBaru, { nama: namaBaru, sheetRow: siswaLamaData.sheetRow });
+            } else {
+              // 3. Siswa lama tidak ada di db_siswa (aneh), 
+              //    perlakukan seperti siswa baru (cek duplikat noUjianBaru)
+              if (!siswaApp2Map.has(noUjianBaru)) {
+                siswaBaruUntuk_db_siswa.set(noUjianBaru, namaBaru);
+                // Update map in-memory
+                siswaApp2Map.set(noUjianBaru, { nama: namaBaru, sheetRow: -1 }); // -1 = akan ditambah
+              }
+            }
+          } else if (siswaLamaData && siswaLamaData.nama !== namaBaru) {
+            // --- KASUS NAMA BERUBAH (tanpa rename No Ujian) ---
+            siswaUntukUpdate_db_siswa.push({ row: siswaLamaData.sheetRow, no_ujian: noUjianBaru, nama: namaBaru });
+            siswaApp2Map.get(noUjianBaru).nama = namaBaru; // Update map in-memory
+          }
+
         } else {
-          // Insert
-          enrollBaruUntukApp2.push([
+          // === INSERT PATH ===
+          
+          // A. Siapkan insert untuk db_enrollment
+          enrollBaruUntuk_db_enroll.push([
             item.id_siswa_app1,     // id_enrollment (pakai SiswaID App 1)
-            item.nomor_ujian_app2,  // nomor_ujian
+            noUjianBaru,            // nomor_ujian
             idSekolahApp1,          // id_sekolah (dari App 1)
             id_tahun_ajaran,        // id_tahun_ajaran
             item.ruang_ujian        // ruang_ujian
           ]);
-        }
-        
-        // Cek db_siswa App 2
-        if (!siswaApp2Map.has(item.nomor_ujian_app2)) {
-          siswaBaruUntukApp2.set(item.nomor_ujian_app2, item.nama_app1);
+          
+          // B. Sinkronisasi db_siswa (App 2)
+          if (!siswaApp2Map.has(noUjianBaru)) {
+             siswaBaruUntuk_db_siswa.set(noUjianBaru, namaBaru);
+             // Update map in-memory agar tidak duplikat jika ada 2 siswa baru dgn no ujian yg sama di form
+             siswaApp2Map.set(noUjianBaru, { nama: namaBaru, sheetRow: -1 }); 
+          }
         }
       }
     }
     
-    // 4. Eksekusi Hapus (dari Bawah ke Atas)
+    // 5. Eksekusi Hapus (dari db_enrollment)
     const rowsToDelete = Array.from(enrollUntukDihapus).map(id => enrollMap.get(id).sheetRow);
     rowsToDelete.sort((a, b) => b - a); // Sort descending
     rowsToDelete.forEach(rowNum => {
       sheetEnroll.deleteRow(rowNum);
     });
 
-    // 5. Eksekusi Update
-    enrollUntukUpdate.forEach(item => {
-      sheetEnroll.getRange(item.row, 2).setValue(item.nomor_ujian); // Kolom B
-      sheetEnroll.getRange(item.row, 5).setValue(item.ruang_ujian); // Kolom E
+    // 6. Eksekusi Update (di db_enrollment)
+    enrollUntukUpdate_db_enroll.forEach(item => {
+      sheetEnroll.getRange(item.row, 2).setValue("'" + item.nomor_ujian); // Kolom B (No Ujian)
+      sheetEnroll.getRange(item.row, 5).setValue(item.ruang_ujian); // Kolom E (Ruang)
     });
     
-    // 6. Eksekusi Tambah
-    if (enrollBaruUntukApp2.length > 0) {
-      sheetEnroll.getRange(sheetEnroll.getLastRow() + 1, 1, enrollBaruUntukApp2.length, 5).setValues(enrollBaruUntukApp2);
+    // 7. Eksekusi Tambah (di db_enrollment)
+    if (enrollBaruUntuk_db_enroll.length > 0) {
+      // Pastikan kolom B (No Ujian) adalah teks
+      enrollBaruUntuk_db_enroll.forEach(row => row[1] = "'" + row[1]);
+      sheetEnroll.getRange(sheetEnroll.getLastRow() + 1, 1, enrollBaruUntuk_db_enroll.length, 5).setValues(enrollBaruUntuk_db_enroll);
     }
     
-    // 7. Eksekusi Tambah Siswa ke db_siswa App 2
-    const siswaBaruArray = Array.from(siswaBaruUntukApp2.entries()); // [ [no_ujian, nama], ... ]
+    // 8. Eksekusi Update (di db_siswa)
+    if (siswaUntukUpdate_db_siswa.length > 0) {
+      // (PENTING) Lakukan satu per satu untuk menghindari race condition
+      siswaUntukUpdate_db_siswa.forEach(item => {
+        sheetSiswa.getRange(item.row, 1, 1, 2).setValues([["'" + item.no_ujian, item.nama]]);
+      });
+    }
+    
+    // 9. Eksekusi Tambah (di db_siswa)
+    const siswaBaruArray = Array.from(siswaBaruUntuk_db_siswa.entries()).map(([no_ujian, nama]) => ["'" + no_ujian, nama]);
     if (siswaBaruArray.length > 0) {
       sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, siswaBaruArray.length, 2).setValues(siswaBaruArray);
     }
@@ -6310,10 +6365,10 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
     return { status: "sukses" };
     
   } catch (e) {
-    Logger.log(`saveSiswaEnrollment error: ${e.message}`);
+    Logger.log(`saveSiswaEnrollment error: ${e.message} \nStack: ${e.stack}`);
     return { status: "gagal", message: e.message };
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
