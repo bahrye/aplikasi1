@@ -472,7 +472,9 @@ function prosesVerifikasiToken(token) {
             "",             // Kolom L (DonasiAlasanTolak)
             newSSID_App2,     // Kolom M (App2_DB_ID)
             newSchoolFolderId, // <-- BARU: Kolom N (MainFolderID)
-            donasiSubFolderId  // <-- BARU: Kolom O (DonasiFolderID)
+            donasiSubFolderId,  // <-- BARU: Kolom O (DonasiFolderID)
+            "", // <-- BARU: Kolom P (KopSuratFileID)
+            ""  // <-- BARU: Kolom Q (TanggalCetak)
           ]);
 
           // Hapus dari antrian pending
@@ -878,7 +880,8 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
        sheetSekolah.appendRow([
          'SekolahID', 'NamaSekolah', 'Jenjang', 'EmailAdmin', 'HashedPassword', 
          'SpreadsheetID', 'Salt', 'NPSN', 'DonasiStatus', 'DonasiFileID', 
-         'DonasiDataJSON', 'DonasiAlasanTolak', 'App2_DB_ID', 'MainFolderID', 'DonasiFolderID'
+         'DonasiDataJSON', 'DonasiAlasanTolak', 'App2_DB_ID', 'MainFolderID', 'DonasiFolderID',
+         'KopSuratFileID', 'TanggalCetak'
         ]);
     }
 
@@ -7100,5 +7103,182 @@ function PERBAIKI_SEKOLAH_ADMIN_LAMA() {
     Browser.msgBox(`Error: ${e.message}`);
   } finally {
     lock.releaseLock();
+  }
+}
+
+// TAMBAHKAN DI AKHIR FILE Kode.gs.html (Aplikasi 1)
+
+/**
+ * [ADMIN] Mengambil pengaturan cetak (Tanggal & URL Kop Surat) dari Sheet_Sekolah.
+ */
+function getPengaturanCetak(token) {
+  try {
+    const { sessionData } = validateAdminSession(token);
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const data = sheetSekolah.getDataRange().getValues();
+
+    let pengaturan = {
+      tanggalCetak: "",
+      kopSuratFileId: null,
+      kopSuratUrl: null
+    };
+
+    // Cari baris sekolah
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sessionData.sekolahID) {
+        // Kolom Q (index 16) = TanggalCetak
+        // Kolom P (index 15) = KopSuratFileID
+        const tanggal = data[i][16];
+        if (tanggal instanceof Date) {
+          pengaturan.tanggalCetak = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        }
+
+        const fileId = data[i][15];
+        if (fileId) {
+          pengaturan.kopSuratFileId = fileId;
+          try {
+            // Buat URL sementara untuk preview
+            const file = DriveApp.getFileById(fileId);
+            // Dapatkan URL yang bisa dilihat (bukan di-download)
+            pengaturan.kopSuratUrl = file.getDownloadUrl().replace("&export=download", "");
+          } catch (e) {
+            Logger.log("Gagal mendapatkan URL Kop Surat: " + e.message);
+          }
+        }
+        break;
+      }
+    }
+    return { status: "sukses", data: pengaturan };
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+// TAMBAHKAN DI AKHIR FILE Kode.gs.html (Aplikasi 1)
+
+/**
+ * [ADMIN] Menyimpan pengaturan cetak (Tanggal & File Kop Surat).
+ */
+function savePengaturanCetak(token, tanggalCetak, fileData) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const { sessionData } = validateAdminSession(token);
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const data = sheetSekolah.getDataRange().getValues();
+
+    let rowToUpdate = -1;
+    let mainFolderId = null;
+    let oldFileId = null;
+
+    // 1. Cari baris dan data folder
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sessionData.sekolahID) {
+        rowToUpdate = i + 1;
+        mainFolderId = data[i][13]; // Kolom N (MainFolderID)
+        oldFileId = data[i][15];   // Kolom P (KopSuratFileID)
+        break;
+      }
+    }
+    if (rowToUpdate === -1) throw new Error("Data sekolah tidak ditemukan.");
+    if (!mainFolderId) throw new Error("Folder utama (MainFolderID) sekolah tidak terdaftar.");
+
+    const folder = DriveApp.getFolderById(mainFolderId);
+    let newFileId = oldFileId;
+    let newFileUrl = null;
+
+    // 2. Proses file jika ada
+    if (fileData) {
+      if (fileData.base64) {
+        // User mengupload file baru
+        if (oldFileId) {
+          try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
+        }
+
+        const decodedData = Utilities.base64Decode(fileData.base64.split(',')[1]);
+        const blob = Utilities.newBlob(decodedData, fileData.mimeType, `KOP_SURAT - ${sessionData.namaSekolah}`);
+        const newFile = folder.createFile(blob);
+        newFileId = newFile.getId();
+        newFileUrl = newFile.getDownloadUrl().replace("&export=download", "");
+
+      } else if (fileData.delete === true) {
+        // User menekan "Hapus Gambar"
+        if (oldFileId) {
+          try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
+        }
+        newFileId = null;
+        newFileUrl = null;
+      }
+      // Jika fileData bukan salah satu di atas, newFileId tetap = oldFileId
+    }
+
+    // 3. Update Sheet_Sekolah
+    const formattedDate = tanggalCetak ? new Date(tanggalCetak) : null;
+    sheetSekolah.getRange(rowToUpdate, 16).setValue(newFileId);     // Kolom P (KopSuratFileID)
+    sheetSekolah.getRange(rowToUpdate, 17).setValue(formattedDate); // Kolom Q (TanggalCetak)
+
+    clearMasterSheetCache(); // Bersihkan cache master
+
+    return { status: "sukses", message: "Pengaturan berhasil disimpan.", newUrl: newFileUrl };
+
+  } catch (e) {
+    Logger.log("Gagal savePengaturanCetak: " + e.message);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * [UTILITAS PERBAIKAN]
+ * Jalankan fungsi ini SATU KALI SECARA MANUAL dari editor Apps Script
+ * untuk menambahkan kolom TemplateDocID (R) dan TemplateRekapID (S)
+ * ke Sheet_Sekolah yang sudah ada.
+ */
+function _PERBAIKI_HEADER_SHEET_SEKOLAH() {
+  try {
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheet = masterSS.getSheetByName('Sheet_Sekolah');
+    if (!sheet) {
+      throw new Error("Sheet_Sekolah tidak ditemukan.");
+    }
+
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    let headerR_OK = false;
+    let headerS_OK = false;
+
+    if (headers[17]) { // Index 17 (Kolom R)
+      if (headers[17] == "TemplateDocID") {
+        headerR_OK = true;
+      }
+    }
+
+    if (headers[18]) { // Index 18 (Kolom S)
+      if (headers[18] == "TemplateRekapID") {
+        headerS_OK = true;
+      }
+    }
+
+    if (headerR_OK && headerS_OK) {
+       Browser.msgBox("Header sudah lengkap (TemplateDocID dan TemplateRekapID sudah ada). Tidak ada perubahan.");
+       return;
+    }
+
+    if (!headerR_OK) {
+       sheet.getRange(1, 18).setValue("TemplateDocID"); // Kolom R
+    }
+    if (!headerS_OK) {
+       sheet.getRange(1, 19).setValue("TemplateRekapID"); // Kolom S
+    }
+
+    Browser.msgBox("BERHASIL! Header 'TemplateDocID' (Kolom R) dan 'TemplateRekapID' (Kolom S) telah ditambahkan ke Sheet_Sekolah.");
+
+  } catch (e) {
+    Logger.log("Gagal menjalankan _PERBAIKI_HEADER_SHEET_SEKOLAH: " + e.message);
+    Browser.msgBox("Gagal: " + e.message);
   }
 }
