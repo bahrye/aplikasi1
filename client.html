@@ -91,6 +91,7 @@
   let globalSiswaList = [];
   let isSiswaOrderDirty = false;
   let globalKelasListCache = [];
+  let globalBobotCache = null;
   // --- TAMBAHKAN INI ---
   let globalDonasiStatus = 'NONE';
   let globalDonasiDetail = {}; // Cache untuk detail (file url, alasan)
@@ -152,6 +153,8 @@
     mapelAssignments: []
   };
   let globalTaList = [];
+  let globalDataSekolahCache = null;
+  let globalSemesterCache = null;
   let isPenempatanSiswaDirty = false;
   let isPenempatanMapelDirty = false;
 
@@ -3375,15 +3378,28 @@
 
   function bukaHalamanDataSekolah() {
     tampilHalaman('halaman-data-sekolah');
-    setLoading(true, 'Memuat data sekolah...', false);
+    setLoading(true, 'Memuat data sekolah...', false, false); // Ubah ke non-blocking
     isFormDirty = false;
     hideMessage('data-sekolah-message');
     document.getElementById('form-data-sekolah').reset();
     setFormDisabled('form-data-sekolah', true);
-    google.script.run
-      .withSuccessHandler(onDataSekolahLoaded)
-      .withFailureHandler(onGagal)
-      .getSchoolData(getToken());
+
+    // --- LOGIKA CACHE BARU ---
+    if (globalDataSekolahCache && globalDataSekolahCache.status === 'sukses') {
+        console.log("Memuat data sekolah dari cache klien...");
+        // Muat dari cache
+        setTimeout(() => {
+          onDataSekolahLoaded(globalDataSekolahCache);
+        }, 10); // Jeda singkat agar UI "Memuat..." sempat tampil
+    } else {
+        // Cache miss, panggil server
+        console.log("Memuat data sekolah dari server...");
+        google.script.run
+          .withSuccessHandler(onDataSekolahLoaded)
+          .withFailureHandler(onGagal)
+          .getSchoolData(getToken());
+    }
+    // --- AKHIR LOGIKA CACHE ---
   }
 
   function onDataSekolahLoaded(response) {
@@ -3394,6 +3410,10 @@
         showMessage('data-sekolah-message', response.message, true);
         return;
       }
+
+      // --- TAMBAHAN BARU: Simpan ke cache ---
+      globalDataSekolahCache = response;
+      // --- AKHIR TAMBAHAN ---
 
       const data = response.data;
       jenjangBaseCache = data.jenjangBase;
@@ -3509,6 +3529,40 @@
       if (response.status === 'sukses') {
         isFormDirty = false; 
         showMessage('data-sekolah-message', 'Data sekolah berhasil disimpan!', false);
+
+        // --- TAMBAHAN BARU: Perbarui cache klien ---
+        // Ambil data terbaru dari form yang baru saja disimpan
+        const dataFromForm = {
+          jenjangBase: jenjangBaseCache, // Ini tidak berubah
+          namaSekolah: document.getElementById('data-nama-sekolah').value,
+          jenjangPilihan: document.getElementById('data-jenjang-pilihan').value,
+          npsn: document.getElementById('data-npsn').value,
+          nsm: document.getElementById('data-nsm').value,
+          alamat: document.getElementById('data-alamat').value,
+          provinsi: document.getElementById('data-provinsi').value,
+          kabKot: document.getElementById('data-kabkot').value,
+          pilihanKabKot: document.getElementById('data-pilihan-kabkot').value,
+          kecamatan: document.getElementById('data-kecamatan').value,
+          kelDes: document.getElementById('data-keldes').value,
+          pilihanKelDes: document.getElementById('data-pilihan-keldes').value,
+          kodePos: document.getElementById('data-kodepos').value,
+          telepon: document.getElementById('data-telepon').value,
+          email: document.getElementById('data-email').value,
+          website: document.getElementById('data-website').value,
+          namaKepsek: document.getElementById('data-kepsek').value,
+          nipKepsek: document.getElementById('data-nip-kepsek').value
+        };
+
+        // Perbarui cache global
+        globalDataSekolahCache = {
+          status: "sukses",
+          data: dataFromForm
+        };
+
+        // Perbarui juga cache jenjang pilihan (seperti fungsi aslinya)
+        jenjangPilihanCache = dataFromForm.jenjangPilihan;
+        // --- AKHIR TAMBAHAN ---
+
       } else {
         showMessage('data-sekolah-message', response.message, true);
       }
@@ -3536,15 +3590,27 @@
 
   function bukaHalamanBobot() {
     tampilHalaman('halaman-bobot');
-    setLoading(true, 'Memuat data bobot...', false);
+    setLoading(true, 'Memuat data bobot...', false, false); // Ubah ke non-blocking toast
     isFormDirty = false;
     hideMessage('bobot-message');
     document.getElementById('form-bobot').reset();
     setFormDisabled('form-bobot', true);
-    google.script.run
-      .withSuccessHandler(onBobotLoaded)
-      .withFailureHandler(onGagal)
-      .getBobotData(getToken());
+
+    // Cek cache klien
+    if (globalBobotCache && globalBobotCache.status === 'sukses') {
+        console.log("Memuat bobot dari cache klien...");
+        // Muat dari cache (setLoading(false) akan dipanggil oleh onBobotLoaded)
+        setTimeout(() => {
+          onBobotLoaded(globalBobotCache);
+        }, 10); // Jeda singkat agar UI "Memuat..." sempat tampil
+    } else {
+        // Cache miss, panggil server
+        console.log("Memuat bobot dari server...");
+        google.script.run
+          .withSuccessHandler(onBobotLoaded)
+          .withFailureHandler(onGagal)
+          .getBobotData(getToken());
+    }
   }
 
   function onBobotLoaded(response) {
@@ -3553,8 +3619,13 @@
 
       if (response.status !== 'sukses') {
         showMessage('bobot-message', response.message, true);
+        globalBobotCache = null; // Set cache ke null jika gagal
         return;
       }
+      
+      // Simpan ke cache klien saat berhasil dimuat
+      globalBobotCache = response; 
+      
       document.getElementById('bobot-rapor').value = response.bobotRapor;
       document.getElementById('bobot-ujian').value = response.bobotUjian;
       document.getElementById('bobot-kkm').value = response.kkm;
@@ -3588,6 +3659,21 @@
         isFormDirty = false; 
         setIjazahDirty(true);
         showMessage('bobot-message', 'Data bobot berhasil disimpan!', false);
+        
+        // --- TAMBAHAN BARU: Perbarui cache klien ---
+        const bobotRapor = parseInt(document.getElementById('bobot-rapor').value, 10) || 0;
+        const bobotUjian = parseInt(document.getElementById('bobot-ujian').value, 10) || 0;
+        const kkm = parseInt(document.getElementById('bobot-kkm').value, 10);
+        
+        // Perbarui cache dengan data yang baru saja disimpan
+        globalBobotCache = {
+          status: "sukses",
+          bobotRapor: bobotRapor,
+          bobotUjian: bobotUjian,
+          kkm: kkm
+        };
+        // --- AKHIR TAMBAHAN ---
+        
       } else {
         showMessage('bobot-message', response.message, true);
       }
@@ -3659,15 +3745,28 @@
 
   function bukaHalamanKelas() {
     tampilHalaman('halaman-kelas');
-    setLoading(true, 'Memuat data kelas...', false, false);
+    setLoading(true, 'Memuat data kelas...', false, false); // Tampilkan loading singkat
     isFormDirty = false;
     hideMessage('kelas-message');
     document.getElementById('kelas-list-container').innerHTML = "<p>Memuat data kelas...</p>";
     setFormDisabled('form-kelas', true);
-    google.script.run
-      .withSuccessHandler(onKelasLoaded)
-      .withFailureHandler(onGagal)
-      .getKelas(getToken());
+
+    // Cek cache klien
+    if (globalKelasListCache && globalKelasListCache.length > 0) {
+        console.log("Memuat kelas dari cache klien...");
+        // Muat dari cache (setLoading(false) akan dipanggil oleh onKelasLoaded)
+        // Gunakan timeout kecil agar UI sempat update "Memuat..."
+        setTimeout(() => {
+          onKelasLoaded({ status: "sukses", kelasList: globalKelasListCache });
+        }, 10);
+    } else {
+        // Cache miss, panggil server
+        console.log("Memuat kelas dari server...");
+        google.script.run
+            .withSuccessHandler(onKelasLoaded)
+            .withFailureHandler(onGagal)
+            .getKelas(getToken());
+    }
   }
 
   function onKelasLoaded(response) {
@@ -3678,6 +3777,11 @@
       showMessage('kelas-message', response.message, true);
       document.getElementById('kelas-list-container').innerHTML = '';
       return;
+    }
+    
+    // Simpan ke cache klien saat berhasil dimuat dari server
+    if (response.kelasList) {
+        globalKelasListCache = response.kelasList;
     }
     
     // Diperbarui untuk menggunakan response.kelasList (bukan response.kelas)
@@ -5995,15 +6099,29 @@ function populateSiswaFilters() {
 
   function bukaHalamanSemester() {
     tampilHalaman('halaman-semester');
-    setLoading(true, 'Memuat pengaturan semester...', false, false);
+    setLoading(true, 'Memuat pengaturan semester...', false, false); // Ubah ke non-blocking
+    isFormDirty = false;
     hideMessage('semester-message');
     document.getElementById('form-semester').reset();
     setFormDisabled('form-semester', true);
     document.getElementById('pilihan-semester').innerHTML = '<option value="">Memuat...</option>';
-    google.script.run
-      .withSuccessHandler(onSemesterSettingLoaded)
-      .withFailureHandler(onGagal)
-      .getSemesterSetting(getToken());
+
+    // --- LOGIKA CACHE BARU ---
+    if (globalSemesterCache && globalSemesterCache.status === 'sukses') {
+        console.log("Memuat semester dari cache klien...");
+        // Muat dari cache
+        setTimeout(() => {
+          onSemesterSettingLoaded(globalSemesterCache);
+        }, 10); // Jeda singkat agar UI "Memuat..." sempat tampil
+    } else {
+        // Cache miss, panggil server
+        console.log("Memuat semester dari server...");
+        google.script.run
+          .withSuccessHandler(onSemesterSettingLoaded)
+          .withFailureHandler(onGagal)
+          .getSemesterSetting(getToken());
+    }
+    // --- AKHIR LOGIKA CACHE ---
   }
 
   function onSemesterSettingLoaded(response) {
@@ -6018,6 +6136,10 @@ function populateSiswaFilters() {
       showMessage('semester-message', response.message, true);
       return;
     }
+
+    // --- TAMBAHAN BARU: Simpan ke cache ---
+    globalSemesterCache = response;
+    // --- AKHIR TAMBAHAN ---
 
     const jenjang = response.jenjang;
     const setting = response.setting || 5;
@@ -6047,14 +6169,30 @@ function populateSiswaFilters() {
   function onSemesterSettingSaved(response) {
     setLoading(false);
     if (response.status === 'sukses') {
+      isFormDirty = false; 
       setIjazahDirty(true);
-      
-      // --- PERUBAHAN DI SINI ---
+
+      // --- PERUBAHAN DI SINI (Sudah ada, hanya konfirmasi) ---
       // Mengubah setelan semester membuat semua cache rapor tidak valid
       globalNilaiRaporGridCache.clear();
       // --- AKHIR PERUBAHAN ---
-      
+
       showMessage('semester-message', 'Pengaturan semester berhasil disimpan!', false);
+
+      // --- TAMBAHAN BARU: Perbarui cache klien ---
+      if (globalSemesterCache && globalSemesterCache.status === 'sukses') {
+        // Perbarui nilai 'setting' di cache yang ada
+        globalSemesterCache.setting = document.getElementById('pilihan-semester').value;
+      } else {
+        // Jika cache belum ada (seharusnya tidak terjadi, tapi untuk jaga-jaga)
+        globalSemesterCache = {
+          status: "sukses",
+          jenjang: jenjangBaseCache, // Ambil dari cache jenjang yang sudah ada
+          setting: document.getElementById('pilihan-semester').value
+        };
+      }
+      // --- AKHIR TAMBAHAN ---
+
     } else {
       showMessage('semester-message', response.message, true);
     }
@@ -8178,7 +8316,6 @@ function populateSiswaFilters() {
 
   // --- FUNGSI-FUNGSI MANAJEMEN GURU ---
 
-  // Salin dan ganti fungsi bukaHalamanGuru() Anda dengan yang ini
   function bukaHalamanGuru() {
       tampilHalaman('halaman-guru');
       
@@ -8188,23 +8325,30 @@ function populateSiswaFilters() {
           .withFailureHandler(onGagal) 
           .getPengaturanGuru(getToken());
 
-      // --- PENAMBAHAN LOGIKA CACHE ---
-      // 2. Cek apakah cache kelas DAN guru sudah ada
-      if (globalKelasListCache.length > 0 && globalGuruList.length > 0) {
-          console.log("Memuat guru & kelas dari cache klien...");
-          setLoading(true, 'Memuat data guru...', false, false); // Set loading, onGuruLoaded akan menonaktifkannya
+      // 2. Cek cache secara terpisah
+      const isKelasCached = (globalKelasListCache && globalKelasListCache.length > 0);
+      const isGuruCached = (globalGuruList && globalGuruList.length > 0);
 
-          // Panggil handler kelas secara manual, beri tanda 'isFromCache'
-          onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
+      if (isKelasCached && isGuruCached) {
+          // --- CACHE HIT (ALL) ---
+          console.log("Memuat guru & kelas dari cache klien...");
+          // Set loading singkat agar UI sempat di-reset oleh onGuruLoaded
+          setLoading(true, 'Memuat data guru...', false, false); 
+          
+          // Panggil handler kelas secara manual (penting for sync button logic)
+          // 'true' menandakan data dari cache
+          onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true); 
           
           // Panggil handler guru secara manual
           onGuruLoaded({ status: "sukses", guru: globalGuruList });
+          // onGuruLoaded akan memanggil setLoading(false)
 
       } else {
-          // 3. Jika salah satu cache kosong, panggil server
-          console.log("Memuat guru & kelas dari server...");
+          // --- CACHE MISS (ANY) ---
+          console.log("Memuat data guru/kelas dari server...");
           setLoading(true, 'Memuat data guru...', false, false);
           
+          // Set UI ke status loading (Salinan dari logika 'else' yang lama)
           document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
           document.getElementById('btn-tambah-guru-baru').disabled = true;
           document.getElementById('btn-import-guru').disabled = true;
@@ -8215,15 +8359,29 @@ function populateSiswaFilters() {
           const containerTanggal = document.getElementById('container-tanggal-input-guru');
           if (containerTanggal) containerTanggal.style.display = 'none';
           hideMessage('pengaturan-guru-message');
-          
-          // Reset cache kelas dan panggil getKelas (logika asli)
-          globalKelasListCache = [];
-          google.script.run
-              .withSuccessHandler(onKelasLoadedForGuruPage) // Ini akan memicu getGuru()
-              .withFailureHandler(onGagal)
-              .getKelas(getToken());
+
+          // Cek apa yang hilang
+          if (!isKelasCached) {
+              // Kelas hilang (Guru mungkin ada, mungkin tidak)
+              // Panggil getKelas. Callback-nya (onKelasLoadedForGuruPage) AKAN memicu getGuru.
+              console.log("Cache kelas kosong, memuat kelas (akan memicu guru)...");
+              google.script.run
+                  .withSuccessHandler(onKelasLoadedForGuruPage) // Ini akan memicu getGuru()
+                  .withFailureHandler(onGagal)
+                  .getKelas(getToken());
+          } else {
+              // Kelas ada, tapi Guru hilang
+              // Panggil getGuru SAJA.
+              console.log("Cache kelas ada, memuat guru saja...");
+              // Panggil callback kelas secara manual dulu (untuk setup)
+              onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
+              // Panggil getGuru
+              google.script.run
+                  .withSuccessHandler(onGuruLoaded)
+                  .withFailureHandler(onGagal)
+                  .getGuru(getToken());
+          }
       }
-      // --- AKHIR PERUBAHAN ---
   }
 
   /**
@@ -10016,7 +10174,9 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Membuka halaman Kelola Tahun Ajaran.
+   * [MODIFIKASI] Ditambahkan logika cache klien.
    */
+  // Salin dan GANTI fungsi bukaHalamanTahunAjaran() Anda dengan yang ini
   function bukaHalamanTahunAjaran() {
     tampilHalaman('halaman-tahun-ajaran');
     setLoading(true, 'Memuat data tahun ajaran...', false, false);
@@ -10024,15 +10184,29 @@ function populateSiswaFilters() {
     hideMessage('ta-message');
     document.getElementById('ta-list-container').innerHTML = "<p>Memuat data tahun ajaran...</p>";
     setFormDisabled('form-ta', true);
-    google.script.run
-      .withSuccessHandler(onTahunAjaranLoaded)
-      .withFailureHandler(onGagal)
-      .getTahunAjaran(getToken());
+
+    // Cek cache klien
+    if (globalTaList && globalTaList.length > 0) {
+        console.log("Memuat T.A. dari cache klien...");
+        // Muat dari cache
+        setTimeout(() => {
+          onTahunAjaranLoaded({ status: "sukses", data: globalTaList });
+        }, 10); // Jeda singkat agar UI "Memuat..." sempat tampil
+    } else {
+        // Cache miss, panggil server
+        console.log("Memuat T.A. dari server...");
+        google.script.run
+          .withSuccessHandler(onTahunAjaranLoaded)
+          .withFailureHandler(onGagal)
+          .getTahunAjaran(getToken());
+    }
   }
 
   /**
    * [BARU] Callback setelah data T.A. dimuat.
+   * [MODIFIKASI] Ditambahkan penyimpanan cache.
    */
+  // Salin dan GANTI fungsi onTahunAjaranLoaded() Anda dengan yang ini
   function onTahunAjaranLoaded(response) {
     setLoading(false);
     setFormDisabled('form-ta', false);
@@ -10040,10 +10214,14 @@ function populateSiswaFilters() {
     if (response.status !== 'sukses') {
       showMessage('ta-message', response.message, true);
       document.getElementById('ta-list-container').innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
+      globalTaList = []; // Pastikan cache kosong jika gagal
       return;
     }
     
-    renderTahunAjaranList(response.data || []);
+    // Simpan ke cache klien saat berhasil dimuat
+    globalTaList = response.data || [];
+    
+    renderTahunAjaranList(globalTaList);
   }
 
   /**
@@ -10179,14 +10357,22 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Callback setelah T.A. disimpan.
+   * [MODIFIKASI] Ditambahkan invalidasi cache.
    */
+  // Salin dan GANTI fungsi onTahunAjaranSaved() Anda dengan yang ini
   function onTahunAjaranSaved(response) {
       setLoading(false);
       if (response.status === 'sukses') {
         isFormDirty = false; 
         showMessage('ta-message', 'Data Tahun Ajaran berhasil disimpan!', false);
+        
+        // --- TAMBAHAN BARU: Invalidate cache ---
+        globalTaList = []; 
+        // --- AKHIR TAMBAHAN ---
+
         // Muat ulang data untuk mendapatkan status 'isUsed' terbaru
-        bukaHalamanTahunAjaran();
+        // Ini sekarang akan memicu cache miss dan mengambil data baru dari server
+        bukaHalamanTahunAjaran(); 
       } else {
         showMessage('ta-message', response.message, true);
       }
