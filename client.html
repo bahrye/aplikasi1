@@ -1584,6 +1584,44 @@
     document.getElementById('btn-batal-modal-mapel-app2').addEventListener('click', tutupModalMapelApp2);
     document.getElementById('btn-simpan-modal-mapel-app2').addEventListener('click', tambahkanMapelKeTabel);
 
+    // ##### TAMBAHAN BARU (PERBAIKAN DARI ANDA) #####
+    // Listener internal untuk modal Penempatan Mapel
+    const searchInputPenempatan = document.getElementById('modal-penempatan-mapel-search');
+    const suggestionsContainerPenempatan = document.getElementById('modal-penempatan-mapel-suggestions');
+    const selectedContainerPenempatan = document.getElementById('modal-penempatan-mapel-selected');
+
+    if (searchInputPenempatan && suggestionsContainerPenempatan && selectedContainerPenempatan) {
+      searchInputPenempatan.addEventListener('input', updatePenempatanMapelSuggestions);
+      searchInputPenempatan.addEventListener('focus', updatePenempatanMapelSuggestions);
+
+      searchInputPenempatan.addEventListener('blur', () => {
+        setTimeout(() => {
+          suggestionsContainerPenempatan.style.display = 'none';
+        }, 150); // Jeda agar klik pada saran masih bisa terdeteksi
+      });
+
+      suggestionsContainerPenempatan.addEventListener('mousedown', (e) => {
+        const target = e.target.closest('.mapel-suggestion-item');
+        if (target) {
+          e.preventDefault(); // Mencegah 'blur' dari input search
+          const mapelId = target.dataset.id;
+          const mapelNama = target.dataset.nama;
+          addSelectedPenempatanMapelTag(mapelId, mapelNama);
+        }
+      });
+
+      selectedContainerPenempatan.addEventListener('click', (e) => {
+        const target = e.target.closest('.selected-mapel-tag-remove');
+        if (target) {
+          const mapelId = target.dataset.id;
+          removeSelectedPenempatanMapelTag(mapelId);
+          updatePenempatanMapelSuggestions(); // Perbarui saran setelah menghapus
+        }
+      });
+    }
+    // ##### AKHIR TAMBAHAN BARU #####
+
+
     // Listener dinamis untuk hapus baris mapel
     document.getElementById('penempatan-mapel-container').addEventListener('click', (e) => {
       const target = e.target.closest('.btn-remove-mapel-app2');
@@ -10602,12 +10640,19 @@ function populateSiswaFilters() {
   
   /**
    * [BARU] Membuka modal untuk menambah penempatan mapel.
+   * VERSI MODIFIKASI: Menggunakan UI pencarian/tag.
+   * (PERBAIKAN: Menghapus jQuery $ dan memindahkan listener)
    */
   function bukaModalTambahMapelApp2() {
     hideMessage('modal-mapel-app2-error');
-    document.getElementById('form-mapel-app2').reset();
     
-    const { guruList, mapelList } = globalPenempatanData;
+    // Reset field-field spesifik
+    document.getElementById('modal-mapel-app2-guru').value = "";
+    document.getElementById('modal-penempatan-mapel-search').value = "";
+    document.getElementById('modal-penempatan-mapel-suggestions').style.display = 'none';
+    document.getElementById('modal-penempatan-mapel-selected').innerHTML = "";
+
+    const { guruList } = globalPenempatanData;
     
     const guruSelect = document.getElementById('modal-mapel-app2-guru');
     guruSelect.innerHTML = '<option value="">-- Pilih Guru --</option>';
@@ -10615,12 +10660,8 @@ function populateSiswaFilters() {
       guruSelect.add(new Option(`${g.nama} (${g.email})`, g.email));
     });
     
-    const mapelSelect = document.getElementById('modal-mapel-app2-mapel');
-    mapelSelect.innerHTML = '<option value="">-- Pilih Mapel --</option>';
-    mapelList.sort((a, b) => a.nama.localeCompare(b.nama)).forEach(m => {
-      mapelSelect.add(new Option(`${m.nama} (${m.id})`, m.id));
-    });
-    
+    // Event listener sekarang ditangani di DOMContentLoaded
+
     document.getElementById('modal-mapel-app2').classList.add('show');
   }
 
@@ -10633,46 +10674,67 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Menambahkan item dari modal ke tabel penempatan mapel.
+   * VERSI MODIFIKASI: Membaca dari tag, bukan multi-select. Singkatan otomatis.
    */
   function tambahkanMapelKeTabel() {
     hideMessage('modal-mapel-app2-error');
     const email = document.getElementById('modal-mapel-app2-guru').value;
-    const mapel = document.getElementById('modal-mapel-app2-mapel').value;
-    const singkatan = document.getElementById('modal-mapel-app2-singkatan').value.trim();
-    
-    if (!email || !mapel) {
-      showMessage('modal-mapel-app2-error', 'Guru dan Mapel wajib dipilih.', true);
-      return;
-    }
-    
-    // Cek duplikat di tabel
-    const existingRow = document.querySelector(`#penempatan-mapel-container tr[data-email="${email}"][data-mapel="${mapel}"]`);
-    if (existingRow) {
-      showMessage('modal-mapel-app2-error', 'Kombinasi Guru dan Mapel ini sudah ada.', true);
-      return;
-    }
-    
-    // Ambil data dari global
     const guru = globalPenempatanData.guruList.find(g => g.email === email);
-    const mapelData = globalPenempatanData.mapelList.find(m => m.id === mapel);
     
-    if (!guru || !mapelData) {
-      showMessage('modal-mapel-app2-error', 'Data guru atau mapel tidak valid.', true);
+    // --- LOGIKA BARU: Ambil semua mapel yang dipilih dari tags ---
+    const selectedMapels = getSelectedPenempatanMapelIds(); // Panggil helper baru
+    // --- AKHIR LOGIKA BARU ---
+
+    // Input singkatan tidak lagi dibaca dari modal
+    
+    if (!email || selectedMapels.size === 0) { // Cek .size dari Set
+      showMessage('modal-mapel-app2-error', 'Guru dan minimal satu Mapel wajib dipilih.', true);
       return;
     }
-    
-    // Tambahkan ke tabel
+
+    if (!guru) {
+      showMessage('modal-mapel-app2-error', 'Data guru tidak valid.', true);
+      return;
+    }
+
+    // Ambil tabel satu kali di luar loop
     const table = document.querySelector('#penempatan-mapel-container table');
-    if (table) {
-      const tbody = table.tBodies[0];
-      // Hapus pesan 'kosong' jika ada
-      const emptyRow = tbody.querySelector('td[colspan="4"]');
-      if (emptyRow) emptyRow.parentElement.remove();
+    if (!table) return;
+    
+    const tbody = table.tBodies[0];
+    // Hapus pesan 'kosong' jika ada
+    const emptyRow = tbody.querySelector('td[colspan="4"]');
+    if (emptyRow) emptyRow.parentElement.remove();
+
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    // --- LOGIKA BARU: Looping untuk setiap mapel yang dipilih ---
+    for (const mapelId of selectedMapels) { // Loop dari Set
+      // Cek duplikat di tabel
+      const existingRow = document.querySelector(`#penempatan-mapel-container tr[data-email="${email}"][data-mapel="${mapelId}"]`);
+      if (existingRow) {
+        skippedCount++;
+        continue; // Lewati jika sudah ada
+      }
       
+      // Ambil data mapel
+      const mapelData = globalPenempatanData.mapelList.find(m => m.id === mapelId);
+      
+      if (!mapelData) {
+        console.warn(`Data Mapel untuk ID ${mapelId} tidak ditemukan, dilewati.`);
+        skippedCount++;
+        continue; // Lewati jika data mapel tidak ditemukan
+      }
+      
+      // --- LOGIKA BARU: Singkatan otomatis diisi dari Kode Mapel (mapelId) ---
+      const singkatan = mapelId; 
+      
+      // Tambahkan ke tabel
       const tr = tbody.insertRow();
       tr.dataset.email = email;
-      tr.dataset.mapel = mapel;
-      tr.dataset.singkatan = singkatan;
+      tr.dataset.mapel = mapelId;
+      tr.dataset.singkatan = singkatan; // Simpan singkatan (Kode Mapel)
       
       tr.innerHTML = `
         <td>${guru.nama}</td>
@@ -10684,11 +10746,104 @@ function populateSiswaFilters() {
           </button>
         </td>
       `;
+      addedCount++;
+    }
+    // --- AKHIR LOOP ---
+    
+    if (addedCount > 0) {
+      isPenempatanMapelDirty = true;
+      document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
     }
     
-    isPenempatanMapelDirty = true;
-    document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
+    if (skippedCount > 0) {
+      // Beri info jika ada yang dilewati, tanpa memblokir
+      showToast(`${skippedCount} mapel dilewati (karena sudah ada).`, 'sukses', 3000);
+    }
+
     tutupModalMapelApp2();
+  }
+
+  /**
+   * [BARU] Menampilkan saran mapel untuk modal Penempatan Mapel (App 2).
+   */
+  function updatePenempatanMapelSuggestions() {
+    const container = document.getElementById('modal-penempatan-mapel-suggestions');
+    const searchInput = document.getElementById('modal-penempatan-mapel-search');
+    if (!container || !searchInput) return;
+
+    const searchTerm = searchInput.value.toLowerCase();
+
+    if (searchTerm.length === 0) {
+      container.innerHTML = '';
+      container.style.display = 'none';
+      return;
+    }
+
+    const selectedIds = getSelectedPenempatanMapelIds(); // Helper baru
+    
+    // Gunakan globalPenempatanData.mapelList
+    const filteredMapel = globalPenempatanData.mapelList.filter(mapel => {
+      return !selectedIds.has(mapel.id) && 
+            (mapel.id.toLowerCase().includes(searchTerm) || 
+              mapel.nama.toLowerCase().includes(searchTerm));
+    });
+
+    if (filteredMapel.length === 0) {
+      container.innerHTML = '<div class="mapel-suggestion-item" style="color: var(--text-light); cursor: default;">Mapel tidak ditemukan atau sudah ditambah.</div>';
+    } else {
+      container.innerHTML = filteredMapel.slice(0, 10).map(mapel => {
+        return `
+          <div class="mapel-suggestion-item" data-id="${mapel.id}" data-nama="${mapel.nama}">
+            <strong>${mapel.id}</strong> - ${mapel.nama}
+          </div>
+        `;
+      }).join('');
+    }
+    container.style.display = 'block';
+  }
+
+  /**
+   * [BARU] Mendapatkan ID mapel yang sudah dipilih di modal Penempatan.
+   */
+  function getSelectedPenempatanMapelIds() {
+    const ids = new Set();
+    document.querySelectorAll('#modal-penempatan-mapel-selected .selected-mapel-tag-remove').forEach(tag => {
+      ids.add(tag.dataset.id);
+    });
+    return ids;
+  }
+
+  /**
+   * [BARU] Menambahkan tag mapel ke UI modal Penempatan.
+   */
+  function addSelectedPenempatanMapelTag(mapelId, mapelNama) {
+    const container = document.getElementById('modal-penempatan-mapel-selected');
+    const searchInput = document.getElementById('modal-penempatan-mapel-search');
+    const suggestionsContainer = document.getElementById('modal-penempatan-mapel-suggestions');
+
+    const tagHtml = `
+      <div class="selected-mapel-tag" id="tag_penempatan_${mapelId}">
+        <span>${mapelId} - ${mapelNama}</span>
+        <button type="button" class="selected-mapel-tag-remove" data-id="${mapelId}" title="Hapus">&times;</button>
+      </div>
+    `;
+
+    container.innerHTML += tagHtml;
+
+    searchInput.value = "";
+    suggestionsContainer.innerHTML = "";
+    suggestionsContainer.style.display = "none";
+    searchInput.focus();
+  }
+
+  /**
+   * [BARU] Menghapus tag mapel dari UI modal Penempatan.
+   */
+  function removeSelectedPenempatanMapelTag(mapelId) {
+    const tagElement = document.getElementById(`tag_penempatan_${mapelId}`);
+    if (tagElement) {
+      tagElement.remove();
+    }
   }
 
   /**
