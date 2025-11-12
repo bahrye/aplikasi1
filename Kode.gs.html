@@ -5990,13 +5990,13 @@ function getEnrollmentSheet_App2(ss_app2) {
   return sheet;
 }
 
-// --- FUNGSI BARU ---
 // Helper to get/create db_mapel sheet in App2 DB
 function getMapelSheet_App2(ss_app2) {
   let sheet = ss_app2.getSheetByName('db_mapel');
   if (!sheet) {
     sheet = ss_app2.insertSheet('db_mapel');
-    sheet.appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan"]);
+    // [MODIFIKASI] Menambahkan 'kelas_json' di kolom E
+    sheet.appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json"]);
     sheet.setFrozenRows(1);
   }
   return sheet;
@@ -6084,7 +6084,6 @@ function getTahunAjaranList(token) {
   }
 }
 
-// --- FUNGSI BARU ---
 /**
  * [API BARU] Mengambil semua data yang diperlukan untuk halaman "Kelola Penempatan".
  * Menggabungkan data dari Aplikasi 1 (Siswa, Mapel, Guru) dan Aplikasi 2 (Enrollment, Mapel Assignment).
@@ -6121,6 +6120,25 @@ function getPenempatanData(token, id_tahun_ajaran) {
       nama: row[1]
     })).filter(g => g.email && g.nama);
     
+    // [MODIFIKASI] Ambil data Kelas dari Aplikasi 1
+    const sheetKelasApp1 = getKelasSheet(ss_app1);
+    const kelasDataApp1 = sheetKelasApp1.getDataRange().getValues();
+    kelasDataApp1.shift(); // Hapus header
+    
+    // [MODIFIKASI] Ambil juga status 'isLocked'
+    const lockedKelasSet = getLockedKelasSet(ss_app1, sessionData.sekolahID);
+    
+    // [MODIFIKASI] Ubah dari array string menjadi array objek
+    const kelasListApp1 = kelasDataApp1.map(row => {
+      const namaKelas = row[0];
+      if (!namaKelas) return null; // Filter baris kosong
+      return {
+        nama: namaKelas,
+        isLocked: lockedKelasSet.has(namaKelas.toUpperCase())
+      };
+    }).filter(kelas => kelas !== null); // Hapus baris null
+    // [AKHIR MODIFIKASI]
+    
     // 3. Ambil Data Penempatan dari Aplikasi 2
     let enrolledSiswaMap = new Map();
     let mapelAssignments = [];
@@ -6151,10 +6169,12 @@ function getPenempatanData(token, id_tahun_ajaran) {
         dataMapel.shift();
         dataMapel.forEach(row => {
           if (row[2] === id_tahun_ajaran) {
+            // [MODIFIKASI] Membaca row[4] (Kolom E) sebagai 'kelas_json'
             mapelAssignments.push({
               email_guru: row[0],
               mapel: row[1],
-              singkatan: row[3] || ''
+              singkatan: row[3] || '',
+              kelas_json: row[4] || '["*"]' // Default ke 'Semua Kelas' jika kosong
             });
           }
         });
@@ -6192,6 +6212,7 @@ function getPenempatanData(token, id_tahun_ajaran) {
       siswaData: siswaDataGabungan,
       mapelList: mapelListApp1,
       guruList: guruListApp1,
+      kelasList: kelasListApp1, // <-- [MODIFIKASI] Tambahkan ini
       mapelAssignments: mapelAssignments
     };
     
@@ -6372,7 +6393,6 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
   }
 }
 
-// --- FUNGSI BARU ---
 /**
  * [API BARU] Menyimpan perubahan pada db_mapel di Aplikasi 2.
  * Ini akan menghapus semua data mapel T.A. ini dan menulis ulang.
@@ -6400,11 +6420,13 @@ function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
     const dataLain = allData.filter(row => row[2] !== id_tahun_ajaran);
     
     // 2. Siapkan data baru
+    // [MODIFIKASI] Menambahkan item.kelas_json (default ke ["*"])
     const dataBaru = assignmentsToSave.map(item => [
       item.email_guru,
       item.mapel,
       id_tahun_ajaran,
-      item.singkatan || ''
+      item.singkatan || '',
+      item.kelas_json || '["*"]' // Kolom E
     ]);
     
     // 3. Gabungkan data T.A. lain dengan data baru
@@ -6417,7 +6439,8 @@ function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
     
     // 5. Tulis ulang data gabungan
     if (dataFinal.length > 0) {
-      sheetMapel.getRange(2, 1, dataFinal.length, 4).setValues(dataFinal);
+      // [MODIFIKASI] Mengubah jumlah kolom dari 4 menjadi 5
+      sheetMapel.getRange(2, 1, dataFinal.length, 5).setValues(dataFinal);
     }
     
     return { status: "sukses" };
