@@ -1815,15 +1815,17 @@
                 <option value="">-- Memuat Guru... --</option>
               </select>
             </div>
+            
             <div class="form-group">
-              <label for="modal-mapel-app2-mapel">Pilih Mapel (dari App 1)</label>
-              <select id="modal-mapel-app2-mapel" required>
-                <option value="">-- Memuat Mapel... --</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="modal-mapel-app2-singkatan">Singkatan (Opsional)</label>
-              <input type="text" id="modal-mapel-app2-singkatan" placeholder="Contoh: MTK, BIND (Max 10 char)" maxlength="10">
+              <label for="modal-penempatan-mapel-search">Mata Pelajaran yang Diampu:</label>
+              
+              <div class="mapel-search-wrapper">
+                <input type="text" id="modal-penempatan-mapel-search" placeholder="Ketik Kode atau Nama Mapel..." autocomplete="off">
+                <div id="modal-penempatan-mapel-suggestions" class="mapel-suggestions-container"></div>
+              </div>
+              <small class="helper-text">Klik pada hasil pencarian untuk menambahkan mapel.</small>
+              <div id="modal-penempatan-mapel-selected" class="mapel-selected-container">
+                </div>
             </div>
             <p id="modal-mapel-app2-error" class="message error"></p>
           </form>
