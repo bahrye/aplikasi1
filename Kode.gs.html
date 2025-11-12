@@ -6102,14 +6102,21 @@ function getEnrollmentSheet_App2(ss_app2) {
   return sheet;
 }
 
-// Helper to get/create db_mapel sheet in App2 DB
+// DENGAN FUNGSI INI
 function getMapelSheet_App2(ss_app2) {
   let sheet = ss_app2.getSheetByName('db_mapel');
   if (!sheet) {
     sheet = ss_app2.insertSheet('db_mapel');
-    // [MODIFIKASI] Menambahkan 'kelas_json' di kolom E
-    sheet.appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json"]);
+    // [MODIFIKASI] Menambahkan isUS (F) dan isUP (G)
+    sheet.appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json", "isUS", "isUP"]);
     sheet.setFrozenRows(1);
+  } else {
+    // Perbaikan otomatis untuk header yang ada
+    const header = sheet.getRange(1, 6).getValue();
+    if (header !== "isUS") {
+      sheet.getRange(1, 6).setValue("isUS");
+      sheet.getRange(1, 7).setValue("isUP");
+    }
   }
   return sheet;
 }
@@ -6223,7 +6230,9 @@ function getPenempatanData(token, id_tahun_ajaran) {
     // Ambil Mapel (sudah di-cache server)
     const mapelListApp1 = _getMapelInternal(ss_app1, sessionData.sekolahID).map(m => ({
       id: m.id,
-      nama: m.nama
+      nama: m.nama,
+      isUS: m.isUS,
+      isUP: m.isUP
     }));
     
     // Ambil Guru (baca langsung)
@@ -6509,10 +6518,6 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
   }
 }
 
-/**
- * [API BARU] Menyimpan perubahan pada db_mapel di Aplikasi 2.
- * Ini akan menghapus semua data mapel T.A. ini dan menulis ulang.
- */
 function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
@@ -6536,13 +6541,14 @@ function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
     const dataLain = allData.filter(row => row[2] !== id_tahun_ajaran);
     
     // 2. Siapkan data baru
-    // [MODIFIKASI] Menambahkan item.kelas_json (default ke ["*"])
     const dataBaru = assignmentsToSave.map(item => [
       item.email_guru,
       item.mapel,
       id_tahun_ajaran,
       item.singkatan || '',
-      item.kelas_json || '["*"]' // Kolom E
+      item.kelas_json || '["*"]',
+      item.isUS === true, // Kolom F (isUS)
+      item.isUP === true  // Kolom G (isUP)
     ]);
     
     // 3. Gabungkan data T.A. lain dengan data baru
@@ -6555,8 +6561,8 @@ function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
     
     // 5. Tulis ulang data gabungan
     if (dataFinal.length > 0) {
-      // [MODIFIKASI] Mengubah jumlah kolom dari 4 menjadi 5
-      sheetMapel.getRange(2, 1, dataFinal.length, 5).setValues(dataFinal);
+      // [MODIFIKASI] Mengubah jumlah kolom menjadi 7
+      sheetMapel.getRange(2, 1, dataFinal.length, 7).setValues(dataFinal);
     }
     
     return { status: "sukses" };
