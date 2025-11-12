@@ -238,17 +238,23 @@ function kirimEmailVerifikasi(email, namaSekolah, token) {
   }
 }
 
-// --- PERBAIKAN PADA TANDA TANGAN FUNGSI ---
-function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, masterSS) {
-// --- AKHIR PERBAIKAN ---
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
+// [MODIFIKASI] Menambahkan argumen ke-7: schoolDriveFolder
+function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, masterSS, schoolDriveFolder) {
   let newSSID = null; 
   try {
     let targetFolder;
     try {
-      targetFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
+      // [MODIFIKASI] Gunakan folder yang diberikan, bukan TARGET_FOLDER_ID
+      targetFolder = schoolDriveFolder; 
+      if (!targetFolder) { // Fallback jika argumen tidak diberikan
+        Logger.log("Peringatan: schoolDriveFolder tidak diberikan ke buatDatabaseSekolahBaru. Fallback ke TARGET_FOLDER_ID.");
+        targetFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
+      }
     } catch (folderError) {
       Logger.log("Error mengambil folder: " + folderError);
-      throw new Error("Error: Folder target tidak ditemukan atau tidak dapat diakses. ID: " + TARGET_FOLDER_ID);
+      throw new Error("Error: Folder target tidak ditemukan atau tidak dapat diakses.");
     }
 
     const namaSekolahUpper = namaSekolah.toUpperCase();
@@ -257,10 +263,13 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
     Logger.log("Spreadsheet baru dibuat (via verifikasi): " + newSSID);
 
     const newFile = DriveApp.getFileById(newSSID);
-    targetFolder.addFile(newFile); 
+    targetFolder.addFile(newFile); // [MODIFIKASI] Ini sekarang menggunakan schoolDriveFolder
     DriveApp.getRootFolder().removeFile(newFile); 
-    Logger.log("Spreadsheet dipindahkan ke folder: " + targetFolder.getName());
+    Logger.log("Spreadsheet dipindahkan ke folder: " + targetFolder.getName()); // [MODIFIKASI] Log yang benar
 
+    // (Sisa dari fungsi ini tetap sama, tidak perlu disalin ulang)
+    // ... (kode pembuatan sheetSiswa, sheetKelas, sheetMapel, dll) ...
+    
     const defaultSheet = newSpreadsheet.getSheets()[0];
     
     const sheetSiswa = newSpreadsheet.insertSheet('Siswa');
@@ -327,8 +336,6 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
       jenjangPilihanDefault = 'MA';
     }
     
-    // --- PERBAIKAN DI SINI ---
-    // Menggunakan variabel 'npsn' yang diterima fungsi
     sheetDataSekolah.appendRow([
       jenjangPilihanDefault, 
       "'" + npsn, 
@@ -336,20 +343,14 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
       '', 'Kabupaten', '', '', 'Kelurahan', 
       '', '', '', '', '', ''
     ]);
-    // --- AKHIR PERBAIKAN ---
 
     sheetDataSekolah.getRange('A2:P2').setNumberFormat('@');
 
-    // --- PERUBAHAN DI SINI ---
-    // Mengubah struktur Sheet Cache Ijazah
     const sheetCacheIjazah = newSpreadsheet.insertSheet(SHEET_CACHE_IJAZAH);
-    // Baris 1: Header untuk Metadata
     sheetCacheIjazah.appendRow(['Meta', 'LastUpdated', 'BobotRaporPct', 'BobotUjianPct', 'KKM', 'SiswaListJSON', 'MapelListJSON']);
-    // Baris 2: Header untuk Data Nilai
     sheetCacheIjazah.appendRow(['SiswaID', 'MapelID', 'UjianAsli', 'RaporAsli', 'UjianBobot', 'RaporBobot', 'IjazahFinal']);
-    sheetCacheIjazah.setFrozenRows(2); // Bekukan 2 baris header
-    sheetCacheIjazah.hideSheet(); // Sembunyikan sheet
-    // --- AKHIR PERUBAHAN ---
+    sheetCacheIjazah.setFrozenRows(2);
+    sheetCacheIjazah.hideSheet();
 
     newSpreadsheet.deleteSheet(defaultSheet);
     
@@ -403,13 +404,9 @@ function prosesVerifikasiToken(token) {
         const npsn = row[2]; // Kolom C
         const jenjang = row[3]; // Kolom D
         
-        // --- [PERUBAHAN LOGIKA PASSWORD] ---
-        // BACA HASH (Kolom E, index 4) dan SALT (Kolom F, index 5)
         const dbHashedPassword = row[4]; 
         const dbSalt = row[5];
-        // BACA PLAIN PASSWORD (Kolom I, index 8) untuk App 2
         const dbPlainPassword = row[8]; 
-        // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
         
         // Cek duplikat di sheetSekolah (aktif)
         const emailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
@@ -424,62 +421,83 @@ function prosesVerifikasiToken(token) {
 
         try {
           // ===============================================
-          // ===== PERUBAHAN DIMULAI DI SINI =====
+          // ===== PERMINTAAN BARU: Buat Folder Sekolah =====
+          // ===============================================
+          let newSchoolFolder, donasiSubFolder;
+          let newSchoolFolderId = null;
+          let donasiSubFolderId = null;
+
+          try {
+            const parentFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
+            // Buat folder utama sekolah
+            newSchoolFolder = parentFolder.createFolder(namaSekolah.toUpperCase());
+            newSchoolFolderId = newSchoolFolder.getId();
+            // Buat sub-folder Donasi
+            donasiSubFolder = newSchoolFolder.createFolder("Donasi");
+            donasiSubFolderId = donasiSubFolder.getId();
+            Logger.log(`Folder sekolah dibuat (ID: ${newSchoolFolderId}) dengan sub-folder Donasi (ID: ${donasiSubFolderId})`);
+          } catch (folderError) {
+            Logger.log(`KRITIKAL: Gagal membuat folder drive untuk ${namaSekolah}. Error: ${folderError.message}`);
+            throw new Error(`Gagal membuat folder Google Drive. ${folderError.message}`);
+          }
+          // ===============================================
+          // ===== AKHIR PERMINTAAN BARU                 =====
           // ===============================================
 
           // 1. Buat Database Aplikasi 1 (Ijazah)
-          // (Fungsi ini tidak lagi membutuhkan password, kirim "dummy")
-          const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS);
+          // [MODIFIKASI] Kirim 'newSchoolFolder' sebagai argumen baru
+          const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS, newSchoolFolder);
           
-          // 2. [BARU] Buat Database Aplikasi 2 (Nilai Ujian)
-          const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase());
+          // 2. Buat Database Aplikasi 2 (Nilai Ujian)
+          // [MODIFIKASI] Kirim 'newSchoolFolder' sebagai argumen baru
+          const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase(), newSchoolFolder);
 
           // 3. Buat ID Sekolah Unik (App 1)
           const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
           
           // 4. Simpan SEMUA ID ke Sheet_Sekolah (database App 1)
-          //    Pastikan Sheet_Sekolah punya Kolom M
+          // [MODIFIKASI] Menambahkan 2 ID folder baru di akhir (Kolom N dan O)
           sheetSekolah.appendRow([
             newSekolahID, 
             namaSekolah.toUpperCase(), 
             jenjang, 
             email, 
-            dbHashedPassword, // Kolom E (Password HASHED)
-            newSSID_App1,     // Kolom F (ID DB App 1 - Ijazah)
-            dbSalt,           // Kolom G (Salt)
-            "'" + npsn,     // Kolom H (NPSN)
-            "NONE",         // Kolom I (DonasiStatus)
+            dbHashedPassword, // Kolom E
+            newSSID_App1,     // Kolom F
+            dbSalt,           // Kolom G
+            "'" + npsn,     // Kolom H
+            "NONE",         // Kolom I
             "",             // Kolom J (DonasiFileID)
             "",             // Kolom K (DonasiDataJSON)
             "",             // Kolom L (DonasiAlasanTolak)
-            newSSID_App2    // <--- [BARU] Kolom M (ID DB App 2 - Nilai Ujian)
+            newSSID_App2,     // Kolom M (App2_DB_ID)
+            newSchoolFolderId, // <-- BARU: Kolom N (MainFolderID)
+            donasiSubFolderId  // <-- BARU: Kolom O (DonasiFolderID)
           ]);
 
           // Hapus dari antrian pending
           sheetPending.deleteRow(i + 1);
           clearMasterSheetCache();
           
-          // 5. [MODIFIKASI] Integrasi Aplikasi 2 (Global)
-          //    Daftarkan sekolah dan guru ini ke DB App 2 GLOBAL
+          // 5. Integrasi Aplikasi 2 (Global)
           Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
-          // [PERUBAHAN] Kirim PLAIN PASSWORD (dbPlainPassword) ke App 2
           registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPlainPassword); 
-          
-          // ===============================================
-          // ===== PERUBAHAN SELESAI =====
-          // ===============================================
           
           const appUrl = ScriptApp.getService().getUrl();
           return `<h1>Verifikasi Berhasil!</h1>
-                  <p>Akun Anda telah berhasil diaktifkan dan database sekolah Anda telah dibuat.</p>
+                  <p>Akun Anda telah berhasil diaktifkan dan folder sekolah Anda telah dibuat di Google Drive.</p>
                   <p>Silakan klik tombol di bawah ini untuk masuk ke halaman login.</p>
                   <a href="${appUrl}" class="button-login">Menuju Halaman Login</a>`;
           
         } catch (e) {
-          Logger.log(`Verifikasi sukses untuk ${email} TAPI GAGAL buat DB: ${e.message}`);
+          Logger.log(`Verifikasi sukses untuk ${email} TAPI GAGAL buat DB/Folder: ${e.message}`);
+          // [MODIFIKASI] Hapus folder jika GAGAL (rollback)
+          if (newSchoolFolderId) {
+             try { DriveApp.getFolderById(newSchoolFolderId).setTrashed(true); } catch(err) {}
+          }
           return `<h1>Verifikasi Berhasil, Namun...</h1>
-                  <p>Akun Anda terverifikasi, tetapi terjadi error saat penyiapan database sekolah. Silakan hubungi admin untuk tindak lanjut.</p>
+                  <p>Akun Anda terverifikasi, tetapi terjadi error saat penyiapan database/folder sekolah. Silakan hubungi admin untuk tindak lanjut.</p>
                   <p style="font-size: 14px; color: #6c757d;">Detail Error: ${e.message}</p>`;
         }
       }
@@ -811,6 +829,8 @@ function prosesLogin(email, password) {
   }
 }
 
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
 function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -854,8 +874,12 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
        }
     } else {
        sheetSekolah = masterSS.insertSheet('Sheet_Sekolah');
-       // [PERBAIKAN] Sesuaikan header dengan 13 kolom
-       sheetSekolah.appendRow(['SekolahID', 'NamaSekolah', 'Jenjang', 'EmailAdmin', 'HashedPassword', 'SpreadsheetID', 'Salt', 'NPSN', 'DonasiStatus', 'DonasiFileID', 'DonasiDataJSON', 'DonasiAlasanTolak', 'App2_DB_ID']);
+       // [MODIFIKASI] Header sekarang memiliki 15 kolom (A-O)
+       sheetSekolah.appendRow([
+         'SekolahID', 'NamaSekolah', 'Jenjang', 'EmailAdmin', 'HashedPassword', 
+         'SpreadsheetID', 'Salt', 'NPSN', 'DonasiStatus', 'DonasiFileID', 
+         'DonasiDataJSON', 'DonasiAlasanTolak', 'App2_DB_ID', 'MainFolderID', 'DonasiFolderID'
+        ]);
     }
 
     const sheetPending = getSheetRegistrasiPending(masterSS);
@@ -5446,35 +5470,27 @@ function getDonasiStatusDetail(token) {
   }
 }
 
-/**
- * [ADMIN] Mengirimkan formulir donasi.
- */
+
 function submitDonasi(token, fileData, formDataJSON) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     const { sessionData } = validateAdminSession(token);
     
-    // 1. Upload file bukti
-    const { base64, mimeType, fileName } = fileData;
-    const decodedData = Utilities.base64Decode(base64.split(',')[1]);
-    const blob = Utilities.newBlob(decodedData, mimeType, `[${sessionData.namaSekolah}] - ${fileName}`);
-    
-    const folder = DriveApp.getFolderById(DONASI_FOLDER_ID);
-    const newFile = folder.createFile(blob);
-    const newFileId = newFile.getId();
-    
-    // 2. Update Master Sheet
+    // 1. Dapatkan Folder Donasi
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const dataSekolah = sheetSekolah.getDataRange().getValues();
     
     let rowToUpdate = -1;
     let oldFileId = null;
+    let donasiFolderId = null; // <-- [BARU] Variabel untuk ID folder
+
     for (let i = 1; i < dataSekolah.length; i++) {
       if (dataSekolah[i][0] === sessionData.sekolahID) {
         rowToUpdate = i + 1;
         oldFileId = dataSekolah[i][9]; // Kolom J (FileID lama)
+        donasiFolderId = dataSekolah[i][14]; // <-- [BARU] Kolom O (DonasiFolderID)
         break;
       }
     }
@@ -5483,12 +5499,36 @@ function submitDonasi(token, fileData, formDataJSON) {
       throw new Error("Gagal menemukan data sekolah Anda.");
     }
     
-    // 3. Hapus file lama jika ada
+    // --- [MODIFIKASI] Tentukan folder tujuan ---
+    let uploadFolder;
+    if (donasiFolderId) {
+      try {
+        uploadFolder = DriveApp.getFolderById(donasiFolderId);
+      } catch (e) {
+        Logger.log(`Peringatan: Folder donasi (Kolom O) ID ${donasiFolderId} tidak ditemukan. Fallback ke global.`);
+        uploadFolder = DriveApp.getFolderById(DONASI_FOLDER_ID); // Fallback
+      }
+    } else {
+      Logger.log(`Peringatan: Kolom O (DonasiFolderID) kosong. Fallback ke global.`);
+      uploadFolder = DriveApp.getFolderById(DONASI_FOLDER_ID); // Fallback untuk sekolah lama
+    }
+    // --- [AKHIR MODIFIKASI] ---
+
+    // 2. Hapus file lama jika ada (logika ini tetap sama)
     if (oldFileId) {
       try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
     }
     
-    // 4. Tulis data baru
+    // 3. Upload file bukti ke folder yang benar
+    const { base64, mimeType, fileName } = fileData;
+    const decodedData = Utilities.base64Decode(base64.split(',')[1]);
+    const blob = Utilities.newBlob(decodedData, mimeType, `[${sessionData.namaSekolah}] - ${fileName}`);
+    
+    // [MODIFIKASI] Menggunakan 'uploadFolder'
+    const newFile = uploadFolder.createFile(blob);
+    const newFileId = newFile.getId();
+    
+    // 4. Tulis data baru ke Sheet_Sekolah (logika ini tetap sama)
     sheetSekolah.getRange(rowToUpdate, 9, 1, 4).setValues([[
       "PENDING",      // Kolom I (Status)
       newFileId,      // Kolom J (FileID)
@@ -5851,13 +5891,15 @@ function generateSiswaLoginCards(token) {
   }
 }
 
+
 /**
  * [BARU] Membuat spreadsheet baru untuk data Aplikasi 2 (Nilai Ujian)
  * dan mengisinya dengan semua sheet yang diperlukan.
  * @param {string} namaSekolah Nama sekolah untuk judul spreadsheet.
+ * @param {GoogleAppsScript.Drive.Folder} schoolDriveFolder Folder tujuan untuk menyimpan file.
  * @returns {string} ID dari Spreadsheet baru yang dibuat.
  */
-function buatDatabaseAplikasi2Baru(namaSekolah) {
+function buatDatabaseAplikasi2Baru(namaSekolah, schoolDriveFolder) { // [MODIFIKASI] Tambah argumen
   let newSS;
   try {
     // 1. Buat Spreadsheet baru
@@ -5865,14 +5907,15 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
     newSS = SpreadsheetApp.create(ssName);
     const newSSID = newSS.getId();
     
-    // 2. Pindahkan ke Folder Target (Opsional tapi disarankan)
+    // 2. Pindahkan ke Folder Target
     try {
-      const targetFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
+      // [MODIFIKASI] Gunakan schoolDriveFolder, hapus referensi ke TARGET_FOLDER_ID
       const newFile = DriveApp.getFileById(newSSID);
-      targetFolder.addFile(newFile);
+      schoolDriveFolder.addFile(newFile);
       DriveApp.getRootFolder().removeFile(newFile);
     } catch (e) {
-      Logger.log(`Peringatan: Gagal memindahkan DB App 2 baru ke folder target. Error: ${e.message}`);
+      // Biarkan fallback ke root jika pemindahan gagal
+      Logger.log(`Peringatan: Gagal memindahkan DB App 2 baru ke folder sekolah. Error: ${e.message}`);
     }
 
     // 3. Buat semua sheet yang diperlukan oleh Aplikasi 2
@@ -5880,7 +5923,7 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
     const defaultSheet = newSS.getSheets()[0];
     
     // db_guru (Hanya untuk referensi, tidak dipakai di model ini)
-    newSS.insertSheet('db_guru').appendRow(["email", "password", "nama", "id_sekolah", "role"]).setFrozenRows(1);
+    // newSS.insertSheet('db_guru').appendRow(["email", "password", "nama", "id_sekolah", "role"]).setFrozenRows(1);
 
     // db_siswa
     const siswaSheet = newSS.insertSheet('db_siswa');
@@ -5888,7 +5931,6 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
     siswaSheet.setFrozenRows(1);
     siswaSheet.getRange("A:A").setNumberFormat('@');
 
-    // === TAMBAHAN BARU ===
     // db_tahun_ajaran
     const taSheet = newSS.insertSheet('db_tahun_ajaran');
     taSheet.appendRow(["id_tahun_ajaran", "deskripsi", "status_kunci"]);
@@ -5899,7 +5941,6 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
     const defaultTaId = `TA-${currentYear}-${nextYear}`;
     taSheet.appendRow([defaultTaId, defaultTaDeskripsi, false]); 
     taSheet.setFrozenRows(1);
-    // === AKHIR TAMBAHAN ===
 
     // db_enrollment
     newSS.insertSheet('db_enrollment').appendRow(["id_enrollment", "nomor_ujian", "id_sekolah", "id_tahun_ajaran", "ruang_ujian"]).setFrozenRows(1);
@@ -5920,7 +5961,6 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
     newSS.insertSheet('db_pengaturan_katrol').appendRow(["email", "id_tahun_ajaran", "min_hasil_katrol", "max_hasil_katrol"]).setFrozenRows(1);
 
     // db_ott_cache (PENTING UNTUK SSO)
-    // Walaupun SSO dicek di global, kita buat sheet ini agar App 2 tidak error jika kodenya masih merujuk ke sini
     newSS.insertSheet('db_ott_cache').appendRow(["Token", "EmailPayload", "Timestamp"]).setFrozenRows(1);
     
     newSS.deleteSheet(defaultSheet);
