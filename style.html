@@ -1083,7 +1083,8 @@
   
   #import-siswa-results,
   #import-nilai-results,
-  #import-guru-results {
+  #import-guru-results,
+  #import-penempatan-results {
     margin-top: 20px;
     padding: 15px;
     border: 1px solid var(--border-color);
@@ -1094,7 +1095,8 @@
   }
   #import-siswa-results h4,
   #import-nilai-results h4,
-  #import-guru-results h4 {
+  #import-guru-results h4,
+  #import-penempatan-results h4 {
     margin-top: 0;
     color: var(--text-dark);
   }
@@ -1116,13 +1118,15 @@
 
   #import-siswa-modal .modal-content,
   #upload-nilai-modal .modal-content,
-  #import-guru-modal .modal-content {
+  #import-guru-modal .modal-content,
+  #import-penempatan-modal .modal-content {
     max-width: 480px;
   }
 
   #import-siswa-modal .modal-body,
   #upload-nilai-modal .modal-body,
-  #import-guru-modal .modal-body {
+  #import-guru-modal .modal-body,
+  #import-penempatan-modal .modal-body {
     background-color: var(--bg-light);
     padding: 20px 25px;
   }
@@ -4631,51 +4635,82 @@
 
   /* --- GAYA BARU UNTUK TABEL PENEMPATAN --- */
   .penempatan-siswa-table {
-    width: 100%;
-    border-collapse: collapse;
-    border: 1px solid var(--border-color);
+    /* (Class 'siswa-table' sekarang menangani border dan width) */
   }
   .penempatan-siswa-table th,
   .penempatan-siswa-table td {
-    border: 1px solid var(--border-color);
-    padding: 10px 12px;
-    text-align: left;
-    font-size: 14px;
+    /* [MODIFIKASI] Kunci: Paksa satu baris, jangan di-wrap */
+    white-space: nowrap; 
     vertical-align: middle;
+    /* (styling font, border, padding diwarisi dari .siswa-table) */
   }
+  
+  /* [MODIFIKASI] Selector ini diperbarui */
   .penempatan-siswa-table thead th {
-    background-color: var(--bg-light);
-    font-weight: 700;
+    text-align: left;
+    vertical-align: middle; /* Pastikan vertikal tengah */
+    
+    /* --- TAMBAHAN BARU --- */
+    /* Menjadikan header tabel "sticky" */
     position: sticky;
     top: 0;
     z-index: 10;
+    /* Warna background dan text sudah diatur oleh class 'thead-dark' */
+    /* --- AKHIR TAMBAHAN --- */
   }
+  
   .penempatan-siswa-table tbody tr:nth-child(even) {
-    background-color: var(--bg-light);
+     /* (diwarisi dari .siswa-table) */
   }
-  .penempatan-siswa-table th.col-cek-enroll {
-    width: 50px;
-    text-align: center;
-  }
+  
+  /* Perataan Kolom Khusus */
+  .penempatan-siswa-table th.col-cek-enroll,
   .penempatan-siswa-table td.col-cek-enroll {
     text-align: center;
   }
+  .penempatan-siswa-table th.col-kelas-app1,
+  .penempatan-siswa-table td.col-kelas-app1 {
+    text-align: center;
+  }
+
   .penempatan-siswa-table .col-cek-enroll input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
   }
+  
   .penempatan-siswa-table th.col-ruang {
     width: 150px;
   }
-  .penempatan-siswa-table td.col-ruang input {
+  
+  /* [MODIFIKASI] Styling input agar konsisten */
+  .penempatan-siswa-table td .enroll-noujian-input,
+  .penempatan-siswa-table td .enroll-ruang-input {
     width: 100%;
+    min-width: 130px; /* Beri lebar minimum */
     padding: 8px;
     font-size: 14px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     box-sizing: border-box;
+    background-color: var(--bg-white);
   }
+  
+  .penempatan-siswa-table td .enroll-noujian-input:focus,
+  .penempatan-siswa-table td .enroll-ruang-input:focus {
+     outline: none;
+     border-color: var(--primary-color);
+     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+  }
+
+  .penempatan-siswa-table td .enroll-noujian-input:disabled,
+  .penempatan-siswa-table td .enroll-ruang-input:disabled {
+    background-color: var(--bg-light);
+    cursor: not-allowed;
+    border-style: dashed;
+  }
+  /* [AKHIR MODIFIKASI] */
+
   .penempatan-siswa-table .col-status {
     width: 120px;
     text-align: center;
@@ -4717,6 +4752,67 @@
     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
   }
   /* [AKHIR MODIFIKASI] */
+
+  /* --- GAYA BARU UNTUK TABEL PENEMPATAN --- */
+  .penempatan-mapel-table th.col-kelas {
+    width: 150px;
+    min-width: 130px;
+  }
+  .penempatan-mapel-table td .penempatan-mapel-kelas-select {
+    width: 100%;
+    min-width: 130px; 
+    padding: 8px;
+    font-size: 14px;
+    /* Menggunakan variabel form standar */
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-sizing: border-box;
+    background-color: var(--bg-white);
+  }
+  
+  .penempatan-mapel-table td .penempatan-mapel-kelas-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+  }
+
+  /* [MODIFIKASI] Style baru untuk tombol hapus di tabel penempatan */
+  .penempatan-mapel-table .btn-remove-mapel-app2 {
+    width: 36px;  /* Kotak kecil */
+    height: 36px; /* Kotak kecil */
+    padding: 0;
+    font-size: 14px;
+    margin: 0;
+    gap: 0;
+    /* btn-aksi dan btn-delete sudah memberi warna merah */
+  }
+  
+  .penempatan-mapel-table .btn-remove-mapel-app2 i {
+    margin: 0; /* Pastikan ikon ditengah */
+    pointer-events: none; /* Agar ikon tidak mencuri klik */
+  }
+
+  /* [MODIFIKASI] Terapkan style thead-dark ke tabel guru */
+  .guru-table thead th {
+    background-color: #4a5568; /* Warna header abu gelap */
+    color: white;
+    font-weight: 700;
+    border-bottom: 2px solid #2d3748;
+    text-transform: uppercase; /* [TAMBAHAN] Samakan dengan gambar */
+    letter-spacing: 0.5px; /* [TAMBAHAN] Samakan dengan gambar */
+    font-size: 14px; /* [TAMBAHAN] Samakan dengan gambar */
+    vertical-align: middle;
+  }
+  
+  /* [TAMBAHAN] Atur tabel penempatan mapel agar mirip tabel guru */
+  .penempatan-mapel-table td {
+    font-size: 14px;
+    vertical-align: middle;
+  }
+  .penempatan-mapel-table td strong {
+      font-weight: 500;
+      color: var(--text-dark);
+  }
 
   /* Style untuk modal tambah mapel app 2 */
   #modal-mapel-app2 .modal-content {
