@@ -1192,6 +1192,51 @@
       </div>
     </div>
 
+    <div id="import-penempatan-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-import-penempatan-title">Import Penempatan Siswa (App 2)</h2>
+          <span class="close-button" id="btn-tutup-modal-import-penempatan">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p>Import data No. Ujian dan Ruang Ujian siswa menggunakan file Excel. Ikuti langkah-langkah di bawah ini:</p>
+          
+          <div class="import-step-box">
+            <div class="import-step-number">1</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unduh Template</h4>
+              <p>Unduh template Excel. Filter kelas di halaman penempatan akan menentukan siswa mana yang masuk ke template.</p>
+              <button id="btn-download-template-penempatan" class="btn-aksi"><i class="fas fa-file-excel"></i>Unduh Template (.xlsx)</button>
+              <p id="template-penempatan-message" class="message" style="display: none;"></p>
+            </div>
+          </div>
+
+          <div class="import-step-box">
+            <div class="import-step-number">2</div>
+            <div class="import-step-content">
+              <h4 class="import-step-header">Unggah File Excel</h4>
+              <p>Pilih file Excel (`.xlsx` atau `.xls`) yang sudah Anda isi dengan No. Ujian dan Ruang Ujian.</p>
+              
+              <label for="file-upload-penempatan" class="file-upload-zone" id="file-upload-zone-penempatan">
+                <input type="file" id="file-upload-penempatan" accept=".xlsx, .xls, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text-penempatan">Klik untuk memilih file atau seret & letakkan di sini.</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="import-penempatan-results" style="display: none;">
+            </div>
+          
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-modal-import-penempatan"><i class="fas fa-times"></i>Tutup</button>
+          <button id="btn-proses-import-penempatan" disabled><i class="fas fa-cogs"></i>Proses Import</button>
+        </div>
+      </div>
+    </div>
+
     <div class="container" id="halaman-semester" style="display: none;">
       <div class="page">
         <div class="page-top-nav">
@@ -1764,6 +1809,7 @@
           <div class="table-toolbar" style="margin-top: 15px;">
             <p><strong>Daftar Siswa (dari Aplikasi 1)</strong></p>
             <div class="header-buttons">
+              <button id="btn-import-penempatan" class="btn-aksi" style="background-color: var(--primary-color);"><i class="fas fa-upload"></i> Import Data</button>
               <button id="btn-penempatan-siswa-tandai" class="btn-aksi" style="background-color: var(--primary-color);"><i class="fas fa-check-square"></i> Tandai Semua</button>
               <button id="btn-penempatan-siswa-batal" class="btn-aksi" style="background-color: var(--secondary-color);"><i class="far fa-square"></i> Batal Semua</button>
             </div>
