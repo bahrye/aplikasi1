@@ -591,18 +591,12 @@
 
   function tampilHalaman(idHalaman) {
     // --- [PERBAIKAN BARU V2] ---
-    if (idHalaman === 'halaman-utama') {
-      // Kita KEMBALI ke dashboard, pulihkan scroll
-      window.scrollTo({ top: lastDashboardScrollPosition, behavior: 'auto' });
-    } else {
-      // Kita pergi ke halaman LAIN (siswa, mapel, dll.), scroll ke atas.
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
+    // BLOK KODE UNTUK SCROLL DIPINDAHKAN DARI SINI
     // --- [AKHIR PERBAIKAN BARU V2] ---
 
     /* --- =================================== --- */
     /* ---      TAMBAHAN BARU: Hentikan Video    --- */
-    /* --- =GET-VIDEO-STATE-FAILED================================== --- */
+    /* --- =================================== --- */
     // Cek apakah player video donasi (ytPlayerDonasi) ada
     // dan memiliki fungsi stopVideo.
     if (ytPlayerDonasi && typeof ytPlayerDonasi.stopVideo === 'function') {
@@ -707,9 +701,23 @@
             }
             // --- AKHIR PERBAIKAN ---
 
+            // --- TAMBAHAN: Pastikan halaman auth juga scroll ke atas ---
+            window.scrollTo({ top: 0, behavior: 'auto' });
+            // --- AKHIR TAMBAHAN ---
+
         } else {
             targetElement.style.display = 'block';
             localStorage.setItem(LAST_PAGE_KEY, idHalaman);
+            
+            // --- [PERBAIKAN V3] LOGIKA SCROLL DIPINDAHKAN KE SINI ---
+            if (idHalaman === 'halaman-utama') {
+              // Kita KEMBALI ke dashboard, pulihkan scroll
+              window.scrollTo({ top: lastDashboardScrollPosition, behavior: 'auto' });
+            } else {
+              // Kita pergi ke halaman LAIN, scroll ke atas
+              window.scrollTo({ top: 0, behavior: 'auto' });
+            }
+            // --- [AKHIR PERBAIKAN V3] ---
         }
     } else {
         console.warn("Halaman tidak ditemukan:", idHalaman, ". Menampilkan dashboard.");
@@ -1542,6 +1550,15 @@
     document.getElementById('btn-buka-tahun-ajaran').addEventListener('click', () => {
       handleNavigationConfirm(bukaHalamanTahunAjaran);
     });
+
+    document.getElementById('btn-buka-tahun-ajaran').addEventListener('click', (e) => { // <-- Tambah 'e'
+      if (e.currentTarget.classList.contains('card-disabled')) {
+        handleNavigationConfirm(bukaHalamanDonasi);
+      } else {
+        handleNavigationConfirm(bukaHalamanTahunAjaran);
+      }
+    });
+
     document.getElementById('btn-kembali-ke-dashboard-14').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
     });
@@ -1596,6 +1613,15 @@
     document.getElementById('btn-buka-penempatan').addEventListener('click', () => {
       handleNavigationConfirm(bukaHalamanPenempatan);
     });
+
+    document.getElementById('btn-buka-penempatan').addEventListener('click', (e) => { // <-- Tambah 'e'
+      if (e.currentTarget.classList.contains('card-disabled')) {
+        handleNavigationConfirm(bukaHalamanDonasi);
+      } else {
+        handleNavigationConfirm(bukaHalamanPenempatan);
+      }
+    });
+
     document.getElementById('btn-kembali-ke-dashboard-15').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
     });
@@ -9227,6 +9253,10 @@ function populateSiswaFilters() {
     const tabSiswa = document.getElementById('tab-btn-siswa');
     const btnKelulusan = document.getElementById('btn-buka-kelola-kelulusan'); 
     const btnProsesKelulusan = document.getElementById('btn-buka-proses-kelulusan'); // <-- BARIS BARU
+    // --- TAMBAHAN BARU ---
+    const btnPenempatan = document.getElementById('btn-buka-penempatan');
+    const btnTahunAjaran = document.getElementById('btn-buka-tahun-ajaran');
+    // --- AKHIR TAMBAHAN ---
     
     if (btnGuru) {
       const stamp = btnGuru.querySelector('.premium-stamp');
@@ -9266,6 +9296,29 @@ function populateSiswaFilters() {
       }
     }
     // --- AKHIR BLOK BARU ---
+
+    // --- TAMBAHAN BARU ---
+    if (btnPenempatan) {
+      const stamp = btnPenempatan.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnPenempatan.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnPenempatan.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    
+    if (btnTahunAjaran) {
+      const stamp = btnTahunAjaran.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnTahunAjaran.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnTahunAjaran.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
     
     if (tabGuru) {
       tabGuru.disabled = !isPremium;
