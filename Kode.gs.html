@@ -474,7 +474,12 @@ function prosesVerifikasiToken(token) {
             newSchoolFolderId, // <-- BARU: Kolom N (MainFolderID)
             donasiSubFolderId,  // <-- BARU: Kolom O (DonasiFolderID)
             "", // <-- BARU: Kolom P (KopSuratFileID)
-            ""  // <-- BARU: Kolom Q (TanggalCetak)
+            "",  // <-- BARU: Kolom Q (TanggalCetak)
+            "", // <-- TAMBAHKAN: Kolom R (TemplateDocID)
+            "", // <-- TAMBAHKAN: Kolom S (TemplateRekapID)
+            "",  // <-- TAMBAHKAN: Kolom T (TempatTTD)
+            "otomatis"  // <-- TAMBAHKAN INI: Kolom U (TanggalTtdMode), default 'otomatis'
+
           ]);
 
           // Hapus dari antrian pending
@@ -7106,11 +7111,6 @@ function PERBAIKI_SEKOLAH_ADMIN_LAMA() {
   }
 }
 
-// TAMBAHKAN DI AKHIR FILE Kode.gs.html (Aplikasi 1)
-
-/**
- * [ADMIN] Mengambil pengaturan cetak (Tanggal & URL Kop Surat) dari Sheet_Sekolah.
- */
 function getPengaturanCetak(token) {
   try {
     const { sessionData } = validateAdminSession(token);
@@ -7121,7 +7121,9 @@ function getPengaturanCetak(token) {
     let pengaturan = {
       tanggalCetak: "",
       kopSuratFileId: null,
-      kopSuratUrl: null
+      kopSuratUrl: null,
+      tempatTTD: "",
+      tanggalTtdMode: "otomatis" // <-- TAMBAHKAN INI
     };
 
     // Cari baris sekolah
@@ -7129,10 +7131,15 @@ function getPengaturanCetak(token) {
       if (data[i][0] === sessionData.sekolahID) {
         // Kolom Q (index 16) = TanggalCetak
         // Kolom P (index 15) = KopSuratFileID
+        // Kolom T (index 19) = TempatTTD
+        // Kolom U (index 20) = TanggalTtdMode
         const tanggal = data[i][16];
         if (tanggal instanceof Date) {
           pengaturan.tanggalCetak = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), "yyyy-MM-dd");
         }
+        
+        pengaturan.tempatTTD = data[i][19] || ""; 
+        pengaturan.tanggalTtdMode = data[i][20] || "otomatis"; // <-- TAMBAHKAN INI
 
         const fileId = data[i][15];
         if (fileId) {
@@ -7155,16 +7162,22 @@ function getPengaturanCetak(token) {
   }
 }
 
-// TAMBAHKAN DI AKHIR FILE Kode.gs.html (Aplikasi 1)
-
-/**
- * [ADMIN] Menyimpan pengaturan cetak (Tanggal & File Kop Surat).
- */
-function savePengaturanCetak(token, tanggalCetak, fileData) {
+function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode) { // <-- TAMBAHKAN tanggalTtdMode
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     const { sessionData } = validateAdminSession(token);
+    
+    // Validasi Sisi Server
+    if (!tempatTTD || tempatTTD.trim().length === 0) {
+      throw new Error("Tempat Tanda Tangan wajib diisi.");
+    }
+    if (tanggalTtdMode === 'manual' && !tanggalCetak) { // <-- TAMBAHKAN VALIDASI INI
+      throw new Error("Tanggal Tanda Tangan wajib diisi jika mode 'Manual' dipilih.");
+    }
+    if (tanggalTtdMode !== 'manual' && tanggalTtdMode !== 'otomatis') {
+      throw new Error("Mode tanggal tidak valid.");
+    }
 
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
@@ -7190,35 +7203,38 @@ function savePengaturanCetak(token, tanggalCetak, fileData) {
     let newFileId = oldFileId;
     let newFileUrl = null;
 
-    // 2. Proses file jika ada
+    // 2. Proses file jika ada (Logika ini tetap sama)
     if (fileData) {
       if (fileData.base64) {
-        // User mengupload file baru
+        // ... (logika upload file) ...
         if (oldFileId) {
           try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
         }
-
         const decodedData = Utilities.base64Decode(fileData.base64.split(',')[1]);
         const blob = Utilities.newBlob(decodedData, fileData.mimeType, `KOP_SURAT - ${sessionData.namaSekolah}`);
         const newFile = folder.createFile(blob);
         newFileId = newFile.getId();
         newFileUrl = newFile.getDownloadUrl().replace("&export=download", "");
-
       } else if (fileData.delete === true) {
-        // User menekan "Hapus Gambar"
+        // ... (logika hapus file) ...
         if (oldFileId) {
           try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
         }
         newFileId = null;
         newFileUrl = null;
       }
-      // Jika fileData bukan salah satu di atas, newFileId tetap = oldFileId
     }
 
     // 3. Update Sheet_Sekolah
-    const formattedDate = tanggalCetak ? new Date(tanggalCetak) : null;
+    // <-- PERUBAHAN DI SINI -->
+    // Jika mode 'otomatis', paksa tanggalCetak jadi null
+    const formattedDate = (tanggalTtdMode === 'manual' && tanggalCetak) ? new Date(tanggalCetak) : null;
+    
     sheetSekolah.getRange(rowToUpdate, 16).setValue(newFileId);     // Kolom P (KopSuratFileID)
     sheetSekolah.getRange(rowToUpdate, 17).setValue(formattedDate); // Kolom Q (TanggalCetak)
+    sheetSekolah.getRange(rowToUpdate, 20).setValue(tempatTTD);     // Kolom T (TempatTTD)
+    sheetSekolah.getRange(rowToUpdate, 21).setValue(tanggalTtdMode); // Kolom U (TanggalTtdMode)
+    // <-- AKHIR PERUBAHAN -->
 
     clearMasterSheetCache(); // Bersihkan cache master
 
@@ -7235,8 +7251,7 @@ function savePengaturanCetak(token, tanggalCetak, fileData) {
 /**
  * [UTILITAS PERBAIKAN]
  * Jalankan fungsi ini SATU KALI SECARA MANUAL dari editor Apps Script
- * untuk menambahkan kolom TemplateDocID (R) dan TemplateRekapID (S)
- * ke Sheet_Sekolah yang sudah ada.
+ * untuk menambahkan kolom TemplateDocID (R), TemplateRekapID (S), TempatTTD (T), dan TanggalTtdMode (U).
  */
 function _PERBAIKI_HEADER_SHEET_SEKOLAH() {
   try {
@@ -7250,21 +7265,32 @@ function _PERBAIKI_HEADER_SHEET_SEKOLAH() {
 
     let headerR_OK = false;
     let headerS_OK = false;
+    let headerT_OK = false;
+    let headerU_OK = false; // <-- TAMBAHKAN INI
 
     if (headers[17]) { // Index 17 (Kolom R)
       if (headers[17] == "TemplateDocID") {
         headerR_OK = true;
       }
     }
-
     if (headers[18]) { // Index 18 (Kolom S)
       if (headers[18] == "TemplateRekapID") {
         headerS_OK = true;
       }
     }
+    if (headers[19]) { // Index 19 (Kolom T)
+      if (headers[19] == "TempatTTD") {
+        headerT_OK = true;
+      }
+    }
+    if (headers[20]) { // Index 20 (Kolom U) <-- TAMBAHKAN BLOK INI
+      if (headers[20] == "TanggalTtdMode") {
+        headerU_OK = true;
+      }
+    }
 
-    if (headerR_OK && headerS_OK) {
-       Browser.msgBox("Header sudah lengkap (TemplateDocID dan TemplateRekapID sudah ada). Tidak ada perubahan.");
+    if (headerR_OK && headerS_OK && headerT_OK && headerU_OK) { // <-- TAMBAHKAN INI
+       Browser.msgBox("Header sudah lengkap (R, S, T, U sudah ada). Tidak ada perubahan.");
        return;
     }
 
@@ -7274,214 +7300,18 @@ function _PERBAIKI_HEADER_SHEET_SEKOLAH() {
     if (!headerS_OK) {
        sheet.getRange(1, 19).setValue("TemplateRekapID"); // Kolom S
     }
+    if (!headerT_OK) {
+       sheet.getRange(1, 20).setValue("TempatTTD"); // Kolom T
+    }
+    if (!headerU_OK) { // <-- TAMBAHKAN BLOK INI
+       sheet.getRange(1, 21).setValue("TanggalTtdMode"); // Kolom U
+    }
 
-    Browser.msgBox("BERHASIL! Header 'TemplateDocID' (Kolom R) dan 'TemplateRekapID' (Kolom S) telah ditambahkan ke Sheet_Sekolah.");
+    Browser.msgBox("BERHASIL! Header 'TemplateDocID' (R), 'TemplateRekapID' (S), 'TempatTTD' (T), dan 'TanggalTtdMode' (U) telah ditambahkan.");
 
   } catch (e) {
     Logger.log("Gagal menjalankan _PERBAIKI_HEADER_SHEET_SEKOLAH: " + e.message);
     Browser.msgBox("Gagal: " + e.message);
-  }
-}
-
-// -----------------------------------------------------------------------------
-// --- TAMBAHKAN 3 FUNGSI BARU DI BAWAH INI (UNTUK MEMBUAT TEMPLATE OTOMATIS) ---
-// -----------------------------------------------------------------------------
-
-/**
- * [HELPER INTERNAL] Menemukan baris data sekolah admin yang sedang login.
- */
-function _getSekolahRow(sekolahID, sheetSekolah) {
-  const data = sheetSekolah.getRange("A2:S" + sheetSekolah.getLastRow()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0] === sekolahID) { // Kolom A
-      return {
-        row: i + 2, // 1-based index untuk getRange()
-        data: data[i]
-      };
-    }
-  }
-  throw new Error("Tidak dapat menemukan baris untuk SekolahID: " + sekolahID);
-}
-
-// GANTI FUNGSI YANG LAMA DENGAN KODE LENGKAP INI
-
-/**
- * [FUNGSI PERBAIKAN MANUAL]
- * Jalankan ini untuk membuat TEMPLATE LAPORAN NILAI MAPEL (PDF).
- */
-function _BUAT_TEMPLATE_LAPORAN_BARU() {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    // !!! PENTING: Ganti "SEKOLAH-ID-ANDA" dengan SekolahID dari Sheet_Sekolah (Kolom A) !!!
-    const SEKOLAH_ID_UNTUK_TEMPLATE = "TEST-1R3R6"; // <-- PASTIKAN INI MASIH TERISI DENGAN ID SEKOLAH ANDA
-
-    if (SEKOLAH_ID_UNTUK_TEMPLATE === "SEKOLAH-ID-ANDA" || SEKOLAH_ID_UNTUK_TEMPLATE === "") {
-      throw new Error("Harap edit skrip dan isi variabel SEKOLAH_ID_UNTUK_TEMPLATE dengan ID sekolah (Kolom A) yang benar.");
-    }
-
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-
-    // Fungsi _getSekolahRow sudah ada di skrip Anda, kita panggil saja
-    const { row: sheetRow, data: rowData } = _getSekolahRow(SEKOLAH_ID_UNTUK_TEMPLATE, sheetSekolah);
-
-    const mainFolderId = rowData[13]; // Kolom N (MainFolderID)
-    const oldTemplateId = rowData[17]; // Kolom R (TemplateDocID)
-
-    if (!mainFolderId) throw new Error("Folder utama (Kolom N) tidak ditemukan. Jalankan registrasi ulang.");
-
-    const folder = DriveApp.getFolderById(mainFolderId);
-
-    // 1. Buat Dokumen Baru
-    const doc = DocumentApp.create("Template Laporan Nilai Mapel");
-    const newId = doc.getId();
-    const file = DriveApp.getFileById(newId);
-
-    // 2. Pindahkan ke Folder Sekolah
-    folder.addFile(file);
-    DriveApp.getRootFolder().removeFile(file);
-
-    // 3. Isi Konten Template
-    const body = doc.getBody();
-    body.insertParagraph(0, "{{KOP_SURAT}}").setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    body.appendParagraph("\n\nNILAI UJIAN MADRASAH\nTAHUN {{tahun_lulus}}\nTAHUN PELAJARAN {{tahun_pelajaran}}")
-        .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
-        .setBold(true);
-
-    body.appendParagraph("\nNama Mata Pelajaran\t: {{nama_mapel}}");
-    body.appendParagraph("Guru Pemeriksa\t\t: {{guru_pemeriksa}}");
-
-    // Buat Tabel
-    body.appendParagraph("\n");
-    const table = body.appendTable([
-      ['No', 'Ruang Ujian', 'Nomor Ujian', 'Nama Peserta Ujian', 'Nilai', 'Nilai dengan Huruf']
-    ]);
-    table.getRow(0).editAsText().setBold(true);
-
-    // --- [PERBAIKAN #1: Bug appendTableRow] ---
-    const placeholderRow = table.appendTableRow(); // Buat baris kosong
-    for (let i = 0; i < 6; i++) {
-      placeholderRow.appendTableCell(''); // Tambah 6 sel kosong
-    }
-    // --- [AKHIR PERBAIKAN #1] ---
-
-    body.appendParagraph("\n\n");
-    // Tanda Tangan (menggunakan tabel agar rapi)
-    const ttdTable = body.appendTable([
-      ['Mengetahui,\nKepala Madrasah,', '{{tempat_ttd}}, {{tanggal_ttd}}\nGuru Pemeriksa,'],
-      ['\n\n\n\n', '\n\n\n\n'], // Spasi untuk TTD
-      ['{{nama_kepala_sekolah}}', '{{guru_pemeriksa}}'],
-      ['NIP. {{nip_kepala_sekolah}}', 'NIP. -']
-    ]);
-    ttdTable.setBorderWidth(0); // Sembunyikan border
-
-    // --- [PERBAIKAN #2: Bug setAlignment] ---
-    // Atur alignment pada SEL, BUKAN pada Teks.
-
-    // Row 0, Col 0: "Mengetahui..."
-    ttdTable.getCell(0, 0).editAsText().setBold(false);
-
-    // Row 0, Col 1: "Tempat, Tanggal"
-    ttdTable.getCell(0, 1).setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
-
-    // Row 2, Col 0: "Nama Kepsek"
-    ttdTable.getCell(2, 0).editAsText().setBold(true).setUnderline(true);
-
-    // Row 2, Col 1: "Nama Guru"
-    ttdTable.getCell(2, 1).editAsText().setBold(true).setUnderline(true);
-    ttdTable.getCell(2, 1).setAlignment(DocumentApp.HorizontalAlignment.RIGHT); // <--- PERBAIKAN
-
-    // Row 3, Col 1: "NIP Guru"
-    ttdTable.getCell(3, 1).setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
-
-    // --- [AKHIR PERBAIKAN #2] ---
-
-    doc.saveAndClose();
-
-    // 4. Hapus template lama (jika ada)
-    if (oldTemplateId) {
-      try { DriveApp.getFileById(oldTemplateId).setTrashed(true); } catch(e){}
-    }
-
-    // 5. Simpan ID baru ke Sheet_Sekolah Kolom R (18)
-    sheetSekolah.getRange(sheetRow, 18).setValue(newId);
-    clearMasterSheetCache();
-
-    Browser.msgBox("BERHASIL!", `File "Template Laporan Nilai Mapel" telah dibuat di folder Drive Anda dan ID-nya (${newId}) telah disimpan di Kolom R.`, Browser.Buttons.OK);
-
-  } catch (e) {
-    Logger.log("Gagal _BUAT_TEMPLATE_LAPORAN_BARU: " + e.message);
-    Browser.msgBox("Gagal: " + e.message);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * [FUNGSI PERBAIKAN MANUAL]
- * Jalankan ini untuk membuat TEMPLATE REKAP NILAI ADMIN (PDF).
- */
-function _BUAT_TEMPLATE_REKAP_BARU() {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    // !!! PENTING: Ganti "SEKOLAH-ID-ANDA" dengan SekolahID dari Sheet_Sekolah (Kolom A) !!!
-    const SEKOLAH_ID_UNTUK_TEMPLATE = "TEST-1R3R6"; 
-    
-    if (SEKOLAH_ID_UNTUK_TEMPLATE === "SEKOLAH-ID-ANDA" || SEKOLAH_ID_UNTUK_TEMPLATE === "") {
-      throw new Error("Harap edit skrip dan isi variabel SEKOLAH_ID_UNTUK_TEMPLATE dengan ID sekolah (Kolom A) yang benar.");
-    }
-
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-    
-    const { row: sheetRow, data: rowData } = _getSekolahRow(SEKOLAH_ID_UNTUK_TEMPLATE, sheetSekolah);
-    
-    const mainFolderId = rowData[13]; // Kolom N (MainFolderID)
-    const oldTemplateId = rowData[18]; // Kolom S (TemplateRekapID)
-    
-    if (!mainFolderId) throw new Error("Folder utama (Kolom N) tidak ditemukan.");
-    
-    const folder = DriveApp.getFolderById(mainFolderId);
-    
-    // 1. Buat Dokumen Baru
-    const doc = DocumentApp.create("Template Rekap Nilai Admin");
-    const newId = doc.getId();
-    const file = DriveApp.getFileById(newId);
-    
-    // 2. Pindahkan ke Folder Sekolah
-    folder.addFile(file);
-    DriveApp.getRootFolder().removeFile(file);
-    
-    // 3. Isi Konten Template
-    const body = doc.getBody();
-    body.insertParagraph(0, "{{nama_sekolah}}").setAlignment(DocumentApp.HorizontalAlignment.CENTER).setBold(true);
-    body.appendParagraph("REKAPITULASI NILAI UJIAN").setAlignment(DocumentApp.HorizontalAlignment.CENTER).setBold(true);
-    body.appendParagraph("{{deskripsi_rekap}}").setAlignment(DocumentApp.HorizontalAlignment.CENTER).setBold(true);
-    
-    body.appendParagraph("\n");
-    // Buat Tabel Kosong
-    body.appendTable([['Header 1', 'Header 2'], ['Data 1', 'Data 2']]);
-    
-    doc.saveAndClose();
-    
-    // 4. Hapus template lama (jika ada)
-    if (oldTemplateId) {
-      try { DriveApp.getFileById(oldTemplateId).setTrashed(true); } catch(e){}
-    }
-    
-    // 5. Simpan ID baru ke Sheet_Sekolah Kolom S (19)
-    sheetSekolah.getRange(sheetRow, 19).setValue(newId);
-    clearMasterSheetCache();
-    
-    Browser.msgBox("BERHASIL!", `File "Template Rekap Nilai Admin" telah dibuat di folder Drive Anda dan ID-nya (${newId}) telah disimpan di Kolom S.`, Browser.Buttons.OK);
-
-  } catch (e) {
-    Logger.log("Gagal _BUAT_TEMPLATE_REKAP_BARU: " + e.message);
-    Browser.msgBox("Gagal: " + e.message);
-  } finally {
-    lock.releaseLock();
   }
 }
 
