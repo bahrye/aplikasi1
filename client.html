@@ -1387,6 +1387,19 @@
     document.getElementById('pengaturan-tanggal-cetak').addEventListener('input', () => {
       document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
     });
+    document.getElementById('pengaturan-tempat-ttd').addEventListener('input', () => {
+      document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
+    });
+    // [BARU] Listener untuk dropdown mode tanggal
+    document.getElementById('pengaturan-tanggal-mode').addEventListener('change', (e) => {
+      const manualContainer = document.getElementById('pengaturan-tanggal-manual-container');
+      if (e.target.value === 'manual') {
+        manualContainer.style.display = 'block';
+      } else {
+        manualContainer.style.display = 'none';
+      }
+      document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
+    });
     // --- AKHIR LISTENER BARU ---
 
     // Listener dinamis untuk tombol verifikasi Superadmin
@@ -11475,6 +11488,9 @@ function populateSiswaFilters() {
 
     // Reset form
     document.getElementById('form-pengaturan-cetak').reset();
+    document.getElementById('pengaturan-tempat-ttd').value = '';
+    document.getElementById('pengaturan-tanggal-mode').value = 'otomatis';
+    document.getElementById('pengaturan-tanggal-manual-container').style.display = 'none';
     document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
     document.getElementById('kop-surat-status').value = 'keep'; // Status default
     document.getElementById('kop-surat-preview-container').style.display = 'none';
@@ -11496,6 +11512,17 @@ function populateSiswaFilters() {
     if (response.status === 'sukses') {
       const data = response.data;
       document.getElementById('pengaturan-tanggal-cetak').value = data.tanggalCetak || '';
+      document.getElementById('pengaturan-tempat-ttd').value = data.tempatTTD || '';
+
+      // <-- TAMBAHKAN BLOK INI -->
+      const mode = data.tanggalTtdMode || 'otomatis';
+      document.getElementById('pengaturan-tanggal-mode').value = mode;
+      if (mode === 'manual') {
+        document.getElementById('pengaturan-tanggal-manual-container').style.display = 'block';
+      } else {
+        document.getElementById('pengaturan-tanggal-manual-container').style.display = 'none';
+      }
+      // <-- AKHIR BLOK -->
 
       if (data.kopSuratUrl) {
         // Tampilkan preview gambar yang sudah ada
@@ -11516,11 +11543,33 @@ function populateSiswaFilters() {
     const btn = document.getElementById('btn-simpan-pengaturan-cetak');
     setButtonLoading(btn, 'Menyimpan...');
     hideMessage('pengaturan-cetak-message');
+    document.getElementById('pengaturan-tempat-ttd').classList.remove('input-error');
+    document.getElementById('pengaturan-tanggal-cetak').classList.remove('input-error');
 
+    const tempatTTD = document.getElementById('pengaturan-tempat-ttd').value.trim();
+    const tanggalTtdMode = document.getElementById('pengaturan-tanggal-mode').value;
     const tanggalCetak = document.getElementById('pengaturan-tanggal-cetak').value;
+    
     const fileInput = document.getElementById('file-upload-kop');
     const file = fileInput.files[0];
     const status = document.getElementById('kop-surat-status').value;
+
+    // --- Validasi ---
+    if (!tempatTTD) {
+      resetButtonLoading(btn);
+      showMessage('pengaturan-cetak-message', 'Tempat Tanda Tangan wajib diisi.', true);
+      document.getElementById('pengaturan-tempat-ttd').classList.add('input-error');
+      document.getElementById('pengaturan-tempat-ttd').focus();
+      return;
+    }
+    if (tanggalTtdMode === 'manual' && !tanggalCetak) {
+      resetButtonLoading(btn);
+      showMessage('pengaturan-cetak-message', 'Tanggal Tanda Tangan Manual wajib diisi jika mode "Manual" dipilih.', true);
+      document.getElementById('pengaturan-tanggal-cetak').classList.add('input-error');
+      document.getElementById('pengaturan-tanggal-cetak').focus();
+      return;
+    }
+    // --- Akhir Validasi ---
 
     let fileData = null;
 
@@ -11537,7 +11586,7 @@ function populateSiswaFilters() {
         google.script.run
           .withSuccessHandler(onPengaturanCetakSaved)
           .withFailureHandler(onGagal)
-          .savePengaturanCetak(getToken(), tanggalCetak, fileData);
+          .savePengaturanCetak(getToken(), tanggalCetak, fileData, tempatTTD, tanggalTtdMode); // <-- Kirim 5 args
       };
       reader.onerror = (e) => {
         onGagal({ message: 'Gagal membaca file.' });
@@ -11550,15 +11599,14 @@ function populateSiswaFilters() {
       google.script.run
         .withSuccessHandler(onPengaturanCetakSaved)
         .withFailureHandler(onGagal)
-        .savePengaturanCetak(getToken(), tanggalCetak, fileData);
+        .savePengaturanCetak(getToken(), tanggalCetak, fileData, tempatTTD, tanggalTtdMode); // <-- Kirim 5 args
 
     } else {
       // Status 'keep' atau tidak ada file baru
-      // Kirim null untuk fileData, server akan tahu untuk tidak mengubah gambar
       google.script.run
         .withSuccessHandler(onPengaturanCetakSaved)
         .withFailureHandler(onGagal)
-        .savePengaturanCetak(getToken(), tanggalCetak, null);
+        .savePengaturanCetak(getToken(), tanggalCetak, null, tempatTTD, tanggalTtdMode); // <-- Kirim 5 args
     }
   }
 
