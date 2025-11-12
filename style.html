@@ -4250,6 +4250,60 @@
   }
   /* --- AKHIR BLOK BARU --- */
 
+  /* Override: Kembalikan warna asli untuk kartu Kelola Penempatan */
+  #btn-buka-penempatan.card-disabled,
+  #btn-buka-penempatan:disabled {
+    background-color: var(--bg-white) !important;
+    color: #6f42c1 !important; /* Warna ungu asli */
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+  #btn-buka-penempatan.card-disabled i,
+  #btn-buka-penempatan:disabled i,
+  #btn-buka-penempatan.card-disabled span,
+  #btn-buka-penempatan:disabled span {
+    color: #6f42c1 !important; /* Warna ungu asli */
+  }
+  #btn-buka-penempatan.card-disabled:hover,
+  #btn-buka-penempatan:disabled:hover {
+    background-color: #6f42c1 !important; /* Warna solid ungu */
+    color: white !important;
+  }
+  #btn-buka-penempatan.card-disabled:hover i,
+  #btn-buka-penempatan:disabled:hover i,
+  #btn-buka-penempatan.card-disabled:hover span,
+  #btn-buka-penempatan:disabled:hover span {
+    color: white !important; /* Ikon & teks menjadi putih */
+  }
+
+  /* Override: Kembalikan warna asli untuk kartu Tahun Ajaran */
+  #btn-buka-tahun-ajaran.card-disabled,
+  #btn-buka-tahun-ajaran:disabled {
+    background-color: var(--bg-white) !important;
+    color: #ffc107 !important; /* Warna kuning asli */
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+  #btn-buka-tahun-ajaran.card-disabled i,
+  #btn-buka-tahun-ajaran:disabled i,
+  #btn-buka-tahun-ajaran.card-disabled span,
+  #btn-buka-tahun-ajaran:disabled span {
+    color: #ffc107 !important; /* Warna kuning asli */
+  }
+  #btn-buka-tahun-ajaran.card-disabled:hover,
+  #btn-buka-tahun-ajaran:disabled:hover {
+    background-color: #ffc107 !important; /* Warna solid kuning */
+    color: #212529 !important; /* Teks gelap di atas kuning */
+  }
+  #btn-buka-tahun-ajaran.card-disabled:hover i,
+  #btn-buka-tahun-ajaran:disabled:hover i,
+  #btn-buka-tahun-ajaran.card-disabled:hover span,
+  #btn-buka-tahun-ajaran:disabled:hover span {
+    color: #212529 !important; /* Teks gelap */
+  }
+
   /* === GAYA TAB LOGIN (GATING) === */
   .auth-tabs .tab-link:disabled {
     background-color: #e9ecef;
@@ -4558,7 +4612,9 @@
 
   #btn-buka-guru::before,
   #btn-buka-kelola-kelulusan::before,
-  #btn-buka-proses-kelulusan::before {
+  #btn-buka-proses-kelulusan::before,
+  #btn-buka-penempatan::before,
+  #btn-buka-tahun-ajaran::before {
     content: '';
     position: absolute;
     top: 0;
@@ -4598,7 +4654,9 @@
   /* 3. Tampilkan shimmer HANYA jika kartu NON-AKTIF (memiliki .card-disabled) */
   #btn-buka-guru.card-disabled::before,
   #btn-buka-kelola-kelulusan.card-disabled::before,
-  #btn-buka-proses-kelulusan.card-disabled::before {
+  #btn-buka-proses-kelulusan.card-disabled::before,
+  #btn-buka-penempatan.card-disabled::before,
+  #btn-buka-tahun-ajaran.card-disabled::before {
     display: block;
   }
   
@@ -4629,6 +4687,15 @@
     --shimmer-color: rgba(253, 126, 20, 0.8); /* Kilau Oranye */
   }
   
+  /* --- TAMBAHAN BARU --- */
+  #btn-buka-penempatan.card-disabled::before {
+    --shimmer-color: rgba(111, 66, 193, 0.8); /* Kilau Ungu */
+  }
+  
+  #btn-buka-tahun-ajaran.card-disabled::before {
+    --shimmer-color: rgba(255, 193, 7, 0.8); /* Kilau Kuning */
+  }
+  /* --- AKHIR TAMBAHAN --- */
   /* --- TAMBAHKAN BLOK BARU INI DI AKHIR FILE STYLE.HTML --- */
 
   /* Aturan untuk Layar Ponsel (di bawah 768px) */
