@@ -1177,6 +1177,53 @@
     // --- TAMBAHAN BARU: Listener untuk Cetak Kartu ---
     document.getElementById('btn-cetak-kartu-guru').addEventListener('click', konfirmasiCetakKartu);
 
+
+
+    // [MODIFIKASI] Tambahkan listener untuk modal baru
+    document.getElementById('btn-tutup-modal-import-penempatan').addEventListener('click', tutupModalImportPenempatan);
+    document.getElementById('btn-batal-modal-import-penempatan').addEventListener('click', tutupModalImportPenempatan);
+    document.getElementById('btn-download-template-penempatan').addEventListener('click', downloadTemplatePenempatan);
+    document.getElementById('btn-proses-import-penempatan').addEventListener('click', prosesImportFilePenempatan);
+
+    const fileUploadZonePenempatan = document.getElementById('file-upload-zone-penempatan');
+    const fileUploadInputPenempatan = document.getElementById('file-upload-penempatan');
+    const fileUploadTextPenempatan = document.getElementById('file-upload-text-penempatan');
+    const btnProsesImportPenempatan = document.getElementById('btn-proses-import-penempatan');
+
+    fileUploadInputPenempatan.addEventListener('change', (e) => {
+        const fileInput = e.target;
+        if (fileInput.files.length > 0) {
+            const fileName = fileInput.files[0].name;
+            if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                fileUploadTextPenempatan.innerText = `File dipilih: ${fileName}`;
+                fileUploadTextPenempatan.classList.add('file-chosen');
+                btnProsesImportPenempatan.disabled = false;
+                hideMessage('template-penempatan-message');
+            } else {
+                fileUploadTextPenempatan.innerText = 'File harus berekstensi .xlsx atau .xls';
+                fileUploadTextPenempatan.classList.remove('file-chosen');
+                btnProsesImportPenempatan.disabled = true;
+            }
+        } else {
+            fileUploadTextPenempatan.innerText = 'Klik untuk memilih file atau seret & letakkan di sini.';
+            fileUploadTextPenempatan.classList.remove('file-chosen');
+            btnProsesImportPenempatan.disabled = true;
+        }
+    });
+
+    fileUploadZonePenempatan.addEventListener('dragover', (e) => { e.preventDefault(); fileUploadZonePenempatan.classList.add('drag-over'); });
+    fileUploadZonePenempatan.addEventListener('dragleave', (e) => { e.preventDefault(); fileUploadZonePenempatan.classList.remove('drag-over'); });
+    fileUploadZonePenempatan.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileUploadZonePenempatan.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+          fileUploadInputPenempatan.files = e.dataTransfer.files;
+          const changeEvent = new Event('change');
+          fileUploadInputPenempatan.dispatchEvent(changeEvent);
+        }
+    });
+    // [AKHIR MODIFIKASI]
+
     // --- ============================================= ---
     // --- ===== LISTENER BARU UNTUK UI MULTI-KELAS ==== ---
     // --- ============================================= ---
@@ -1551,6 +1598,10 @@
         document.getElementById('tab-penempatan-mapel').style.display = 'none';
       }
     });
+
+    // [MODIFIKASI] Tambahkan listener untuk tombol import baru
+    document.getElementById('btn-import-penempatan').addEventListener('click', bukaModalImportPenempatan);
+    // [AKHIR MODIFIKASI]
 
     // Listener untuk tab penempatan
     document.getElementById('penempatan-tab-bar').addEventListener('click', (e) => {
@@ -10327,16 +10378,21 @@ function populateSiswaFilters() {
     }
     
     const table = document.createElement('table');
-    table.className = 'penempatan-siswa-table';
+    // [MODIFIKASI] Menambahkan class 'siswa-table' untuk styling konsisten
+    table.className = 'siswa-table penempatan-siswa-table';
     
     const thead = table.createTHead();
+    // [MODIFIKASI] Menambahkan 'thead-dark'
+    thead.className = 'thead-dark'; 
+    
+    // [MODIFIKASI] Mengubah header menjadi UPPERCASE dan menambahkan class
     thead.innerHTML = `
       <tr>
         <th class="col-cek-enroll"><i class="fas fa-check"></i></th>
-        <th>Nama Siswa (App 1)</th>
-        <th>Kelas (App 1)</th>
-        <th>No. Ujian (App 2)</th>
-        <th class="col-ruang">Ruang Ujian (App 2)</th>
+        <th>NAMA SISWA (APP 1)</th>
+        <th class="col-kelas-app1">KELAS (APP 1)</th>
+        <th>NO. UJIAN (APP 2)</th>
+        <th class="col-ruang">RUANG UJIAN (APP 2)</th>
       </tr>
     `;
     
@@ -10348,42 +10404,25 @@ function populateSiswaFilters() {
       tr.dataset.siswaId = siswa.id;
       
       const isEnrolled = siswa.isEnrolled;
-      const nomorUjianApp2 = siswa.nomor_ujian_app2 || `NO-UJIAN-${siswa.id}`; // Buat default
+      // [MODIFIKASI] Pastikan default value tidak kosong
+      const nomorUjianApp2 = siswa.nomor_ujian_app2 || ''; 
       
-      let statusHtml = '';
-      
-      // --- MODIFIKASI DIMULAI ---
-      // Selalu render sebagai input teks.
-      // Status disabled akan diatur oleh checkbox event listener.
-      statusHtml = `<input type="text" class="form-control form-control-sm enroll-noujian-input" value="${nomorUjianApp2}" title="Nomor Ujian Siswa di Aplikasi 2">`;
-      // --- MODIFIKASI SELESAI ---
-      
-
-      // --- MODIFIKASI: 'disabled' dihapus dari 'enroll-ruang-input' ---
       tr.innerHTML = `
         <td class="col-cek-enroll">
           <input type="checkbox" class="enroll-checkbox" ${isEnrolled ? 'checked' : ''} title="Tandai untuk ditempatkan">
         </td>
-        <td>${siswa.nama}</td>
-        <td>${siswa.kelas}</td>
-        <td>${statusHtml}</td>
+        <td><strong>${siswa.nama}</strong></td>
+        <td class="col-kelas-app1">${siswa.kelas}</td>
+        <td>
+          <input type="text" class="form-control form-control-sm enroll-noujian-input" value="${nomorUjianApp2}" title="Nomor Ujian Siswa di Aplikasi 2">
+        </td>
         <td class="col-ruang">
           <input type="text" class="form-control form-control-sm enroll-ruang-input" value="${siswa.ruang_ujian}" placeholder="Contoh: R-01">
         </td>
       `;
       
-      // Update disable/enable input berdasarkan checkbox
       const checkbox = tr.querySelector('.enroll-checkbox');
-      const ruangInput = tr.querySelector('.enroll-ruang-input');
-      const noujianInput = tr.querySelector('.enroll-noujian-input');
-      
-      // --- MODIFIKASI DIMULAI ---
-      // Panggil HANYA SEKALI saat render untuk mengatur state awal
       updateNomorUjianApp2(checkbox); 
-      // --- MODIFIKASI SELESAI ---
-
-      // Hapus event listener lokal (jika ada), karena sudah ditangani
-      // oleh listener global di DOMContentLoaded
       
       fragment.appendChild(tr);
     });
@@ -10521,17 +10560,20 @@ function populateSiswaFilters() {
     
     // 2. Selalu buat struktur tabel
     const table = document.createElement('table');
-    table.className = 'mapel-table'; // Pakai style yang mirip
+    // [MODIFIKASI] Menggunakan class 'siswa-table' untuk styling yang konsisten
+    table.className = 'siswa-table guru-table penempatan-mapel-table'; // Mengganti 'mapel-table'
     
     const thead = table.createTHead();
-    // [MODIFIKASI] Menambahkan header KELAS
+    // [MODIFIKASI] Menambahkan 'thead-dark'
+    thead.className = 'thead-dark'; 
+    // [MODIFIKASI] Menambahkan header KELAS (dan mengubah ke UPPERCASE)
     thead.innerHTML = `
       <tr>
-        <th>Guru Pengampu</th>
-        <th>Mata Pelajaran</th>
-        <th>Singkatan</th>
-        <th class="col-kelas">Kelas</th>
-        <th style="width: 80px;">Aksi</th>
+        <th>GURU PENGAMPU</th>
+        <th>MATA PELAJARAN</th>
+        <th>SINGKATAN</th>
+        <th class="col-kelas">KELAS</th>
+        <th style="width: 80px;">AKSI</th>
       </tr>
     `;
     
@@ -10564,7 +10606,7 @@ function populateSiswaFilters() {
         const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
         const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
         
-        // [MODIFIKASI] Membuat HTML untuk dropdown kelas
+        // Membuat HTML untuk dropdown kelas
         const currentKelasJson = item.kelas_json || '["*"]';
         const allKelasValue = '["*"]';
         
@@ -10573,11 +10615,10 @@ function populateSiswaFilters() {
           const kelasValue = JSON.stringify([kelas.nama]); // Simpan sbg array JSON
           optionsHtml += `<option value='${kelasValue}' ${currentKelasJson === kelasValue ? 'selected' : ''}>${kelas.nama}</option>`;
         });
-        // [AKHIR MODIFIKASI]
 
-        // [MODIFIKASI] Menambahkan <td> baru untuk dropdown
+        // [MODIFIKASI] Mengubah tombol hapus
         tr.innerHTML = `
-          <td>${namaGuru}</td>
+          <td><strong>${namaGuru}</strong></td>
           <td>${namaMapel}</td>
           <td>${item.singkatan || '-'}</td>
           <td>
@@ -10643,13 +10684,9 @@ function populateSiswaFilters() {
     const email = document.getElementById('modal-mapel-app2-guru').value;
     const guru = globalPenempatanData.guruList.find(g => g.email === email);
     
-    // --- LOGIKA BARU: Ambil semua mapel yang dipilih dari tags ---
-    const selectedMapels = getSelectedPenempatanMapelIds(); // Panggil helper baru
-    // --- AKHIR LOGIKA BARU ---
-
-    // Input singkatan tidak lagi dibaca dari modal
+    const selectedMapels = getSelectedPenempatanMapelIds(); 
     
-    if (!email || selectedMapels.size === 0) { // Cek .size dari Set
+    if (!email || selectedMapels.size === 0) { 
       showMessage('modal-mapel-app2-error', 'Guru dan minimal satu Mapel wajib dipilih.', true);
       return;
     }
@@ -10659,56 +10696,47 @@ function populateSiswaFilters() {
       return;
     }
 
-    // Ambil tabel satu kali di luar loop
     const table = document.querySelector('#penempatan-mapel-container table');
     if (!table) return;
     
     const tbody = table.tBodies[0];
-    // Hapus pesan 'kosong' jika ada
-    const emptyRow = tbody.querySelector('td[colspan="5"]'); // [MODIFIKASI] Colspan 5
+    const emptyRow = tbody.querySelector('td[colspan="5"]'); // Colspan 5
     if (emptyRow) emptyRow.parentElement.remove();
 
     let addedCount = 0;
     let skippedCount = 0;
     
-    // [MODIFIKASI] Ambil kelas dan buat options
     const kelasList = globalKelasListCache || [];
     let optionsHtml = '<option value=\'["*"]\' selected>Semua Kelas</option>';
     kelasList.forEach(kelas => { 
       optionsHtml += `<option value='${JSON.stringify([kelas.nama])}'>${kelas.nama}</option>`; 
     });
-    // [AKHIR MODIFIKASI]
 
-    // --- LOGIKA BARU: Looping untuk setiap mapel yang dipilih ---
-    for (const mapelId of selectedMapels) { // Loop dari Set
-      // Cek duplikat di tabel
+    for (const mapelId of selectedMapels) { 
       const existingRow = document.querySelector(`#penempatan-mapel-container tr[data-email="${email}"][data-mapel="${mapelId}"]`);
       if (existingRow) {
         skippedCount++;
-        continue; // Lewati jika sudah ada
+        continue; 
       }
       
-      // Ambil data mapel
       const mapelData = globalPenempatanData.mapelList.find(m => m.id === mapelId);
       
       if (!mapelData) {
         console.warn(`Data Mapel untuk ID ${mapelId} tidak ditemukan, dilewati.`);
         skippedCount++;
-        continue; // Lewati jika data mapel tidak ditemukan
+        continue; 
       }
       
-      // --- LOGIKA BARU: Singkatan otomatis diisi dari Kode Mapel (mapelId) ---
       const singkatan = mapelId; 
       
-      // Tambahkan ke tabel
       const tr = tbody.insertRow();
       tr.dataset.email = email;
       tr.dataset.mapel = mapelId;
-      tr.dataset.singkatan = singkatan; // Simpan singkatan (Kode Mapel)
+      tr.dataset.singkatan = singkatan; 
       
-      // [MODIFIKASI] Menambahkan <td> dropdown
+      // [MODIFIKASI] Mengubah tombol hapus
       tr.innerHTML = `
-        <td>${guru.nama}</td>
+        <td><strong>${guru.nama}</strong></td>
         <td>${mapelData.nama}</td>
         <td>${singkatan || '-'}</td>
         <td>
@@ -10724,7 +10752,6 @@ function populateSiswaFilters() {
       `;
       addedCount++;
     }
-    // --- AKHIR LOOP ---
     
     if (addedCount > 0) {
       isPenempatanMapelDirty = true;
@@ -10732,11 +10759,65 @@ function populateSiswaFilters() {
     }
     
     if (skippedCount > 0) {
-      // Beri info jika ada yang dilewati, tanpa memblokir
       showToast(`${skippedCount} mapel dilewati (karena sudah ada).`, 'sukses', 3000);
     }
 
     tutupModalMapelApp2();
+  }
+
+  function openAddMapelModal() {
+    document.getElementById('mapelForm').reset();
+    document.getElementById('mapelModalLabel').innerText = 'Tambah Mapel Baru';
+    document.getElementById('mapel-modal-alert').style.display = 'none';
+    
+    // Reset hidden fields untuk edit
+    document.getElementById('editKeyEmail').value = '';
+    document.getElementById('editKeyMapel').value = '';
+    document.getElementById('editKeyTA').value = '';
+
+    // Aktifkan field kunci
+    document.getElementById('mapelGuruSelect').disabled = false;
+    
+    // Ambil info dari filter utama
+    const taSelect = document.getElementById('mapel-ta-select');
+    const sekolahSelect = document.getElementById('mapel-sekolah-select');
+    const id_sekolah_terfilter = sekolahSelect.value;
+    
+    document.getElementById('mapel-info-ta').innerText = taSelect.options[taSelect.selectedIndex].text;
+    document.getElementById('mapel-info-sekolah').innerText = sekolahSelect.options[sekolahSelect.selectedIndex].text;
+
+    // Populate guru dropdown
+    const guruSelect = document.getElementById('mapelGuruSelect');
+    guruSelect.innerHTML = '<option value="">Memuat guru...</option>';
+
+    if (!allTeachersDataCache) {
+      // Jika cache belum ada, ambil dulu
+      google.script.run
+        .withSuccessHandler(response => {
+          if (response.success) { 
+            allTeachersDataCache = response.data; 
+            populateGuruForMapelModal(id_sekolah_terfilter); // Panggil populator
+          } else {
+            guruSelect.innerHTML = '<option value="">Gagal muat guru</option>';
+          }
+        })
+        .withFailureHandler(err => {
+          guruSelect.innerHTML = '<option value="">Error muat guru</option>';
+        })
+        .superadmin_getAllTeachers(loggedInUser.email);
+    } else {
+      // Cache sudah ada, langsung populate
+      populateGuruForMapelModal(id_sekolah_terfilter);
+    }
+    
+    // [MODIFIKASI] Tombol "Tambah Penempatan Mapel" kini menggunakan style btn-success
+    // Kita pastikan tombol simpan di modal juga konsisten
+    const saveButton = document.getElementById('btn-simpan-modal-mapel-app2');
+    saveButton.style.backgroundColor = 'var(--success-color)';
+    saveButton.innerHTML = '<i class="fas fa-plus"></i> Tambahkan';
+    // [AKHIR MODIFIKASI]
+        
+    $('#mapelModal').modal('show');
   }
 
   /**
@@ -10873,5 +10954,174 @@ function populateSiswaFilters() {
   // --- ============================================= ---
   // ---      AKHIR FUNGSI-FUNGSI BARU                 ---
   // --- ============================================= ---
+
+  /**
+   * [BARU] Membuka modal import untuk penempatan siswa.
+   */
+  function bukaModalImportPenempatan() {
+    document.getElementById('file-upload-penempatan').value = null;
+    document.getElementById('btn-proses-import-penempatan').disabled = true;
+    document.getElementById('import-penempatan-results').style.display = 'none';
+    document.getElementById('import-penempatan-results').innerHTML = '';
+    hideMessage('template-penempatan-message');
+    
+    const fileUploadText = document.getElementById('file-upload-text-penempatan');
+    fileUploadText.innerText = 'Klik untuk memilih file atau seret & letakkan di sini.';
+    fileUploadText.classList.remove('file-chosen');
+    document.getElementById('file-upload-zone-penempatan').classList.remove('drag-over');
+    
+    document.getElementById('import-penempatan-modal').classList.add('show');
+  }
+
+  /**
+   * [BARU] Menutup modal import untuk penempatan siswa.
+   */
+  function tutupModalImportPenempatan() {
+    document.getElementById('import-penempatan-modal').classList.remove('show');
+  }
+
+  /**
+   * [BARU] Mengunduh template untuk penempatan siswa.
+   */
+  function downloadTemplatePenempatan() {
+    setLoading(true, 'Membuat template penempatan...');
+    hideMessage('template-penempatan-message');
+    
+    // Ambil filter kelas DARI HALAMAN UTAMA, bukan dari modal
+    const kelasDipilih = document.getElementById('penempatan-siswa-filter-kelas').value;
+    
+    google.script.run
+      .withSuccessHandler(onTemplatePenempatanReceived)
+      .withFailureHandler(onGagal)
+      .getPenempatanTemplateData(getToken(), kelasDipilih);
+  }
+
+  /**
+   * [BARU] Callback setelah template penempatan diterima.
+   */
+  function onTemplatePenempatanReceived(response) {
+    setLoading(false);
+    
+    if (response.status === 'sukses') {
+      showMessage('template-penempatan-message', 'Template berhasil dibuat. Mengunduh...', false);
+      try {
+        const dataUrl = `data:${response.mimeType};base64,${response.base64}`;
+        const link = document.createElement('a');
+        link.setAttribute('href', dataUrl);
+        link.setAttribute('download', response.fileName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        showMessage('template-penempatan-message', 'Gagal memproses unduhan: ' + e.message, true);
+      }
+    } else {
+      showMessage('template-penempatan-message', response.message, true);
+    }
+  }
+
+  /**
+   * [BARU] Memproses file Excel penempatan yang di-upload.
+   */
+  function prosesImportFilePenempatan() {
+    setLoading(true, 'Mengimpor data penempatan...');
+    document.getElementById('import-penempatan-results').style.display = 'none';
+    hideMessage('template-penempatan-message');
+    
+    const file = document.getElementById('file-upload-penempatan').files[0];
+    // [MODIFIKASI] Ambil id_tahun_ajaran dari filter utama
+    const taId = document.getElementById('penempatan-ta-select').value;
+    
+    if (!file) { 
+      setLoading(false); 
+      showMessage('template-penempatan-message', 'Pilih file Excel.', true); 
+      return; 
+    }
+    // [MODIFIKASI] Pastikan TA dipilih
+    if (!taId) {
+      setLoading(false); 
+      showMessage('template-penempatan-message', 'Kesalahan: ID Tahun Ajaran tidak ditemukan. Muat ulang halaman.', true); 
+      return; 
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const fileData = { base64: e.target.result, mimeType: file.type, fileName: file.name };
+      // [MODIFIKASI] Kirim taId sebagai argumen ketiga
+      google.script.run
+        .withSuccessHandler(onImportPenempatanFinished)
+        .withFailureHandler(onGagal)
+        .prosesUploadPenempatanSiswa(getToken(), fileData, taId);
+    };
+    reader.onerror = (e) => { 
+      setLoading(false); 
+      showMessage('template-penempatan-message', 'Gagal baca file.', true); 
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /**
+   * [BARU] Callback setelah file penempatan diproses oleh server.
+   * Ini adalah inti dari permintaan Anda.
+   */
+  function onImportPenempatanFinished(response) {
+    setLoading(false);
+    const resultsContainer = document.getElementById('import-penempatan-results');
+
+    if (response.status !== 'sukses') {
+      showMessage('template-penempatan-message', response.message, true);
+      resultsContainer.style.display = 'none';
+      return;
+    }
+
+    // [MODIFIKASI] Menggunakan kunci respons baru
+    let html = '<h4><i class="fas fa-check-circle"></i>Proses Import Selesai</h4>';
+    html += `<p>Total data diproses: <strong>${response.totalDiProses}</strong></p>`;
+    html += `<p style="color: var(--success-color);">Berhasil disimpan: <strong>${response.berhasilDisimpan}</strong></p>`;
+    html += `<p style="color: var(--danger-color);">Gagal/Dilewati: <strong>${response.gagalDisimpan}</strong></p>`;
+
+    if (response.dataGagal && response.dataGagal.length > 0) {
+      html += `<hr><p><strong>Detail Data yang Gagal:</strong></p>`;
+      html += '<table class="import-gagal-table">';
+      html += '<tr><th>Baris</th><th>NISN</th><th>Alasan Gagal</th></tr>';
+      response.dataGagal.forEach(item => {
+        html += `<tr>
+            <td>${item.baris}</td>
+            <td>${item.nisn || '(Kosong)'}</td>
+            <td>${item.alasan}</td>
+          </tr>`;
+      });
+      html += '</table>';
+    }
+
+    resultsContainer.innerHTML = html;
+    resultsContainer.style.display = 'block';
+
+    // Reset UI modal
+    document.getElementById('file-upload-penempatan').value = null;
+    document.getElementById('btn-proses-import-penempatan').disabled = true;
+    const fileUploadText = document.getElementById('file-upload-text-penempatan');
+    fileUploadText.innerText = 'Klik untuk memilih file atau seret & letakkan di sini.';
+    fileUploadText.classList.remove('file-chosen');
+    
+    // [MODIFIKASI] Logika inti baru
+    if (response.berhasilDisimpan > 0) {
+      
+      showToast(`${response.berhasilDisimpan} data siswa berhasil diimpor dan disimpan. Memuat ulang...`, 'sukses');
+      
+      // Tutup modal setelah 1.5 detik
+      setTimeout(() => {
+          tutupModalImportPenempatan();
+      }, 1500);
+
+      // Muat ulang data tabel utama dari server
+      loadPenempatanData(document.getElementById('penempatan-ta-select').value);
+      
+      // Pastikan form bersih
+      isPenempatanSiswaDirty = false;
+      document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
+    }
+  }
 
 </script>
