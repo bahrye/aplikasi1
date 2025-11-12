@@ -10530,18 +10530,15 @@ function populateSiswaFilters() {
   
   /**
    * [BARU] Render tabel Penempatan Mapel.
+   * [PERBAIKAN] Fungsi ini sekarang selalu membuat <table> bahkan jika kosong.
    */
   function renderPenempatanMapelTable() {
     const container = document.getElementById('penempatan-mapel-container');
-    container.innerHTML = "";
+    container.innerHTML = ""; // 1. Kosongkan container
     
     const { mapelAssignments, guruList, mapelList } = globalPenempatanData;
     
-    if (mapelAssignments.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada mapel yang ditempatkan untuk T.A. ini.</p>';
-      return;
-    }
-    
+    // 2. Selalu buat struktur tabel
     const table = document.createElement('table');
     table.className = 'mapel-table'; // Pakai style yang mirip
     
@@ -10555,44 +10552,51 @@ function populateSiswaFilters() {
       </tr>
     `;
     
-    const tbody = table.createTBody();
-    const fragment = document.createDocumentFragment();
-    
-    // Buat map untuk lookup nama
-    const guruMap = new Map(guruList.map(g => [g.email, g.nama]));
-    const mapelMap = new Map(mapelList.map(m => [m.id, m.nama]));
+    const tbody = table.createTBody(); // Buat tbody
 
-    mapelAssignments.sort((a, b) => {
-      const namaGuruA = guruMap.get(a.email_guru) || a.email_guru;
-      const namaGuruB = guruMap.get(b.email_guru) || b.email_guru;
-      return namaGuruA.localeCompare(namaGuruB) || a.mapel.localeCompare(b.mapel);
-    });
+    // 3. Cek apakah ada data untuk diisi
+    if (mapelAssignments.length === 0) {
+      // Jika kosong, tambahkan baris 'empty' DI DALAM TBODY
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Belum ada mapel yang ditempatkan untuk T.A. ini.</td></tr>';
+    } else {
+      // Jika ada data, isi seperti biasa
+      const fragment = document.createDocumentFragment();
+      
+      // Buat map untuk lookup nama
+      const guruMap = new Map(guruList.map(g => [g.email, g.nama]));
+      const mapelMap = new Map(mapelList.map(m => [m.id, m.nama]));
 
-    mapelAssignments.forEach(item => {
-      const tr = document.createElement('tr');
-      tr.dataset.email = item.email_guru;
-      tr.dataset.mapel = item.mapel;
-      tr.dataset.singkatan = item.singkatan;
-      
-      const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
-      const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
-      
-      tr.innerHTML = `
-        <td>${namaGuru}</td>
-        <td>${namaMapel}</td>
-        <td>${item.singkatan || '-'}</td>
-        <td style="text-align: center;">
-          <button class="btn-aksi btn-delete btn-remove-mapel-app2" title="Hapus Penempatan Ini">
-            <i class="fas fa-trash-alt"></i>
-          </button>
-        </td>
-      `;
-      fragment.appendChild(tr);
-    });
+      mapelAssignments.sort((a, b) => {
+        const namaGuruA = guruMap.get(a.email_guru) || a.email_guru;
+        const namaGuruB = guruMap.get(b.email_guru) || b.email_guru;
+        return namaGuruA.localeCompare(namaGuruB) || a.mapel.localeCompare(b.mapel);
+      });
+
+      mapelAssignments.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.dataset.email = item.email_guru;
+        tr.dataset.mapel = item.mapel;
+        tr.dataset.singkatan = item.singkatan;
+        
+        const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
+        const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
+        
+        tr.innerHTML = `
+          <td>${namaGuru}</td>
+          <td>${namaMapel}</td>
+          <td>${item.singkatan || '-'}</td>
+          <td style="text-align: center;">
+            <button class="btn-aksi btn-delete btn-remove-mapel-app2" title="Hapus Penempatan Ini">
+              <i class="fas fa-trash-alt"></i>
+            </button>
+          </td>
+        `;
+        fragment.appendChild(tr);
+      });
+      tbody.appendChild(fragment);
+    }
     
-    tbody.appendChild(fragment);
-    table.appendChild(thead);
-    table.appendChild(tbody);
+    // 4. Tambahkan tabel yang sudah lengkap ke container
     container.appendChild(table);
   }
   
