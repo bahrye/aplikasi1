@@ -1677,34 +1677,45 @@ function deleteAllMapel(token) {
   }
 }
 
+
 function saveMapelTipeUjianBatch(token, tipeUjianData) {
   let spreadsheetID, sessionData;
+  let app2DbId; // <-- BARU
+  
   try {
     const session = validateAdminSession(token);
     spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
+    
+    // --- TAMBAHAN 1: Dapatkan ID Aplikasi 2 ---
+    app2DbId = getApp2DatabaseId(token); // Gunakan helper yang sudah ada
+    if (!app2DbId) {
+      throw new Error("Database Aplikasi 2 tidak ditemukan. Sinkronisasi Tipe Ujian gagal.");
+    }
+    // --- AKHIR TAMBAHAN 1 ---
+    
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
-  const lock = LockService.getDocumentLock();
+  
+  const lock = LockService.getDocumentLock(); // Ini mengunci App 1
   lock.waitLock(15000);
+  
   try {
+    // --- Update App 1 (Logika Asli Anda) ---
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheetMapel = getMapelSheet(ss);
     const dataRange = sheetMapel.getDataRange();
     const data = dataRange.getValues();
     const dataMap = new Map(tipeUjianData.map(item => [item.id, item]));
     let changesMade = false;
-
     const valuesToUpdate = [];
-
+    
     for (let i = 1; i < data.length; i++) {
       const id = data[i][0];
       const newData = dataMap.get(id);
-      
       let currentIsUS = data[i][2];
       let currentIsUP = data[i][3];
-
       if (newData) {
         if (currentIsUS != newData.isUS || currentIsUP != newData.isUP) {
           currentIsUS = newData.isUS;
@@ -1721,6 +1732,46 @@ function saveMapelTipeUjianBatch(token, tipeUjianData) {
       }
       clearMapelCache(sessionData.sekolahID, spreadsheetID);
     }
+    
+    // --- TAMBAHAN 2: Sinkronisasi Otomatis ke App 2 ---
+    if (changesMade) {
+      Logger.log("Perubahan Tipe Ujian terdeteksi, menyinkronkan ke Aplikasi 2 (db_mapel)...");
+      
+      const ss_app2 = SpreadsheetApp.openById(app2DbId);
+      // Panggil helper yang tadi Anda salin
+      const sheetMapelApp2 = getMapelSheet_App2(ss_app2); 
+      
+      const app2DataRange = sheetMapelApp2.getDataRange();
+      const app2Data = app2DataRange.getValues();
+      let app2ChangesMade = false;
+      
+      // Loop data di App 2 (mulai dari baris 2, index 1)
+      for (let i = 1; i < app2Data.length; i++) {
+        const mapelId = app2Data[i][1]; // Kolom B = mapel
+        const newData = dataMap.get(mapelId); // Cek apakah mapel ini ada di data yang di-submit
+        
+        if (newData) {
+          // Mapel ini ada di daftar yang diubah.
+          const old_isUS = app2Data[i][5]; // Kolom F
+          const old_isUP = app2Data[i][6]; // Kolom G
+          
+          if (old_isUS !== newData.isUS || old_isUP !== newData.isUP) {
+            // Tulis nilai baru
+            app2Data[i][5] = newData.isUS;
+            app2Data[i][6] = newData.isUP;
+            app2ChangesMade = true;
+          }
+        }
+      }
+      
+      // Tulis kembali data ke App 2 jika ada perubahan
+      if (app2ChangesMade) {
+        app2DataRange.setValues(app2Data);
+        Logger.log("Sinkronisasi Tipe Ujian ke Aplikasi 2 Selesai.");
+      }
+    }
+    // --- AKHIR TAMBAHAN 2 ---
+
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2192,6 +2243,8 @@ function getKelasSheet(ss) {
   }
   return sheet;
 }
+
+
 
 function getLockedKelasSet(ss, sekolahID) {
   try {
@@ -6102,7 +6155,7 @@ function getEnrollmentSheet_App2(ss_app2) {
   return sheet;
 }
 
-// DENGAN FUNGSI INI
+
 function getMapelSheet_App2(ss_app2) {
   let sheet = ss_app2.getSheetByName('db_mapel');
   if (!sheet) {
@@ -6234,6 +6287,8 @@ function getPenempatanData(token, id_tahun_ajaran) {
       isUS: m.isUS,
       isUP: m.isUP
     }));
+
+    const mapelApp1Info = new Map(mapelListApp1.map(m => [m.id, { isUS: m.isUS, isUP: m.isUP }]));
     
     // Ambil Guru (baca langsung)
     const sheetGuruApp1 = getGuruSheet(ss_app1);
@@ -6292,11 +6347,17 @@ function getPenempatanData(token, id_tahun_ajaran) {
         dataMapel.shift();
         dataMapel.forEach(row => {
           if (row[2] === id_tahun_ajaran) {
+            const mapelId = row[1];
+            // Ambil info isUS/isUP dari Peta (Map)
+            const app1Info = mapelApp1Info.get(mapelId) || { isUS: false, isUP: false }; 
+
             mapelAssignments.push({
               email_guru: row[0],
-              mapel: row[1],
+              mapel: mapelId,
               singkatan: row[3] || '',
-              kelas_json: row[4] || '["*"]' // Default ke 'Semua Kelas' jika kosong
+              kelas_json: row[4] || '["*"]',
+              isUS: app1Info.isUS, // <-- DATA BARU
+              isUP: app1Info.isUP  // <-- DATA BARU
             });
           }
         });
