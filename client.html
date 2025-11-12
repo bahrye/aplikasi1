@@ -1567,10 +1567,16 @@
     
     // Listener dinamis untuk tabel siswa
     document.getElementById('penempatan-siswa-container').addEventListener('input', (e) => {
-      if (e.target.classList.contains('enroll-checkbox') || e.target.classList.contains('enroll-ruang-input')) {
+      
+      // --- MODIFIKASI DI SINI ---
+      // Menambahkan '.enroll-noujian-input' ke dalam kondisi
+      if (e.target.classList.contains('enroll-checkbox') || e.target.classList.contains('enroll-ruang-input') || e.target.classList.contains('enroll-noujian-input')) {
+      // --- AKHIR MODIFIKASI ---
+      
         isPenempatanSiswaDirty = true;
         document.getElementById('btn-simpan-penempatan-siswa').disabled = false;
-        // Update Nomor Ujian App 2 saat checkbox diubah
+        
+        // Logika ini tetap (hanya panggil update state saat checkbox diubah)
         if(e.target.classList.contains('enroll-checkbox')) {
           updateNomorUjianApp2(e.target);
         }
@@ -10415,16 +10421,15 @@ function populateSiswaFilters() {
       const nomorUjianApp2 = siswa.nomor_ujian_app2 || `NO-UJIAN-${siswa.id}`; // Buat default
       
       let statusHtml = '';
-      if (isEnrolled) {
-        if (siswa.nama_app2 && siswa.nama_app2.toLowerCase() !== siswa.nama.toLowerCase()) {
-          statusHtml = `<span class="status-sync-warning" title="Nama di App 2 (${siswa.nama_app2}) beda. Akan disinkronkan.">${nomorUjianApp2}</span>`;
-        } else {
-          statusHtml = `<span class="status-enrolled">${nomorUjianApp2}</span>`;
-        }
-      } else {
-        statusHtml = `<input type="text" class="form-control form-control-sm enroll-noujian-input" value="${nomorUjianApp2}" ${isEnrolled ? '' : 'disabled'} title="Akan dibuat otomatis saat disimpan">`;
-      }
+      
+      // --- MODIFIKASI DIMULAI ---
+      // Selalu render sebagai input teks.
+      // Status disabled akan diatur oleh checkbox event listener.
+      statusHtml = `<input type="text" class="form-control form-control-sm enroll-noujian-input" value="${nomorUjianApp2}" title="Nomor Ujian Siswa di Aplikasi 2">`;
+      // --- MODIFIKASI SELESAI ---
+      
 
+      // --- MODIFIKASI: 'disabled' dihapus dari 'enroll-ruang-input' ---
       tr.innerHTML = `
         <td class="col-cek-enroll">
           <input type="checkbox" class="enroll-checkbox" ${isEnrolled ? 'checked' : ''} title="Tandai untuk ditempatkan">
@@ -10433,7 +10438,7 @@ function populateSiswaFilters() {
         <td>${siswa.kelas}</td>
         <td>${statusHtml}</td>
         <td class="col-ruang">
-          <input type="text" class="form-control form-control-sm enroll-ruang-input" value="${siswa.ruang_ujian}" placeholder="Contoh: R-01" ${isEnrolled ? '' : 'disabled'}>
+          <input type="text" class="form-control form-control-sm enroll-ruang-input" value="${siswa.ruang_ujian}" placeholder="Contoh: R-01">
         </td>
       `;
       
@@ -10442,10 +10447,13 @@ function populateSiswaFilters() {
       const ruangInput = tr.querySelector('.enroll-ruang-input');
       const noujianInput = tr.querySelector('.enroll-noujian-input');
       
-      checkbox.addEventListener('change', () => {
-        ruangInput.disabled = !checkbox.checked;
-        if (noujianInput) noujianInput.disabled = !checkbox.checked;
-      });
+      // --- MODIFIKASI DIMULAI ---
+      // Panggil HANYA SEKALI saat render untuk mengatur state awal
+      updateNomorUjianApp2(checkbox); 
+      // --- MODIFIKASI SELESAI ---
+
+      // Hapus event listener lokal (jika ada), karena sudah ditangani
+      // oleh listener global di DOMContentLoaded
       
       fragment.appendChild(tr);
     });
@@ -10513,15 +10521,17 @@ function populateSiswaFilters() {
         const checkbox = tr.querySelector('.enroll-checkbox');
         const ruangInput = tr.querySelector('.enroll-ruang-input');
         
-        // Dapatkan No Ujian. Cari <span> dulu (jika sudah ada), baru <input> (jika baru)
+        // --- MODIFIKASI DIMULAI ---
+        // Dapatkan No Ujian. Sekarang *selalu* dari input.
         let nomorUjianApp2;
-        const noUjianSpan = tr.querySelector('.status-enrolled, .status-sync-warning');
-        if (noUjianSpan) {
-          nomorUjianApp2 = noUjianSpan.textContent.trim();
-        } else {
-          const noUjianInput = tr.querySelector('.enroll-noujian-input');
+        const noUjianInput = tr.querySelector('.enroll-noujian-input');
+        if (noUjianInput) {
           nomorUjianApp2 = noUjianInput.value.trim();
+        } else {
+          // Fallback jika barisnya aneh, tapi seharusnya tidak terjadi
+          nomorUjianApp2 = `ERROR-NO-INPUT-${siswaId}`;
         }
+        // --- MODIFIKASI SELESAI ---
         
         // Dapatkan Nama App 1
         const namaApp1 = tr.cells[1].textContent.trim();
