@@ -5937,27 +5937,91 @@ function buatDatabaseAplikasi2Baru(namaSekolah) {
   }
 }
 
-// Helper to get App2 DB ID
+// Di file: aplikasi1/Kode.gs.html
+// Ganti fungsi getApp2DatabaseId(token) Anda dengan yang ini:
+
 function getApp2DatabaseId(token) {
   const sessionData = validateAndRefreshSession(token);
-  if (sessionData.role !== 'admin') {
-    throw new Error("Akses ditolak.");
-  }
-  
+  const sekolahID = sessionData.sekolahID;
+
   const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
   const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-  const data = sheetSekolah.getDataRange().getValues();
-  
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === sessionData.sekolahID) { // Kolom A (SekolahID)
-      const app2DbId = data[i][12]; // Kolom M (App2_DB_ID)
-      if (!app2DbId) {
-        throw new Error("Database Aplikasi 2 (Nilai Ujian) tidak tertaut untuk sekolah ini.");
-      }
-      return app2DbId;
+  // Pastikan membaca sampai Kolom M (13 kolom)
+  const dataRange = sheetSekolah.getRange("A2:M" + sheetSekolah.getLastRow());
+  const data = dataRange.getValues();
+
+  let targetRowIndex = -1;
+  let rowData = null;
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] == sekolahID) { // Kolom A
+      targetRowIndex = i;
+      rowData = data[i];
+      break;
     }
   }
-  throw new Error("Data sekolah tidak ditemukan.");
+
+  if (!rowData) {
+    throw new Error("Data sekolah tidak ditemukan di Master Sheet.");
+  }
+
+  let app2DbId = rowData[12]; // Kolom M
+
+  // *** INI ADALAH LOGIKA PERBAIKAN OTOMATIS ***
+  if (!app2DbId) {
+    Logger.log(`PERBAIKAN OTOMATIS: Kolom M kosong untuk ${sekolahID}. Memulai pembuatan DB App 2...`);
+    
+    // Butuh lock untuk mencegah 2 proses membuat DB yg sama
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000); // Tunggu 30 detik
+    
+    try {
+      // Re-check, mungkin proses lain sudah mengisinya
+      // (i + 2 karena data 0-based dan sheet 1-based + 1 header)
+      const freshApp2DbId = sheetSekolah.getRange(targetRowIndex + 2, 13).getValue();
+      if (freshApp2DbId) {
+          Logger.log(`PERBAIKAN OTOMATIS: Proses lain sudah memperbaiki. Menggunakan ${freshApp2DbId}.`);
+          return freshApp2DbId;
+      }
+
+      const namaSekolah = rowData[1]; // Kolom B
+      const emailAdmin = rowData[3]; // Kolom D
+      
+      if (!namaSekolah || !emailAdmin) {
+        throw new Error(`Data sekolah (Nama/Email) tidak lengkap untuk ${sekolahID}. Perbaikan otomatis gagal.`);
+      }
+
+      // 1. Buat DB App 2 baru
+      const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase());
+      
+      // 2. Tulis ID baru ke Kolom M
+      sheetSekolah.getRange(targetRowIndex + 2, 13).setValue(newSSID_App2);
+      
+      // 3. Daftarkan ke Global App 2 (dengan dummy password)
+      // Kita tidak bisa ambil password HASH, jadi buat dummy. Admin perlu edit manual jika ingin login ke App 2 sbg guru.
+      const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+      
+      registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
+      registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword);
+      
+      Logger.log(`PERBAIKAN OTOMATIS: Sukses. DB App 2 Dibuat: ${newSSID_App2}. Admin ${emailAdmin} didaftarkan dengan password dummy.`);
+      
+      // 4. Bersihkan cache master
+      clearMasterSheetCache();
+      
+      // 5. Kembalikan ID baru
+      app2DbId = newSSID_App2;
+
+    } catch (e) {
+        Logger.log(`PERBAIKAN OTOMATIS: Gagal. Error: ${e.message}`);
+        throw new Error(`Gagal memperbaiki tautan database secara otomatis: ${e.message}`);
+    } finally {
+        lock.releaseLock();
+    }
+  }
+  // *** AKHIR LOGIKA PERBAIKAN OTOMATIS ***
+
+  return app2DbId;
 }
 
 // Helper to get/create db_tahun_ajaran sheet in App2 DB
@@ -6929,5 +6993,72 @@ function prosesUploadPenempatanSiswa(token, fileData, id_tahun_ajaran) { // <-- 
     return { status: "gagal", message: "Terjadi error: " + e.message };
   } finally {
     if (lock) lock.releaseLock(); // [MODIFIKASI] Lepas kunci
+  }
+}
+
+/**
+ * [UTILITAS PERBAIKAN]
+ * Jalankan fungsi ini SATU KALI SECARA MANUAL dari editor Apps Script
+ * untuk memperbaiki sekolah yang dibuat oleh Superadmin (Kolom M kosong).
+ */
+function PERBAIKI_SEKOLAH_ADMIN_LAMA() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    // Pastikan membaca sampai Kolom M (13 kolom)
+    const dataRange = sheetSekolah.getRange("A2:M" + sheetSekolah.getLastRow());
+    const data = dataRange.getValues();
+    let perbaikanDilakukan = 0;
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const sekolahID = row[0]; // Kolom A
+      const namaSekolah = row[1]; // Kolom B
+      const emailAdmin = row[3]; // Kolom D
+      const app2DbId = row[12]; // Kolom M
+      
+      // Jika Kolom M kosong DAN ada SekolahID
+      if (sekolahID && namaSekolah && !app2DbId) {
+        Logger.log(`Memperbaiki ${namaSekolah} (ID: ${sekolahID})...`);
+        
+        // 1. Buat DB App 2 baru
+        const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase());
+        
+        // 2. Tulis ID baru ke Kolom M
+        // i + 2 (karena data 0-based dan sheet 1-based + 1 header)
+        // 13 (karena Kolom M adalah kolom ke-13)
+        sheetSekolah.getRange(i + 2, 13).setValue(newSSID_App2);
+        
+        // 3. Daftarkan ke Global App 2
+        // Kita tidak punya plain password. Admin sekolah ini harus diinfokan
+        // untuk "lupa password" atau Superadmin harus mengeditnya manual.
+        // Kita daftarkan dengan password acak/dummy agar datanya ada.
+        const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+        
+        registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
+        registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword);
+        
+        Logger.log(`   -> DB App 2 Dibuat: ${newSSID_App2}`);
+        Logger.log(`   -> Terdaftar di Global (password: ${dummyPassword})`);
+        perbaikanDilakukan++;
+      }
+    }
+    
+    clearMasterSheetCache();
+    SpreadsheetApp.flush();
+    
+    if (perbaikanDilakukan > 0) {
+      Browser.msgBox(`Perbaikan Selesai. ${perbaikanDilakukan} sekolah telah diperbarui dengan database Aplikasi 2. Admin dari sekolah tersebut mungkin perlu me-reset password mereka (via Superadmin Edit) jika login guru gagal.`);
+    } else {
+      Browser.msgBox("Pemeriksaan Selesai. Tidak ada sekolah dengan Kolom M kosong yang ditemukan.");
+    }
+    
+  } catch (e) {
+    Logger.log(`Error saat perbaikan: ${e.message}`);
+    Browser.msgBox(`Error: ${e.message}`);
+  } finally {
+    lock.releaseLock();
   }
 }
