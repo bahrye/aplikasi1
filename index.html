@@ -1638,14 +1638,27 @@
         <p>Pengaturan ini akan diterapkan pada dokumen PDF yang di-download dari <strong>Aplikasi 2 (Nilai Ujian)</strong>.</p>
 
         <form id="form-pengaturan-cetak" onsubmit="return false;">
-          <h3 class="form-section-header">Tanggal Tanda Tangan</h3>
+          <h3 class="form-section-header">Tanda Tangan</h3>
+          
           <div class="form-group">
-            <label for="pengaturan-tanggal-cetak">Tanggal Tanda Tangan (Tanggal oleh Sistem)</label>
+            <label for="pengaturan-tempat-ttd">Tempat Tanda Tangan (Wajib)</label>
+            <input type="text" id="pengaturan-tempat-ttd" placeholder="Contoh: Bulukumba">
+            <small class="helper-text">Tempat/lokasi penandatanganan laporan di Aplikasi 2.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="pengaturan-tanggal-mode">Mode Tanggal Tanda Tangan</label>
+            <select id="pengaturan-tanggal-mode">
+              <option value="otomatis">Otomatis (Tanggal Hari Ini)</option>
+              <option value="manual">Manual (Tentukan Tanggal)</option>
+            </select>
+            <small class="helper-text">Pilih "Otomatis" agar guru di Aplikasi 2 selalu menggunakan tanggal saat itu, atau "Manual" untuk mengunci ke tanggal tertentu.</small>
+          </div>
+
+          <div class="form-group" id="pengaturan-tanggal-manual-container" style="display: none;">
+            <label for="pengaturan-tanggal-cetak">Tanggal Tanda Tangan Manual (Wajib)</label>
             <input type="date" id="pengaturan-tanggal-cetak">
-            <small class="helper-text">
-              Tanggal ini akan digunakan oleh guru di Aplikasi 2 jika mereka memilih opsi "Gunakan Tanggal oleh Sistem".
-              Kosongkan jika tidak ingin mengatur tanggal default.
-            </small>
+            <small class="helper-text">Tanggal ini akan digunakan oleh guru di Aplikasi 2.</small>
           </div>
 
           <h3 class="form-section-header">Kop Surat (Letterhead)</h3>
