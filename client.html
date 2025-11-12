@@ -627,7 +627,8 @@
       'halaman-superadmin',
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
       'halaman-guru', 'halaman-donasi',
-      'halaman-proses-kelulusan', 'halaman-tahun-ajaran', 'halaman-penempatan'
+      'halaman-proses-kelulusan', 'halaman-tahun-ajaran', 'halaman-penempatan',
+      'halaman-pengaturan-cetak'
     ];
     
     const authSubPages = [
@@ -661,14 +662,13 @@
     hideMessage('modal-sekolah-error'); 
     hideMessage('kelulusan-message');
     hideMessage('login-siswa-error');
-    hideMessage('ta-message');
-    hideMessage('penempatan-message');
     
     // --- TAMBAHAN BARU ---
     hideMessage('pengaturan-guru-message');
     hideMessage('proses-kelulusan-message');
     hideMessage('ta-message');
     hideMessage('penempatan-message');
+    hideMessage('pengaturan-cetak-message');
     // --- AKHIR TAMBAHAN ---
 
     const targetElement = document.getElementById(idHalaman);
@@ -1335,6 +1335,59 @@
     document.getElementById('btn-proses-kelulusan').addEventListener('click', jalankanProsesKelulusan);
 
     document.getElementById('btn-cetak-kartu-siswa').addEventListener('click', konfirmasiCetakKartuSiswa);
+
+    // --- [BARU] Listener untuk Pengaturan Cetak ---
+    document.getElementById('btn-buka-pengaturan-cetak').addEventListener('click', () => {
+      handleNavigationConfirm(bukaHalamanPengaturanCetak);
+    });
+    document.getElementById('btn-kembali-ke-dashboard-16').addEventListener('click', () => {
+      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
+    });
+    document.getElementById('btn-simpan-pengaturan-cetak').addEventListener('click', simpanPengaturanCetak);
+    document.getElementById('btn-hapus-kop-surat').addEventListener('click', hapusGambarKop);
+
+    const fileUploadZoneKop = document.getElementById('file-upload-zone-kop');
+    const fileUploadInputKop = document.getElementById('file-upload-kop');
+    const fileUploadTextKop = document.getElementById('file-upload-text-kop');
+
+    // Listener untuk input file
+    fileUploadInputKop.addEventListener('change', (e) => {
+        const fileInput = e.target;
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            // Validasi tipe file
+            if (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type)) {
+              showToast("File harus berupa gambar (PNG, JPG, GIF).", 'gagal');
+              fileInput.value = null; // Kosongkan input
+              return;
+            }
+            // Tampilkan preview
+            tampilkanPreviewKop(file);
+            document.getElementById('kop-surat-status').value = 'new'; // Tandai ada file baru
+            fileUploadTextKop.innerText = `File dipilih: ${file.name}`;
+            fileUploadTextKop.classList.add('file-chosen');
+            document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
+        }
+    });
+
+    // Listener Drag & Drop
+    fileUploadZoneKop.addEventListener('dragover', (e) => { e.preventDefault(); fileUploadZoneKop.classList.add('drag-over'); });
+    fileUploadZoneKop.addEventListener('dragleave', (e) => { e.preventDefault(); fileUploadZoneKop.classList.remove('drag-over'); });
+    fileUploadZoneKop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileUploadZoneKop.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+          fileUploadInputKop.files = e.dataTransfer.files;
+          const changeEvent = new Event('change');
+          fileUploadInputKop.dispatchEvent(changeEvent);
+        }
+    });
+
+    // Listener untuk form
+    document.getElementById('pengaturan-tanggal-cetak').addEventListener('input', () => {
+      document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
+    });
+    // --- AKHIR LISTENER BARU ---
 
     // Listener dinamis untuk tombol verifikasi Superadmin
     document.getElementById('superadmin-donasi-list').addEventListener('click', (e) => {
@@ -11381,6 +11434,156 @@ function populateSiswaFilters() {
       // Pastikan form bersih
       isPenempatanSiswaDirty = false;
       document.getElementById('btn-simpan-penempatan-siswa').disabled = true;
+    }
+  }
+
+  // TAMBAHKAN SEMUA FUNGSI INI DI AKHIR FILE client.html
+
+  /**
+   * [BARU] Menampilkan preview gambar kop surat yang dipilih.
+   */
+  function tampilkanPreviewKop(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('kop-surat-preview').src = e.target.result;
+      document.getElementById('kop-surat-preview-container').style.display = 'block';
+      document.getElementById('file-upload-zone-kop').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /**
+   * [BARU] Menangani klik tombol Hapus Gambar.
+   */
+  function hapusGambarKop() {
+    document.getElementById('kop-surat-preview-container').style.display = 'none';
+    document.getElementById('kop-surat-preview').src = '';
+    document.getElementById('file-upload-zone-kop').style.display = 'flex';
+    document.getElementById('file-upload-text-kop').innerText = 'Klik untuk memilih gambar...';
+    document.getElementById('file-upload-kop').value = null; // Hapus file dari input
+    document.getElementById('kop-surat-status').value = 'delete'; // Tandai untuk dihapus
+    document.getElementById('btn-simpan-pengaturan-cetak').disabled = false; // Aktifkan simpan
+  }
+
+  /**
+   * [BARU] Membuka halaman Pengaturan Cetak.
+   */
+  function bukaHalamanPengaturanCetak() {
+    tampilHalaman('halaman-pengaturan-cetak');
+    setLoading(true, 'Memuat pengaturan...', false, false);
+    hideMessage('pengaturan-cetak-message');
+
+    // Reset form
+    document.getElementById('form-pengaturan-cetak').reset();
+    document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
+    document.getElementById('kop-surat-status').value = 'keep'; // Status default
+    document.getElementById('kop-surat-preview-container').style.display = 'none';
+    document.getElementById('kop-surat-preview').src = '';
+    document.getElementById('file-upload-zone-kop').style.display = 'flex';
+    document.getElementById('file-upload-text-kop').innerText = 'Klik untuk memilih gambar...';
+
+    google.script.run
+      .withSuccessHandler(onPengaturanCetakLoaded)
+      .withFailureHandler(onGagal)
+      .getPengaturanCetak(getToken());
+  }
+
+  /**
+   * [BARU] Callback setelah pengaturan cetak dimuat.
+   */
+  function onPengaturanCetakLoaded(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      const data = response.data;
+      document.getElementById('pengaturan-tanggal-cetak').value = data.tanggalCetak || '';
+
+      if (data.kopSuratUrl) {
+        // Tampilkan preview gambar yang sudah ada
+        document.getElementById('kop-surat-preview').src = data.kopSuratUrl;
+        document.getElementById('kop-surat-preview-container').style.display = 'block';
+        document.getElementById('file-upload-zone-kop').style.display = 'none';
+      }
+
+    } else {
+      showMessage('pengaturan-cetak-message', 'Gagal memuat pengaturan: ' + response.message, true);
+    }
+  }
+
+  /**
+   * [BARU] Menyimpan pengaturan cetak.
+   */
+  function simpanPengaturanCetak() {
+    const btn = document.getElementById('btn-simpan-pengaturan-cetak');
+    setButtonLoading(btn, 'Menyimpan...');
+    hideMessage('pengaturan-cetak-message');
+
+    const tanggalCetak = document.getElementById('pengaturan-tanggal-cetak').value;
+    const fileInput = document.getElementById('file-upload-kop');
+    const file = fileInput.files[0];
+    const status = document.getElementById('kop-surat-status').value;
+
+    let fileData = null;
+
+    if (status === 'new' && file) {
+      // Ada file baru, baca sebagai Base64
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        fileData = {
+          base64: e.target.result,
+          mimeType: file.type,
+          fileName: file.name
+        };
+        // Panggil server setelah file dibaca
+        google.script.run
+          .withSuccessHandler(onPengaturanCetakSaved)
+          .withFailureHandler(onGagal)
+          .savePengaturanCetak(getToken(), tanggalCetak, fileData);
+      };
+      reader.onerror = (e) => {
+        onGagal({ message: 'Gagal membaca file.' });
+      };
+      reader.readAsDataURL(file);
+
+    } else if (status === 'delete') {
+      // User menekan "Hapus Gambar"
+      fileData = { delete: true };
+      google.script.run
+        .withSuccessHandler(onPengaturanCetakSaved)
+        .withFailureHandler(onGagal)
+        .savePengaturanCetak(getToken(), tanggalCetak, fileData);
+
+    } else {
+      // Status 'keep' atau tidak ada file baru
+      // Kirim null untuk fileData, server akan tahu untuk tidak mengubah gambar
+      google.script.run
+        .withSuccessHandler(onPengaturanCetakSaved)
+        .withFailureHandler(onGagal)
+        .savePengaturanCetak(getToken(), tanggalCetak, null);
+    }
+  }
+
+  /**
+   * [BARU] Callback setelah pengaturan disimpan.
+   */
+  function onPengaturanCetakSaved(response) {
+    const btn = document.getElementById('btn-simpan-pengaturan-cetak');
+    resetButtonLoading(btn);
+
+    if (response.status === 'sukses') {
+      showToast("Pengaturan berhasil disimpan!", 'sukses');
+      document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
+      document.getElementById('kop-surat-status').value = 'keep'; // Reset status
+
+      // Jika file baru diupload, perbarui URL preview
+      if (response.newUrl) {
+        document.getElementById('kop-surat-preview').src = response.newUrl;
+      } else if (document.getElementById('kop-surat-status').value === 'delete') {
+        // Jika file dihapus, pastikan UI sudah ter-reset
+        hapusGambarKop();
+      }
+
+    } else {
+      showMessage('pengaturan-cetak-message', 'Gagal menyimpan: ' + response.message, true);
     }
   }
 
