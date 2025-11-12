@@ -4694,6 +4694,30 @@
     cursor: help;
   }
 
+  /* [MODIFIKASI] Menambahkan style untuk dropdown kelas di tabel mapel */
+  .mapel-table th.col-kelas {
+    width: 150px;
+    min-width: 130px;
+  }
+  .mapel-table td .penempatan-mapel-kelas-select {
+    width: 100%;
+    min-width: 130px; 
+    padding: 8px;
+    font-size: 14px;
+    /* Menggunakan variabel form standar */
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-sizing: border-box;
+    background-color: var(--bg-white);
+  }
+  
+  .mapel-table td .penempatan-mapel-kelas-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+  }
+  /* [AKHIR MODIFIKASI] */
+
   /* Style untuk modal tambah mapel app 2 */
   #modal-mapel-app2 .modal-content {
     max-width: 450px;
