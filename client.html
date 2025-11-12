@@ -10928,6 +10928,8 @@ function populateSiswaFilters() {
         tr.dataset.email = item.email_guru;
         tr.dataset.mapel = item.mapel;
         tr.dataset.singkatan = item.singkatan;
+        tr.dataset.isus = item.isUS; // <-- TAMBAHKAN INI
+        tr.dataset.isup = item.isUP; // <-- TAMBAHKAN INI
         
         const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
         const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
@@ -11250,7 +11252,9 @@ function populateSiswaFilters() {
           email_guru: tr.dataset.email,
           mapel: tr.dataset.mapel,
           singkatan: tr.dataset.singkatan,
-          kelas_json: kelasJson // <-- Menambahkan data kelas
+          kelas_json: kelasJson,
+          isUS: tr.dataset.isus === 'true', // <-- TAMBAHKAN INI (konversi string ke boolean)
+          isUP: tr.dataset.isup === 'true'  // <-- TAMBAHKAN INI (konversi string ke boolean)
         });
       }
     });
