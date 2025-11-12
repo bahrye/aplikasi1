@@ -155,6 +155,8 @@
   let isPenempatanSiswaDirty = false;
   let isPenempatanMapelDirty = false;
 
+  let currentPenempatanTab = 'siswa';
+
   // --- TAMBAHKAN INI ---
   let isFormDirty = false;
   // --- AKHIR TAMBAHAN ---
@@ -1638,6 +1640,16 @@
       }
     });
     // --- AKHIR TAMBAHAN ---
+
+    // [MODIFIKASI] Menambahkan event listener 'change' untuk dropdown kelas
+    document.getElementById('penempatan-mapel-container').addEventListener('change', (e) => {
+      const target = e.target;
+      if (target.classList.contains('penempatan-mapel-kelas-select')) {
+        isPenempatanMapelDirty = true;
+        document.getElementById('btn-simpan-penempatan-mapel').disabled = false;
+      }
+    });
+    // [AKHIR MODIFIKASI]
 
     document.getElementById('btn-kembali-ke-dashboard-7').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
@@ -8327,7 +8339,8 @@ function populateSiswaFilters() {
       container.innerHTML = ""; // 1. Kosongkan
 
       if (!guruList || guruList.length === 0) {
-          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data guru.</p>';
+          // [MODIFIKASI] Colspan diubah dari 4 menjadi 3
+          container.innerHTML = '<table class="siswa-table guru-table"><tbody><tr><td colspan="3" style="text-align: center;">Belum ada data guru.</td></tr></tbody></table>';
           return;
       }
 
@@ -8342,58 +8355,30 @@ function populateSiswaFilters() {
       // 3. Buat header
       const thead = table.createTHead();
       const headerRow = thead.insertRow();
-      headerRow.innerHTML = '<thead><tr><th>Nama Guru</th><th>Email Login</th><th>Mapel Diampu</th><th>Aksi</th></tr></thead>';
+      // [MODIFIKASI] Menghilangkan header "MAPEL DIampu"
+      headerRow.innerHTML = '<thead><tr><th>Nama Guru</th><th>Email Login</th><th>Aksi</th></tr></thead>';
 
       // 4. Buat body dan DocumentFragment
       const tbody = table.createTBody();
       const fragment = document.createDocumentFragment();
       
       guruList.forEach(guru => {
-          const mapelKelasData = guru.mapelKelas || {};
-          const mapelEntries = Object.entries(mapelKelasData);
-
-          let mapelBadges = '';
-          if (mapelEntries.length > 0) {
-              mapelBadges = mapelEntries.map(([mapelId, kelasArray]) => {
-                  
-                  let kelasStr = '';
-                  if (totalKelasCount <= 1) {
-                      kelasStr = '(Semua Kelas)';
-                  } else {
-                      if (Array.isArray(kelasArray) && kelasArray.includes('*')) {
-                          kelasStr = '(Semua Kelas)';
-                      } else if (Array.isArray(kelasArray)) {
-                          const validStoredKelas = kelasArray.filter(k => validKelasNames.includes(k));
-                          if (validStoredKelas.length === 0) {
-                              kelasStr = '<i style="opacity: 0.7;">(Kelas Dihapus)</i>';
-                          } else {
-                              kelasStr = `(${validStoredKelas.join(', ')})`;
-                          }
-                      } else {
-                          kelasStr = '<i style="opacity: 0.7;">(Data Lama)</i>';
-                      }
-                  }
-                  return `<span class="selected-mapel-tag" style="margin: 2px;">${mapelId} <i style="opacity: 0.7; margin-left: 5px;">${kelasStr}</i></span>`;
-              
-              }).join('');
-          } else {
-              mapelBadges = '<span style="color: var(--text-light); font-style: italic;">Belum ada mapel</span>';
-          }
-
+          // [MODIFIKASI] Logika untuk 'mapelBadges' dihapus semua
+          
           const guruDataJson = JSON.stringify({
               email: guru.email,
               nama: guru.nama,
-              mapelKelas: guru.mapelKelas 
+              mapelKelas: guru.mapelKelas // Data ini tetap disimpan di tombol untuk modal
           }).replace(/"/g, '&quot;');
 
           // 5. Buat <tr> baru di memori
           const tr = document.createElement('tr');
           
           // 6. Isi <td> menggunakan .innerHTML
+          // [MODIFIKASI] Menghilangkan <td> untuk mapelBadges
           tr.innerHTML = `
               <td><strong>${guru.nama}</strong></td>
               <td>${guru.email}</td>
-              <td>${mapelBadges}</td>
               <td>
                 <div class="btn-grup-aksi">
                       <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
@@ -8423,32 +8408,8 @@ function populateSiswaFilters() {
       const passLabel = document.getElementById('label-guru-password');
       const passInput = document.getElementById('modal-guru-password');
       
-      const modal = document.getElementById('guru-modal');
-      const uiSingleClass = document.getElementById('modal-guru-ui-single-class');
-      const uiMultiClass = document.getElementById('modal-guru-ui-multi-class');
-      
-      // Tentukan mode berdasarkan jumlah kelas
-      const isSingleClassMode = (globalKelasListCache.length <= 1);
-      modal.dataset.isSingleClassMode = isSingleClassMode;
-
-      if (isSingleClassMode) {
-        // Tampilkan UI Lama (Tag)
-        uiSingleClass.style.display = 'block';
-        uiMultiClass.style.display = 'none';
-        document.getElementById('modal-guru-mapel-selected').innerHTML = ''; // Kosongkan tag
-      } else {
-        // Tampilkan UI Baru (List Mapel + Kelas)
-        uiSingleClass.style.display = 'none';
-        uiMultiClass.style.display = 'block';
-        document.getElementById('modal-guru-mapel-kelas-list').innerHTML = ''; // Kosongkan list
-      }
-      
-      // Reset input pencarian
-      document.getElementById('modal-guru-mapel-search').value = "";
-      document.getElementById('modal-guru-mapel-suggestions').style.display = 'none';
-      document.getElementById('modal-guru-mapel-kelas-search').value = "";
-      document.getElementById('modal-guru-mapel-kelas-suggestions').style.display = 'none';
-
+      // [MODIFIKASI] Hapus semua logika untuk UI mapel
+      // karena sudah disembunyikan.
 
       if (mode === 'add') {
           document.getElementById('modal-guru-title').innerText = "Tambah Guru Baru";
@@ -8458,7 +8419,6 @@ function populateSiswaFilters() {
           passInput.value = "";
           passLabel.innerText = "Password (Wajib)";
           passInput.placeholder = "Buat password baru";
-          // (Container mapel sudah dikosongkan di atas)
       } else {
           // Mode Edit
           document.getElementById('modal-guru-title').innerText = "Edit Data Guru";
@@ -8468,29 +8428,11 @@ function populateSiswaFilters() {
           passInput.value = "";
           passLabel.innerText = "Password (Kosongkan jika tidak diubah)";
           passInput.placeholder = "---";
-          
-          // Render data mapel yang ada
-          const mapelKelasData = guruData.mapelKelas || {};
-          if (isSingleClassMode) {
-            // Mode Kelas Tunggal: Render Tags
-            const mapelIds = Object.keys(mapelKelasData);
-            renderSelectedMapelTags(mapelIds); // (Fungsi ini sudah ada)
-          } else {
-            // Mode Multi-Kelas: Render List Row
-            renderMapelKelasList(mapelKelasData); 
-          }
       }
 
-      // Pastikan (lagi) mapel list global ada
-      if (!globalMapelList || globalMapelList.length === 0) {
-        google.script.run.withSuccessHandler((response) => {
-            if (response.status === 'sukses') {
-                globalMapelList = response.mapel;
-            }
-        }).getMapel(getToken());
-      }
-
+      // Cukup tampilkan modalnya
       document.getElementById('guru-modal').classList.add('show');
+      // [AKHIR MODIFIKASI]
   }
 
   function tutupModalGuru() {
@@ -8507,37 +8449,10 @@ function populateSiswaFilters() {
       const mode = document.getElementById('modal-guru-mode').value;
       const originalEmail = document.getElementById('modal-guru-original-email').value;
       
-      const modal = document.getElementById('guru-modal');
-      const isSingleClassMode = (modal.dataset.isSingleClassMode === 'true');
-
-      // --- LOGIKA PENYIMPANAN YANG DIPERBARUI ---
-      const mapelKelasData = {}; // Ini akan jadi: { "MTK": ["VI", "VI.B"], "IPA": ["VI"] }
-
-      if (isSingleClassMode) {
-        // Baca dari UI LAMA (Tags) - Tidak berubah
-        document.querySelectorAll('#modal-guru-mapel-selected .selected-mapel-tag-remove').forEach(tag => {
-          mapelKelasData[tag.dataset.id] = ["*"]; // "*" = Semua Kelas
-        });
-      } else {
-        // Baca dari UI BARU (List dropdown tunggal)
-        document.querySelectorAll('#modal-guru-mapel-kelas-list .mapel-kelas-row').forEach(row => {
-          const mapelId = row.dataset.mapelId;
-          const select = row.querySelector('.mapel-kelas-select');
-          const selectedKelas = select.value;
-          
-          if (selectedKelas) { // Hanya proses jika kelas dipilih (bukan "-- Pilih Kelas --")
-            if (!mapelKelasData[mapelId]) {
-              mapelKelasData[mapelId] = []; // Buat array jika ini mapel pertama
-            }
-            
-            // Tambahkan kelas ke array, pastikan unik (mencegah duplikat manual)
-            if (!mapelKelasData[mapelId].includes(selectedKelas)) {
-              mapelKelasData[mapelId].push(selectedKelas);
-            }
-          }
-        });
-      }
-      // --- AKHIR LOGIKA PENYIMPANAN ---
+      // [MODIFIKASI] Hapus semua logika pembacaan mapel dari modal.
+      // Cukup kirim objek kosong, karena mapel diatur di "Kelola Penempatan".
+      const mapelKelasData = {};
+      // [AKHIR MODIFIKASI]
 
       if (!nama || !email) {
           resetButtonLoading(document.getElementById('btn-simpan-guru'));
@@ -10315,6 +10230,16 @@ function populateSiswaFilters() {
     
     globalPenempatanData = response;
     
+    // [MODIFIKASI] Simpan cache kelas (sudah dalam format objek)
+    if (response.kelasList) {
+        globalKelasListCache = response.kelasList; // Ini sudah array of objects
+        console.log("Cache kelas diisi dari getPenempatanData:", globalKelasListCache);
+    } else {
+        console.warn("Respon 'getPenempatanData' tidak menyertakan 'kelasList'.");
+        globalKelasListCache = []; // Set ke kosong
+    }
+    // [AKHIR MODIFIKASI]
+    
     // Cek status kunci T.A.
     const taId = document.getElementById('penempatan-ta-select').value;
     const taData = globalTaList.find(ta => ta.id === taId);
@@ -10322,7 +10247,10 @@ function populateSiswaFilters() {
 
     // Tampilkan UI Tab
     document.getElementById('penempatan-tab-bar').style.display = 'flex';
-    activatePenempatanTab('siswa'); // Default ke tab siswa
+    
+    // [MODIFIKASI] Baca dari variabel global, jangan hardcode 'siswa'
+    activatePenempatanTab(currentPenempatanTab); 
+    // [AKHIR MODIFIKASI]
     
     // 1. Render Tab Siswa
     populatePenempatanSiswaFilters(globalPenempatanData.siswaData);
@@ -10347,6 +10275,8 @@ function populateSiswaFilters() {
    * [BARU] Mengaktifkan tab di halaman Penempatan.
    */
   function activatePenempatanTab(tabName) {
+    currentPenempatanTab = tabName; // <-- [MODIFIKASI] Simpan tab aktif
+    
     document.querySelectorAll('#penempatan-tab-bar .tab-link').forEach(link => link.classList.remove('active'));
     document.querySelectorAll('#halaman-penempatan .tab-content').forEach(content => content.style.display = 'none');
     
@@ -10586,16 +10516,21 @@ function populateSiswaFilters() {
     
     const { mapelAssignments, guruList, mapelList } = globalPenempatanData;
     
+    // [MODIFIKASI] Ambil data kelas dari cache App 1
+    const kelasList = globalKelasListCache || [];
+    
     // 2. Selalu buat struktur tabel
     const table = document.createElement('table');
     table.className = 'mapel-table'; // Pakai style yang mirip
     
     const thead = table.createTHead();
+    // [MODIFIKASI] Menambahkan header KELAS
     thead.innerHTML = `
       <tr>
         <th>Guru Pengampu</th>
         <th>Mata Pelajaran</th>
         <th>Singkatan</th>
+        <th class="col-kelas">Kelas</th>
         <th style="width: 80px;">Aksi</th>
       </tr>
     `;
@@ -10604,8 +10539,8 @@ function populateSiswaFilters() {
 
     // 3. Cek apakah ada data untuk diisi
     if (mapelAssignments.length === 0) {
-      // Jika kosong, tambahkan baris 'empty' DI DALAM TBODY
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Belum ada mapel yang ditempatkan untuk T.A. ini.</td></tr>';
+      // [MODIFIKASI] Colspan diubah dari 4 menjadi 5
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Belum ada mapel yang ditempatkan untuk T.A. ini.</td></tr>';
     } else {
       // Jika ada data, isi seperti biasa
       const fragment = document.createDocumentFragment();
@@ -10629,10 +10564,27 @@ function populateSiswaFilters() {
         const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
         const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
         
+        // [MODIFIKASI] Membuat HTML untuk dropdown kelas
+        const currentKelasJson = item.kelas_json || '["*"]';
+        const allKelasValue = '["*"]';
+        
+        let optionsHtml = `<option value='${allKelasValue}' ${currentKelasJson === allKelasValue ? 'selected' : ''}>Semua Kelas</option>`;
+        kelasList.forEach(kelas => {
+          const kelasValue = JSON.stringify([kelas.nama]); // Simpan sbg array JSON
+          optionsHtml += `<option value='${kelasValue}' ${currentKelasJson === kelasValue ? 'selected' : ''}>${kelas.nama}</option>`;
+        });
+        // [AKHIR MODIFIKASI]
+
+        // [MODIFIKASI] Menambahkan <td> baru untuk dropdown
         tr.innerHTML = `
           <td>${namaGuru}</td>
           <td>${namaMapel}</td>
           <td>${item.singkatan || '-'}</td>
+          <td>
+            <select class="form-control form-control-sm penempatan-mapel-kelas-select" data-email="${item.email_guru}" data-mapel="${item.mapel}">
+              ${optionsHtml}
+            </select>
+          </td>
           <td style="text-align: center;">
             <button class="btn-aksi btn-delete btn-remove-mapel-app2" title="Hapus Penempatan Ini">
               <i class="fas fa-trash-alt"></i>
@@ -10713,11 +10665,19 @@ function populateSiswaFilters() {
     
     const tbody = table.tBodies[0];
     // Hapus pesan 'kosong' jika ada
-    const emptyRow = tbody.querySelector('td[colspan="4"]');
+    const emptyRow = tbody.querySelector('td[colspan="5"]'); // [MODIFIKASI] Colspan 5
     if (emptyRow) emptyRow.parentElement.remove();
 
     let addedCount = 0;
     let skippedCount = 0;
+    
+    // [MODIFIKASI] Ambil kelas dan buat options
+    const kelasList = globalKelasListCache || [];
+    let optionsHtml = '<option value=\'["*"]\' selected>Semua Kelas</option>';
+    kelasList.forEach(kelas => { 
+      optionsHtml += `<option value='${JSON.stringify([kelas.nama])}'>${kelas.nama}</option>`; 
+    });
+    // [AKHIR MODIFIKASI]
 
     // --- LOGIKA BARU: Looping untuk setiap mapel yang dipilih ---
     for (const mapelId of selectedMapels) { // Loop dari Set
@@ -10746,10 +10706,16 @@ function populateSiswaFilters() {
       tr.dataset.mapel = mapelId;
       tr.dataset.singkatan = singkatan; // Simpan singkatan (Kode Mapel)
       
+      // [MODIFIKASI] Menambahkan <td> dropdown
       tr.innerHTML = `
         <td>${guru.nama}</td>
         <td>${mapelData.nama}</td>
         <td>${singkatan || '-'}</td>
+        <td>
+          <select class="form-control form-control-sm penempatan-mapel-kelas-select" data-email="${email}" data-mapel="${mapelId}">
+            ${optionsHtml}
+          </select>
+        </td>
         <td style="text-align: center;">
           <button class="btn-aksi btn-delete btn-remove-mapel-app2" title="Hapus Penempatan Ini">
             <i class="fas fa-trash-alt"></i>
@@ -10867,12 +10833,17 @@ function populateSiswaFilters() {
     const rows = document.querySelectorAll('#penempatan-mapel-container tbody tr');
     const assignmentsToSave = [];
     
+    // [MODIFIKASI] Membaca nilai <select>
     rows.forEach(tr => {
       if (tr.dataset.email) { // Pastikan ini baris data
+        const select = tr.querySelector('.penempatan-mapel-kelas-select');
+        const kelasJson = select ? select.value : '["*"]'; // Default ke "Semua Kelas"
+        
         assignmentsToSave.push({
           email_guru: tr.dataset.email,
           mapel: tr.dataset.mapel,
-          singkatan: tr.dataset.singkatan
+          singkatan: tr.dataset.singkatan,
+          kelas_json: kelasJson // <-- Menambahkan data kelas
         });
       }
     });
