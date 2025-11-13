@@ -1661,6 +1661,43 @@
             <small class="helper-text">Tanggal ini akan digunakan oleh guru di Aplikasi 2.</small>
           </div>
 
+          <h3 class="form-section-header">Template Laporan Kustom</h3>
+        
+          <div class="form-group-toggle" title="Fitur Premium: Memerlukan Donasi untuk diaktifkan">
+            <label for="pengaturan-template-kustom-toggle">
+              Gunakan Template Sendiri (Premium)
+              <a href="#" id="btn-tutorial-dapat-id" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 10px; font-size: 13px;">(Cara Dapat ID?)</a>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="pengaturan-template-kustom-toggle" disabled>
+              <span class="slider round"></span>
+            </label>
+          </div>
+
+          <div id="pengaturan-template-kustom-container" style="display: none; padding-left: 10px; border-left: 3px solid var(--primary-color); margin-top: 15px;">
+
+            <div class="form-group">
+              <label for="pengaturan-template-doc-id">
+                ID Spreadsheet Template Laporan Nilai
+                <a href="#" id="btn-tutorial-template-doc" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 10px; font-size: 13px;">(Lihat Contoh & Petunjuk)</a>
+                <a href="#" id="pengaturan-reset-doc-id" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 8px; font-size: 13px; color: var(--danger-color);">(Reset ke Default)</a>
+              </label>
+              <input type="text" id="pengaturan-template-doc-id" placeholder="Masukkan ID Spreadsheet Google...">
+              <small class="helper-text">Digunakan untuk Laporan Nilai Ujian (App 2).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="pengaturan-template-rekap-id">
+                ID Spreadsheet Template Rekapitulasi
+                <a href="#" id="btn-tutorial-template-rekap" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 10px; font-size: 13px;">(Lihat Contoh & Petunjuk)</a>
+                <a href="#" id="pengaturan-reset-rekap-id" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 8px; font-size: 13px; color: var(--danger-color);">(Reset ke Default)</a>
+              </label>
+              <input type="text" id="pengaturan-template-rekap-id" placeholder="Masukkan ID Spreadsheet Google...">
+              <small class="helper-text">Digunakan untuk Laporan Rekapitulasi Nilai (App 1).</small>
+            </div>
+            
+          </div>
+
           <h3 class="form-section-header">Kop Surat (Letterhead)</h3>
           <div class="form-group">
             <label>Upload Kop Surat (Opsional)</label>
