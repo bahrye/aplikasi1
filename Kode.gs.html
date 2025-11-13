@@ -2245,7 +2245,6 @@ function getKelasSheet(ss) {
 }
 
 
-
 function getLockedKelasSet(ss, sekolahID) {
   try {
     const cacheKey = LOCKED_KELAS_CACHE_KEY + "_" + sekolahID;
@@ -2291,7 +2290,16 @@ function getLockedKelasSet(ss, sekolahID) {
     const lockedKelasSet = new Set();
     for (const siswaId of lockedSiswaIdSet) {
       if (siswaIdToKelasMap.has(siswaId)) {
-        lockedKelasSet.add(siswaIdToKelasMap.get(siswaId).toUpperCase());
+        
+        // --- PERBAIKAN DI SINI ---
+        const namaKelas = siswaIdToKelasMap.get(siswaId);
+        // 1. Cek jika namaKelas ada (tidak null/undefined/"")
+        if (namaKelas) { 
+          // 2. Paksa jadi string SEBELUM .toUpperCase()
+          lockedKelasSet.add(String(namaKelas).toUpperCase()); 
+        }
+        // --- AKHIR PERBAIKAN ---
+        
       }
     }
     
@@ -2309,65 +2317,194 @@ function getKelas(token) {
     const sheet = getKelasSheet(ss);
     const data = sheet.getDataRange().getValues();
     data.shift();
-    const kelasListNama = data.map(row => row[0]).filter(nama => nama);
+    
+    // --- PERBAIKAN DI SINI ---
+    // 1. Filter dengan lebih aman untuk null/undefined/string kosong
+    const kelasListNama = data.map(row => row[0]).filter(nama => (nama !== null && nama !== undefined && nama !== ""));
+    
     const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID);
+    
     const kelasListWithStatus = kelasListNama.map(nama => {
+      // 2. Paksa 'nama' menjadi string SEBELUM memanggil .toUpperCase()
+      const namaString = String(nama); 
       return {
-        nama: nama,
-        isLocked: lockedKelasSet.has(nama.toUpperCase())
+        nama: namaString, // Kirim string yang sudah dikonversi ke klien
+        isLocked: lockedKelasSet.has(namaString.toUpperCase())
       };
     });
+    // --- AKHIR PERBAIKAN ---
+
     return { status: "sukses", kelasList: kelasListWithStatus };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-function saveKelas(token, kelasList) {
+function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName}, ... ]
   let spreadsheetID, sessionData;
+  let app2DbId = null; // ID Database Aplikasi 2
+  
   try {
     const session = validateAdminSession(token);
-    spreadsheetID = session.spreadsheetID; // <--- Ambil spreadsheetID
+    spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
+    // Dapatkan ID App 2 di awal untuk cascade
+    app2DbId = getApp2DatabaseId(token); 
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
+  
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
+  
   try {
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getKelasSheet(ss);
-    const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID);
+    // Kita tetap memerlukan lockedKelasSet untuk validasi HAPUS
+    const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID); 
+    
+    const renameMap = new Map();
+    const newClassListStrings = [];
+    const newClassSet = new Set();
+
+    for (const item of kelasList) {
+      const newName = (item.newName || "").trim();
+      if (!newName) continue; // Lewati baris kosong
+
+      const oldName = (item.oldName || "").trim();
+      
+      // 1. Cek duplikat di input baru
+      const newNameUpper = newName.toUpperCase();
+      if (newClassSet.has(newNameUpper)) {
+        throw new Error(`Nama kelas duplikat: '${newName}'.`);
+      }
+      newClassSet.add(newNameUpper);
+      newClassListStrings.push(newName); // Kumpulkan nama baru untuk disimpan
+
+      // 2. Buat Peta Penggantian Nama (Rename Map)
+      if (oldName && newName !== oldName) { 
+        renameMap.set(oldName, newName);
+      }
+    }
+    
+    // 3. Validasi Hapus (Logika Asli DIPERTAHANKAN)
     const oldData = sheet.getDataRange().getValues();
     oldData.shift();
-    const oldClassList = oldData.map(row => row[0]).filter(nama => nama);
-    const newClassSet = new Set(kelasList.map(k => k.toUpperCase()));
-    for (const oldClass of oldClassList) {
-      if (lockedKelasSet.has(oldClass.toUpperCase())) {
-        if (!newClassSet.has(oldClass.toUpperCase())) {
+    
+    // --- PERBAIKAN DI SINI ---
+    // 1. Filter dengan lebih aman
+    const oldClassList = oldData.map(row => row[0]).filter(nama => (nama !== null && nama !== undefined && nama !== ""));
+    
+    for (const item of oldClassList) { 
+      // 2. Paksa 'item' (yang bisa jadi angka) menjadi string
+      const oldClass = String(item); 
+      const oldClassUpper = oldClass.toUpperCase(); // <-- Panggil .toUpperCase() pada string
+
+      if (lockedKelasSet.has(oldClassUpper)) { 
+        if (!newClassSet.has(oldClassUpper)) {
+          // User mencoba menghapus kelas terkunci
           return { status: "gagal", message: `Kelas '${oldClass}' tidak dapat dihapus karena sudah memiliki data nilai.` };
         }
       }
     }
+    // --- AKHIR PERBAIKAN ---
+    
+    // --- TINDAKAN CASCADE ---
+    if (renameMap.size > 0 && app2DbId) {
+      Logger.log(`Mendeteksi ${renameMap.size} penggantian nama kelas. Memulai cascade...`);
+      // Update Siswa di Aplikasi 1
+      _cascadeKelasRename_App1(ss, renameMap, sessionData.sekolahID, spreadsheetID);
+      // Update db_siswa di Aplikasi 2
+      _cascadeKelasRename_App2(app2DbId, renameMap);
+    }
+    // --- AKHIR TINDAKAN CASCADE ---
+
+    // Hapus data lama dari sheet Kelas
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
       sheet.deleteRows(2, lastRow - 1);
     }
-    if (kelasList && kelasList.length > 0) {
-      const dataToSave = kelasList.map(nama => [nama]);
+    
+    // Tulis data baru ke sheet Kelas
+    if (newClassListStrings.length > 0) {
+      const dataToSave = newClassListStrings.map(nama => [nama]);
       sheet.getRange(2, 1, dataToSave.length, 1).setValues(dataToSave);
     }
     
-    // --- PERBAIKAN DI SINI ---
-    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
-    // --- AKHIR PERBAIKAN ---
-    
+    // Bersihkan cache
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID); 
     clearLockedKelasCache(sessionData.sekolahID);
+    
     return { status: "sukses" };
+    
   } catch (e) {
     return { status: "gagal", message: e.message };
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * [HELPER BARU] Melakukan cascade update nama kelas di db_siswa (Aplikasi 2).
+ */
+function _cascadeKelasRename_App2(app2DbId, renameMap) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    // Memanggil helper getSiswaSheet_App2 (yang sudah ada di Kode.gs.html)
+    const sheetSiswa = getSiswaSheet_App2(ss_app2); 
+    
+    if (sheetSiswa.getLastRow() <= 1) return; // Tidak ada siswa
+
+    const dataRange = sheetSiswa.getRange(2, 4, sheetSiswa.getLastRow() - 1, 1); // Kolom D (kelas)
+    const values = dataRange.getValues();
+    let changesMade = false;
+
+    for (let i = 0; i < values.length; i++) {
+      const oldKelas = values[i][0];
+      if (renameMap.has(oldKelas)) {
+        values[i][0] = renameMap.get(oldKelas); // Ganti dengan nama baru
+        changesMade = true;
+      }
+    }
+
+    if (changesMade) {
+      dataRange.setValues(values);
+      Logger.log(`Cascade rename (App 2) berhasil. ${renameMap.size} kelas diperbarui di db_siswa.`);
+    }
+  } catch (e) {
+    Logger.log(`ERROR GAGAL cascade rename (App 2): ${e.message}`);
+    // Jangan lempar error agar proses simpan utama tidak gagal
+  }
+}
+
+/**
+ * [HELPER BARU] Melakukan cascade update nama kelas di Siswa (Aplikasi 1).
+ */
+function _cascadeKelasRename_App1(ss_app1, renameMap, sekolahID, spreadsheetID) {
+  try {
+    const sheetSiswa = getSiswaSheet(ss_app1); // Helper getSiswaSheet (App 1)
+    if (sheetSiswa.getLastRow() <= 1) return; // Tidak ada siswa
+
+    const dataRange = sheetSiswa.getRange(2, 8, sheetSiswa.getLastRow() - 1, 1); // Kolom H (Kelas)
+    const values = dataRange.getValues();
+    let changesMade = false;
+
+    for (let i = 0; i < values.length; i++) {
+      const oldKelas = values[i][0];
+      if (renameMap.has(oldKelas)) {
+        values[i][0] = renameMap.get(oldKelas); // Ganti dengan nama baru
+        changesMade = true;
+      }
+    }
+
+    if (changesMade) {
+      dataRange.setValues(values);
+      // Penting: Bersihkan cache siswa App 1
+      clearSiswaCache(sekolahID, spreadsheetID); 
+      Logger.log(`Cascade rename (App 1) berhasil. ${renameMap.size} kelas diperbarui di Siswa.`);
+    }
+  } catch (e) {
+    Logger.log(`ERROR GAGAL cascade rename (App 1): ${e.message}`);
   }
 }
 
