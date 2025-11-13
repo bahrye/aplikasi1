@@ -365,6 +365,8 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
   }
 }
 
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
 function prosesVerifikasiToken(token) {
   if (!token) {
     return `<h1>Permintaan Tidak Valid</h1>
@@ -408,7 +410,6 @@ function prosesVerifikasiToken(token) {
         const dbSalt = row[5];
         const dbPlainPassword = row[8]; 
         
-        // Cek duplikat di sheetSekolah (aktif)
         const emailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
         
         if (emailFinder.length > 0) {
@@ -420,73 +421,58 @@ function prosesVerifikasiToken(token) {
         }
 
         try {
-          // ===============================================
-          // ===== PERMINTAAN BARU: Buat Folder Sekolah =====
-          // ===============================================
           let newSchoolFolder, donasiSubFolder;
           let newSchoolFolderId = null;
           let donasiSubFolderId = null;
 
           try {
             const parentFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
-            // Buat folder utama sekolah
             newSchoolFolder = parentFolder.createFolder(namaSekolah.toUpperCase());
             newSchoolFolderId = newSchoolFolder.getId();
-            // Buat sub-folder Donasi
             donasiSubFolder = newSchoolFolder.createFolder("Donasi");
             donasiSubFolderId = donasiSubFolder.getId();
-            Logger.log(`Folder sekolah dibuat (ID: ${newSchoolFolderId}) dengan sub-folder Donasi (ID: ${donasiSubFolderId})`);
           } catch (folderError) {
             Logger.log(`KRITIKAL: Gagal membuat folder drive untuk ${namaSekolah}. Error: ${folderError.message}`);
             throw new Error(`Gagal membuat folder Google Drive. ${folderError.message}`);
           }
-          // ===============================================
-          // ===== AKHIR PERMINTAAN BARU                 =====
-          // ===============================================
 
-          // 1. Buat Database Aplikasi 1 (Ijazah)
-          // [MODIFIKASI] Kirim 'newSchoolFolder' sebagai argumen baru
+          // --- [MODIFIKASI] Ambil Konfigurasi Default ---
+          const config = getMasterConfig();
+          // --- [AKHIR MODIFIKASI] ---
+
           const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS, newSchoolFolder);
-          
-          // 2. Buat Database Aplikasi 2 (Nilai Ujian)
-          // [MODIFIKASI] Kirim 'newSchoolFolder' sebagai argumen baru
           const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase(), newSchoolFolder);
-
-          // 3. Buat ID Sekolah Unik (App 1)
           const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
           
-          // 4. Simpan SEMUA ID ke Sheet_Sekolah (database App 1)
-          // [MODIFIKASI] Menambahkan 2 ID folder baru di akhir (Kolom N dan O)
+          // --- [MODIFIKASI] Tambahkan ID Template Default ke Kolom R dan S ---
           sheetSekolah.appendRow([
             newSekolahID, 
             namaSekolah.toUpperCase(), 
             jenjang, 
             email, 
-            dbHashedPassword, // Kolom E
-            newSSID_App1,     // Kolom F
-            dbSalt,           // Kolom G
-            "'" + npsn,     // Kolom H
-            "NONE",         // Kolom I
-            "",             // Kolom J (DonasiFileID)
-            "",             // Kolom K (DonasiDataJSON)
-            "",             // Kolom L (DonasiAlasanTolak)
-            newSSID_App2,     // Kolom M (App2_DB_ID)
-            newSchoolFolderId, // <-- BARU: Kolom N (MainFolderID)
-            donasiSubFolderId,  // <-- BARU: Kolom O (DonasiFolderID)
-            "", // <-- BARU: Kolom P (KopSuratFileID)
-            "",  // <-- BARU: Kolom Q (TanggalCetak)
-            "", // <-- TAMBAHKAN: Kolom R (TemplateDocID)
-            "", // <-- TAMBAHKAN: Kolom S (TemplateRekapID)
-            "",  // <-- TAMBAHKAN: Kolom T (TempatTTD)
-            "otomatis"  // <-- TAMBAHKAN INI: Kolom U (TanggalTtdMode), default 'otomatis'
-
+            dbHashedPassword, // E
+            newSSID_App1,     // F
+            dbSalt,           // G
+            "'" + npsn,     // H
+            "NONE",         // I
+            "",             // J (DonasiFileID)
+            "",             // K (DonasiDataJSON)
+            "",             // L (DonasiAlasanTolak)
+            newSSID_App2,     // M (App2_DB_ID)
+            newSchoolFolderId, // N (MainFolderID)
+            donasiSubFolderId,  // O (DonasiFolderID)
+            "",                 // P (KopSuratFileID)
+            "",                 // Q (TanggalCetak)
+            config.DEFAULT_TEMPLATE_DOC_ID || "",  // R (TemplateDocID) <-- DIUBAH
+            config.DEFAULT_TEMPLATE_REKAP_ID || "", // S (TemplateRekapID) <-- DIUBAH
+            "",                 // T (TempatTTD)
+            "otomatis"          // U (TanggalTtdMode)
           ]);
+          // --- [AKHIR MODIFIKASI] ---
 
-          // Hapus dari antrian pending
           sheetPending.deleteRow(i + 1);
           clearMasterSheetCache();
           
-          // 5. Integrasi Aplikasi 2 (Global)
           Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
           registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPlainPassword); 
@@ -499,7 +485,6 @@ function prosesVerifikasiToken(token) {
           
         } catch (e) {
           Logger.log(`Verifikasi sukses untuk ${email} TAPI GAGAL buat DB/Folder: ${e.message}`);
-          // [MODIFIKASI] Hapus folder jika GAGAL (rollback)
           if (newSchoolFolderId) {
              try { DriveApp.getFolderById(newSchoolFolderId).setTrashed(true); } catch(err) {}
           }
@@ -7379,6 +7364,8 @@ function _getImageAsBase64DataUrl(fileId) {
   }
 }
 
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
 function getPengaturanCetak(token) {
   try {
     const { sessionData } = validateAdminSession(token);
@@ -7386,36 +7373,48 @@ function getPengaturanCetak(token) {
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const data = sheetSekolah.getDataRange().getValues();
 
+    // --- [MODIFIKASI] Ambil Konfigurasi Default ---
+    const config = getMasterConfig();
+    // --- [AKHIR MODIFIKASI] ---
+
     let pengaturan = {
       tanggalCetak: "",
       kopSuratFileId: null,
-      kopSuratUrl: null, // <-- Nama variabel ini tetap 'Url' agar client.html tidak error
+      kopSuratUrl: null, 
       tempatTTD: "",
-      tanggalTtdMode: "otomatis"
+      tanggalTtdMode: "otomatis",
+      // --- [MODIFIKASI] Tambahkan field baru ---
+      templateDocID: config.DEFAULT_TEMPLATE_DOC_ID || "",
+      templateRekapID: config.DEFAULT_TEMPLATE_REKAP_ID || "",
+      defaultTemplateDocID: config.DEFAULT_TEMPLATE_DOC_ID || "",
+      defaultTemplateRekapID: config.DEFAULT_TEMPLATE_REKAP_ID || "",
+      exampleLinkDoc: config.EXAMPLE_LINK_TEMPLATE_DOC || "#",
+      exampleLinkRekap: config.EXAMPLE_LINK_TEMPLATE_REKAP || "#"
+      // --- [AKHIR MODIFIKASI] ---
     };
 
     // Cari baris sekolah
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sessionData.sekolahID) {
-        // Kolom Q (index 16) = TanggalCetak
-        // Kolom P (index 15) = KopSuratFileID
-        // Kolom T (index 19) = TempatTTD
-        // Kolom U (index 20) = TanggalTtdMode
-        const tanggal = data[i][16];
+        
+        const tanggal = data[i][16]; // Kolom Q
         if (tanggal instanceof Date) {
           pengaturan.tanggalCetak = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), "yyyy-MM-dd");
         }
         
-        pengaturan.tempatTTD = data[i][19] || ""; 
-        pengaturan.tanggalTtdMode = data[i][20] || "otomatis";
+        pengaturan.tempatTTD = data[i][19] || ""; // Kolom T
+        pengaturan.tanggalTtdMode = data[i][20] || "otomatis"; // Kolom U
 
-        const fileId = data[i][15];
+        // --- [MODIFIKASI] Baca ID Template Kustom ---
+        pengaturan.templateDocID = data[i][17] || config.DEFAULT_TEMPLATE_DOC_ID || ""; // Kolom R
+        pengaturan.templateRekapID = data[i][18] || config.DEFAULT_TEMPLATE_REKAP_ID || ""; // Kolom S
+        // --- [AKHIR MODIFIKASI] ---
+
+        const fileId = data[i][15]; // Kolom P
         if (fileId) {
           pengaturan.kopSuratFileId = fileId;
           try {
-            // <-- PERUBAHAN DI SINI: Panggil helper baru, bukan getDownloadUrl()
             pengaturan.kopSuratUrl = _getImageAsBase64DataUrl(fileId);
-            // <-- AKHIR PERUBAHAN
           } catch (e) {
             Logger.log("Gagal mendapatkan URL Kop Surat: " + e.message);
           }
@@ -7429,7 +7428,9 @@ function getPengaturanCetak(token) {
   }
 }
 
-function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode) {
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
+function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode, templateDocID, templateRekapID) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
@@ -7450,16 +7451,22 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const data = sheetSekolah.getDataRange().getValues();
 
+    // --- [MODIFIKASI] Ambil Konfigurasi Default ---
+    const config = getMasterConfig();
+    // --- [AKHIR MODIFIKASI] ---
+
     let rowToUpdate = -1;
     let mainFolderId = null;
     let oldFileId = null;
+    let donasiStatus = "NONE"; // <-- [BARU]
 
     // 1. Cari baris dan data folder
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sessionData.sekolahID) {
         rowToUpdate = i + 1;
-        mainFolderId = data[i][13]; // Kolom N (MainFolderID)
-        oldFileId = data[i][15];   // Kolom P (KopSuratFileID)
+        donasiStatus = data[i][8] || "NONE"; // Kolom I <-- [BARU]
+        mainFolderId = data[i][13]; // Kolom N
+        oldFileId = data[i][15];   // Kolom P
         break;
       }
     }
@@ -7468,12 +7475,11 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
 
     const folder = DriveApp.getFolderById(mainFolderId);
     let newFileId = oldFileId;
-    let newFileUrl = null; // Ini akan menjadi Base64 Data URL
+    let newFileUrl = null; 
 
     // 2. Proses file jika ada
     if (fileData) {
       if (fileData.base64) {
-        // User mengupload file baru
         if (oldFileId) {
           try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
         }
@@ -7481,36 +7487,40 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
         const blob = Utilities.newBlob(decodedData, fileData.mimeType, `KOP_SURAT - ${sessionData.namaSekolah}`);
         const newFile = folder.createFile(blob);
         newFileId = newFile.getId();
-        
-        // <-- PERUBAHAN DI SINI: Panggil helper baru untuk mendapatkan Base64
         newFileUrl = _getImageAsBase64DataUrl(newFileId);
-        // <-- AKHIR PERUBAHAN
         
       } else if (fileData.delete === true) {
-        // User menekan "Hapus Gambar"
         if (oldFileId) {
           try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
         }
         newFileId = null;
         newFileUrl = null;
       }
-      // Jika 'fileData' ada tapi tidak ada 'base64' atau 'delete', itu artinya 'keep'
-      // dan 'newFileUrl' akan di-load ulang di langkah 3.
     }
 
     // 3. Update Sheet_Sekolah
     const formattedDate = (tanggalTtdMode === 'manual' && tanggalCetak) ? new Date(tanggalCetak) : null;
+    
+    // --- [MODIFIKASI] Validasi Status Donasi ---
+    if (donasiStatus === "APPROVED") {
+      // Premium: Simpan ID kustom (atau default jika dikosongkan)
+      sheetSekolah.getRange(rowToUpdate, 18).setValue(templateDocID || config.DEFAULT_TEMPLATE_DOC_ID);     // Kolom R (TemplateDocID)
+      sheetSekolah.getRange(rowToUpdate, 19).setValue(templateRekapID || config.DEFAULT_TEMPLATE_REKAP_ID); // Kolom S (TemplateRekapID)
+    } else {
+      // Non-Premium: Paksa simpan ID default, abaikan input user
+      sheetSekolah.getRange(rowToUpdate, 18).setValue(config.DEFAULT_TEMPLATE_DOC_ID);
+      sheetSekolah.getRange(rowToUpdate, 19).setValue(config.DEFAULT_TEMPLATE_REKAP_ID);
+    }
+    // --- [AKHIR MODIFIKASI] ---
     
     sheetSekolah.getRange(rowToUpdate, 16).setValue(newFileId);     // Kolom P (KopSuratFileID)
     sheetSekolah.getRange(rowToUpdate, 17).setValue(formattedDate); // Kolom Q (TanggalCetak)
     sheetSekolah.getRange(rowToUpdate, 20).setValue(tempatTTD);     // Kolom T (TempatTTD)
     sheetSekolah.getRange(rowToUpdate, 21).setValue(tanggalTtdMode); // Kolom U (TanggalTtdMode)
 
-    clearMasterSheetCache(); // Bersihkan cache master
+    clearMasterSheetCache(); 
 
-    // Jika user hanya menyimpan (keep), 'newFileUrl' masih null.
-    // Kita harus memuatnya sekarang.
-    if (status === 'keep' && !newFileUrl && newFileId) {
+    if (fileData && !fileData.base64 && !fileData.delete && !newFileUrl && newFileId) {
       newFileUrl = _getImageAsBase64DataUrl(newFileId);
     }
 
@@ -7611,5 +7621,80 @@ function _AKTIFKAN_PERIZINAN_DOKUMEN() {
   } catch (e) {
     Logger.log("Gagal mengaktifkan izin: " + e.message);
     Browser.msgBox("Gagal: " + e.message + ". Pastikan Anda mengklik 'Allow' pada pop-up izin.");
+  }
+}
+
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
+/**
+ * [MODIFIKASI] Mengambil konfigurasi default dari sheet Master_Config.
+ * Menggunakan cache untuk performa dan menambahkan logging jika key tidak ditemukan.
+ */
+function getMasterConfig() {
+  const cache = CacheService.getScriptCache();
+  const CACHE_KEY = 'MASTER_CONFIG_V1';
+  
+  let cachedConfig = cache.get(CACHE_KEY);
+  if (cachedConfig != null) {
+    return JSON.parse(cachedConfig);
+  }
+  
+  Logger.log("CACHE MISS: getMasterConfig (Membaca dari Master Sheet...)");
+  
+  try {
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const configSheet = masterSS.getSheetByName('Master_Config');
+    if (!configSheet) {
+      Logger.log("Error: Sheet 'Master_Config' tidak ditemukan.");
+      return {};
+    }
+    
+    const data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 2).getValues();
+    const config = {};
+    
+    data.forEach(row => {
+      if (row[0]) {
+        config[row[0]] = row[1];
+      }
+    });
+    
+    // --- [TAMBAHAN] Pengecekan Kunci ---
+    const expectedKeys = [
+      'DEFAULT_TEMPLATE_DOC_ID',
+      'DEFAULT_TEMPLATE_REKAP_ID',
+      'EXAMPLE_LINK_TEMPLATE_DOC',
+      'EXAMPLE_LINK_TEMPLATE_REKAP'
+    ];
+    
+    expectedKeys.forEach(key => {
+      if (!config[key]) {
+        Logger.log(`Peringatan (Master_Config): Key '${key}' tidak ditemukan atau nilainya kosong di Kolom B.`);
+      }
+    });
+    // --- [AKHIR TAMBAHAN] ---
+    
+    cache.put(CACHE_KEY, JSON.stringify(config), 21600); // Cache 6 jam
+    return config;
+    
+  } catch (e) {
+    Logger.log("Gagal total mengambil getMasterConfig: " + e.message);
+    return {}; // Kembalikan objek kosong jika gagal
+  }
+}
+
+/**
+ * [FUNGSI PERBAIKAN SEMENTARA]
+ * Jalankan fungsi ini SATU KALI SECARA MANUAL dari editor Apps Script
+ * untuk membersihkan cache Master_Config yang macet.
+ */
+function HAPUS_CACHE_CONFIG_MANUAL() {
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.remove('MASTER_CONFIG_V1'); // Hapus cache yang salah
+    Logger.log("BERHASIL: Cache 'MASTER_CONFIG_V1' telah dihapus.");
+    Browser.msgBox("BERHASIL!", "Cache 'MASTER_CONFIG_V1' telah dihapus. Silakan refresh dan coba lagi tombol 'Reset' di aplikasi.", Browser.Buttons.OK);
+  } catch (e) {
+    Logger.log("Gagal hapus cache: " + e.message);
+    Browser.msgBox("Gagal: " + e.message);
   }
 }
