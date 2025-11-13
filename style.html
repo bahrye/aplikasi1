@@ -816,7 +816,8 @@
   /* TAMBAHKAN BLOK BARU INI (Mirip .kelas-input-row) */
   .ta-input-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 80px 40px; /* ID, Deskripsi, Kunci, Hapus */
+    /* ID, Deskripsi, Kunci, Aksi (Hapus/Tambah) */
+    grid-template-columns: 1fr 1fr 80px 90px; /* <-- Kolom ke-4 dilebarkan dari 40px ke 90px */
     gap: 10px;
     margin-bottom: 10px;
     align-items: center;
@@ -856,7 +857,14 @@
 
   /* TAMBAHKAN INI */
   .btn-add-ta-row {
-    grid-column: 4 / 5; /* Letakkan di kolom ke-4 */
+    // grid-column: 4 / 5; /* Letakkan di kolom ke-4 */
+  }
+
+  .ta-action-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-start;
+    grid-column: 4 / 5; /* Wrapper-nya sekarang ada di kolom 4 */
   }
 
   .btn-add-kelas {
