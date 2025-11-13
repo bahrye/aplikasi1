@@ -2892,15 +2892,24 @@
       // Logika 'else if (response.role === 'guru')' yang lama Dihapus
 
     } else if (response.status === "sso_redirect") {
-      // --- [INI ADALAH LOGIKA BARU UNTUK GURU] ---
-      // Tampilkan toast sukses sebelum redirect
-      showToast("Login Guru berhasil. Mengalihkan ke Aplikasi Nilai Ujian...", 'sukses', 3000);
+      // --- [PERBAIKAN LOGIKA UNTUK GURU] ---
       
-      // Tunggu sebentar agar user bisa baca, lalu redirect
+      // 1. Tampilkan toast, tapi dengan durasi lebih singkat.
+      // Jangan menunggu toast selesai untuk mengalihkan.
+      showToast("Login Guru berhasil. Mengalihkan...", 'sukses', 2000);
+      
+      // 2. Lakukan pengalihan SEGERA.
+      // Ini memiliki peluang sukses jauh lebih tinggi karena
+      // lebih dekat dengan rantai tindakan asli (klik -> panggil server -> respons -> alihkan).
+      window.top.location.href = response.redirectUrl;
+
+      // 3. Hapus setTimeout
+      /*
       setTimeout(() => {
         window.top.location.href = response.redirectUrl;
       }, 1000); 
-      // --- [AKHIR LOGIKA BARU] ---
+      */
+      // --- [AKHIR PERBAIKAN] ---
 
     } else {
       // Logika 'gagal' tetap sama
