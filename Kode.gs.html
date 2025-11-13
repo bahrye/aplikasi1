@@ -4939,6 +4939,16 @@ function getGuruSheet(ss) {
     }
     // --- AKHIR MODIFIKASI ---
   }
+
+  // --- TAMBAHAN PERBAIKAN (INTI MASALAH) ---
+  // Selalu pastikan Kolom C (NIP) diformat sebagai Teks.
+  try {
+    sheet.getRange('C:C').setNumberFormat('@');
+  } catch (e) {
+    Logger.log(`Gagal mengatur format Teks untuk kolom NIP: ${e.message}`);
+  }
+  // --- AKHIR TAMBAHAN PERBAIKAN ---
+
   return sheet;
 }
 
@@ -4991,14 +5001,14 @@ function saveGuru(token, guruData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    // [PERBAIKAN] Ambil 'sessionData' lengkap
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
 
     const mapelKelasJSON = JSON.stringify(guruData.mapelKelas); 
-    const nip = guruData.nip || ""; // <-- Ambil NIP
+    const nip = guruData.nip || "";
+    const formattedNip = (nip !== "") ? "'" + nip : ""; 
 
     let rowIndex = -1;
     if (guruData.mode === 'edit') {
@@ -5015,59 +5025,73 @@ function saveGuru(token, guruData) {
        }
     }
     
-    // --- [MODIFIKASI] Buat objek data baru untuk dikirim kembali ke klien ---
-    // Ini adalah data yang akan dikembalikan, terlepas dari mode
     const newGuruData = {
       email: guruData.email,
       nama: guruData.nama,
-      nip: nip, // Sertakan NIP
+      nip: nip, 
       mapelKelas: guruData.mapelKelas
     };
-    // --- [AKHIR MODIFIKASI] ---
 
     if (guruData.mode === 'add') {
       if (!guruData.password) return { status: "gagal", message: "Password wajib untuk guru baru." };
       
-      // 1. Simpan ke sheet LOKAL (plain text)
-      // [MODIFIKASI] Tambahkan 'nip' di Kolom C
-      sheet.appendRow([guruData.email, guruData.nama, nip, guruData.password, "", mapelKelasJSON]);
+      // --- [MODIFIKASI] Buat hash dan salt untuk data LOKAL ---
+      const newSalt = generateSalt();
+      const newHash = hashPassword(guruData.password, newSalt);
+      // Simpan HASH dan SALT (bukan plain text)
+      sheet.appendRow([guruData.email, guruData.nama, formattedNip, newHash, newSalt, mapelKelasJSON]);
+      // --- [AKHIR MODIFIKASI] ---
       
-      // --- [PERBAIKAN] Sinkronisasi ke GLOBAL (App 2) ---
-      // [MODIFIKASI] Kirim 'nip' sebagai argumen ke-6
       addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru', nip);
-      // --- [AKHIR PERBAIKAN] ---
       
     } else {
       // Mode Edit
       const originalEmail = guruData.originalEmail;
       const newEmail = guruData.email;
       
-      // 1. Simpan ke sheet LOKAL (plain text)
+      // Simpan Nama, NIP, Mapel
       sheet.getRange(rowIndex, 1).setValue(newEmail);
       sheet.getRange(rowIndex, 2).setValue(guruData.nama);
-      sheet.getRange(rowIndex, 3).setValue(nip); // <-- Simpan NIP
-      sheet.getRange(rowIndex, 6).setValue(mapelKelasJSON); // <-- UBAH KE KOLOM F (index 6)
+      sheet.getRange(rowIndex, 3).setValue(formattedNip); 
+      sheet.getRange(rowIndex, 6).setValue(mapelKelasJSON);
       
-      let passwordToSync = data[rowIndex-1][3]; // Ambil password lama (Kolom D, index 3)
+      let passwordToSync = null; // Default: Jangan sinkronisasi password
 
       if (guruData.password) {
-        sheet.getRange(rowIndex, 4).setValue(guruData.password); // <-- UBAH KE KOLOM D (index 4)
-        sheet.getRange(rowIndex, 5).setValue(""); // Salt kosong (Kolom E, index 5)
-        passwordToSync = guruData.password; // Gunakan password baru
+        // --- [MODIFIKASI] User memasukkan password BARU ---
+        const newSalt = generateSalt();
+        const newHash = hashPassword(guruData.password, newSalt);
+        sheet.getRange(rowIndex, 4).setValue(newHash); // Kolom D (Hash)
+        sheet.getRange(rowIndex, 5).setValue(newSalt); // Kolom E (Salt)
+        passwordToSync = guruData.password; // Kirim plain text ke App 2 untuk di-hash di sana
+        // --- [AKHIR MODIFIKASI] ---
+      } else {
+        // --- [MODIFIKASI] User TIDAK memasukkan password baru ---
+        // Cek apakah data lama (di sheet) perlu dimigrasi (jika salt kosong)
+        const oldSalt = data[rowIndex-1][4]; // Kolom E (index 4)
+        if (!oldSalt) {
+          // INI DATA LAMA (PLAIN TEXT)! Lakukan migrasi
+          const oldPlainTextPass = data[rowIndex-1][3]; // Kolom D (plain text lama)
+          if (oldPlainTextPass) { // Pastikan tidak kosong
+            const newSalt = generateSalt();
+            const newHash = hashPassword(oldPlainTextPass, newSalt);
+            sheet.getRange(rowIndex, 4).setValue(newHash); // Update Hash
+            sheet.getRange(rowIndex, 5).setValue(newSalt); // Update Salt
+            passwordToSync = oldPlainTextPass; // Kirim plain text ini ke App 2 agar sama
+            Logger.log(`Migrasi runtime password untuk ${newEmail}`);
+          }
+        }
+        // Jika oldSalt sudah ada, passwordToSync tetap null (tidak ada perubahan)
+        // --- [AKHIR MODIFIKASI] ---
       }
 
-      // --- [PERBAIKAN] Sinkronisasi ke GLOBAL (App 2) ---
-      // Jika email berubah, hapus yang lama dulu
+      // Sinkronisasi ke App 2
       if (originalEmail.toLowerCase() !== newEmail.toLowerCase()) {
         deleteGuruFromApp2(originalEmail);
       }
-      // Tambah/Update dengan data baru (email baru, password baru/lama, nama baru)
-      // [MODIFIKASI] Kirim 'nip' sebagai argumen ke-6
       addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru', nip);
-      // --- [AKHIR PERBAIKAN] ---
     }
 
-    // --- [MODIFIKASI] Kembalikan data baru ---
     return { status: "sukses", message: "Data guru berhasil disimpan.", newData: newGuruData };
 
   } catch (e) {
@@ -5182,7 +5206,6 @@ function prosesImportExcelGuru(token, fileData) {
   let tempConvertedSheetId = null;
   
   try {
-    // [PERBAIKAN] Ambil 'sessionData' lengkap
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     
@@ -5193,7 +5216,7 @@ function prosesImportExcelGuru(token, fileData) {
       existingEmailSet.add(String(dataGuru[i][0]).trim().toLowerCase());
     }
 
-    const mapelList = _getMapelInternal(ss, sessionData.sekolahID); // [PERBAIKAN] Gunakan sessionData.sekolahID
+    const mapelList = _getMapelInternal(ss, sessionData.sekolahID); 
     
     const validMapelIdSet = new Set(mapelList.map(m => m.id));
 
@@ -5222,19 +5245,17 @@ function prosesImportExcelGuru(token, fileData) {
 
     const gagalList = [];
     const rowsToAppend = [];
-    // [PERBAIKAN] Data untuk sinkronisasi global
     const gurusToSync = []; 
     
     for (let i = 0; i < excelData.length; i++) {
       const row = excelData[i];
       const barisKe = i + 2;
       
-      // [MODIFIKASI] Sesuaikan index kolom
       const nama = (row[0] ? String(row[0]) : '').trim();
-      const nip = (row[1] ? String(row[1]) : '').trim(); // <-- TAMBAHKAN BARIS INI
-      const email = (row[2] ? String(row[2]) : '').trim().toLowerCase(); // <-- UBAH KE index 2
-      const password = (row[3] ? String(row[3]) : ''); // <-- UBAH KE index 3
-      const mapelIdsStr = (row[4] ? String(row[4]) : '').trim(); // <-- UBAH KE index 4
+      const nip = (row[1] ? String(row[1]) : '').trim(); 
+      const email = (row[2] ? String(row[2]) : '').trim().toLowerCase(); 
+      const password = (row[3] ? String(row[3]) : ''); 
+      const mapelIdsStr = (row[4] ? String(row[4]) : '').trim(); 
 
       if (!nama || !email || !password) {
         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Nama, Email, atau Password kosong." });
@@ -5251,6 +5272,7 @@ function prosesImportExcelGuru(token, fileData) {
          continue;
       }
 
+      // ... (validasi mapel) ...
       const mapelIds = mapelIdsStr.split(',').map(id => id.trim()).filter(id => id);
       let mapelValid = true;
       let mapelInvalid = '';
@@ -5268,26 +5290,30 @@ function prosesImportExcelGuru(token, fileData) {
         continue;
       }
       
-      // Buat data mapel-kelas (default ke 'Semua Kelas' ["*"])
       const mapelKelasData = {};
       mapelIds.forEach(id => {
         mapelKelasData[id] = ["*"];
       });
       const mapelKelasJSON = JSON.stringify(mapelKelasData);
 
-      // [PERBAIKAN] Sesuaikan data untuk sheet lokal (plain text)
-      // [MODIFIKASI] Tambahkan 'nip'
-      rowsToAppend.push([email, nama, nip, password, "", mapelKelasJSON]);
-      existingEmailSet.add(email);
+      // --- [MODIFIKASI DI SINI] ---
+      // Buat Hash dan Salt untuk sheet LOKAL
+      const newSalt = generateSalt();
+      const newHash = hashPassword(password, newSalt);
+      const formattedNip = (nip !== "") ? "'" + nip : ""; 
       
-      // [PERBAIKAN] Kumpulkan data untuk sinkronisasi global
-      // [MODIFIKASI] Tambahkan 'nip'
+      // Simpan HASH dan SALT (bukan plain text)
+      rowsToAppend.push([email, nama, formattedNip, newHash, newSalt, mapelKelasJSON]);
+      existingEmailSet.add(email);
+      // --- [AKHIR MODIFIKASI] ---
+      
+      // Kumpulkan data untuk sinkronisasi global (tetap kirim plain text)
       gurusToSync.push({
         email: email,
         password: password,
         nama: nama,
-        nip: nip, // <-- TAMBAHKAN BARIS INI
-        sekolahID: sessionData.sekolahID, // Ambil dari sesi
+        nip: nip, 
+        sekolahID: sessionData.sekolahID,
         role: 'guru'
       });
     }
@@ -5297,12 +5323,10 @@ function prosesImportExcelGuru(token, fileData) {
       sheetGuru.getRange(sheetGuru.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length)
         .setValues(rowsToAppend);
         
-      // [PERBAIKAN] Jalankan sinkronisasi global setelah data lokal disimpan
-      // [MODIFIKASI] Kirim 'guru.nip'
+      // 2. Jalankan sinkronisasi global
       gurusToSync.forEach(guru => {
         addOrUpdateGuruInApp2(guru.email, guru.password, guru.nama, guru.sekolahID, guru.role, guru.nip);
       });
-      // --- [AKHIR PERBAIKAN] ---
     }
 
     DriveApp.getFileById(tempExcelFileId).setTrashed(true);
