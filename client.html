@@ -1974,6 +1974,7 @@
       simpanKelas();
     });
     
+    
     document.getElementById('kelas-list-container').addEventListener('click', (e) => {
       const target = e.target;
 
@@ -1983,25 +1984,19 @@
       
       if (target.classList.contains('btn-add-kelas')) {
         
-        const allRows = document.querySelectorAll('#kelas-list-container .kelas-input-row');
-        const currentList = [];
-
-        allRows.forEach(row => {
-          const lockedSpan = row.querySelector('.kelas-input-locked');
-          const unlockedInput = row.querySelector('input[type="text"]');
-
-          if (lockedSpan) {
-            currentList.push({
-              nama: lockedSpan.textContent.trim(),
-              isLocked: true
-            });
-          } else if (unlockedInput) {
-            currentList.push({
-              nama: unlockedInput.value,
-              isLocked: false 
-            });
-          }
+        // --- PERBAIKAN DI SINI: Gunakan getCurrentKelasList() ---
+        // 1. Panggil fungsi yang sudah benar untuk mendapatkan data objek
+        const currentData = getCurrentKelasList();
+        
+        // 2. Ubah kembali ke format yang diharapkan oleh renderKelasList
+        const currentList = currentData.map(item => {
+           const lockedStatus = globalKelasListCache.find(k => k.nama === item.oldName);
+           return {
+             nama: item.newName, // Kirim nama yang baru diedit (jika ada)
+             isLocked: lockedStatus ? lockedStatus.isLocked : false
+           };
         });
+        // --- AKHIR PERBAIKAN ---
 
         currentList.push({ nama: '', isLocked: false });
         renderKelasList(currentList);
@@ -2018,23 +2013,16 @@
         const allRows = Array.from(document.querySelectorAll('#kelas-list-container .kelas-input-row'));
         const indexToRemove = allRows.indexOf(rowToRemove);
 
-        const currentList = [];
-        allRows.forEach(row => {
-          const lockedSpan = row.querySelector('.kelas-input-locked');
-          const unlockedInput = row.querySelector('input[type="text"]');
-
-          if (lockedSpan) {
-            currentList.push({
-              nama: lockedSpan.textContent.trim(),
-              isLocked: true
-            });
-          } else if (unlockedInput) {
-            currentList.push({
-              nama: unlockedInput.value,
-              isLocked: false
-            });
-          }
+        // --- PERBAIKAN DI SINI: Gunakan getCurrentKelasList() ---
+        const currentData = getCurrentKelasList();
+        const currentList = currentData.map(item => {
+           const lockedStatus = globalKelasListCache.find(k => k.nama === item.oldName);
+           return {
+             nama: item.newName,
+             isLocked: lockedStatus ? lockedStatus.isLocked : false
+           };
         });
+        // --- AKHIR PERBAIKAN ---
         
         if (indexToRemove > -1) {
           currentList.splice(indexToRemove, 1);
@@ -3788,13 +3776,26 @@
       const list = [];
       
       allRows.forEach(row => {
-        const lockedSpan = row.querySelector('.kelas-input-locked');
+        // 'lockedSpan' sudah tidak ada berkat renderKelasList baru,
+        // tapi kita biarkan sebagai fallback jika terjadi kesalahan render
+        const lockedSpan = row.querySelector('.kelas-input-locked'); 
         const unlockedInput = row.querySelector('input[type="text"]');
 
         if (lockedSpan) {
-          list.push(lockedSpan.textContent.trim());
+          const nama = lockedSpan.textContent.trim();
+          list.push({ oldName: nama, newName: nama });
+          
         } else if (unlockedInput) {
-          list.push(unlockedInput.value);
+          const newName = unlockedInput.value.trim();
+          
+          // --- PERBAIKAN DI SINI ---
+          // 'oldName' HANYA diambil dari 'data-original-name'.
+          // Jika 'data-original-name' tidak ada (karena ini baris baru),
+          // 'oldName' akan menjadi 'undefined'.
+          const oldName = unlockedInput.dataset.originalName;
+          // --- AKHIR PERBAIKAN ---
+          
+          list.push({ oldName: oldName, newName: newName });
         }
       });
       
@@ -3814,32 +3815,33 @@
       const div = document.createElement('div');
       div.className = 'kelas-input-row';
       
-      const isLocked = kelas.isLocked || false;
-      const titleAttr = isLocked ? 'Kelas ini tidak bisa diubah/dihapus karena sudah terpakai oleh siswa yang memiliki nilai.' : '';
+      const isLocked = kelas.isLocked || false; // <-- Status lock tetap dibaca
+      
+      // Pesan title baru untuk menjelaskan hybrid logic
+      const titleAttr = isLocked ? 'Kelas ini memiliki nilai, sehingga tidak dapat dihapus. Nama kelas masih bisa diubah.' : '';
 
       let html = '';
 
-      if (isLocked) {
-        html = `<span class="kelas-input-locked" title="${titleAttr}">
-                  ${kelas.nama}
-                </span>`;
+      // --- MODIFIKASI 1: Selalu render INPUT (tidak pernah disabled span) ---
+      html = `<input type="text" 
+                    placeholder="Nama Kelas (Contoh: VI A)" 
+                    value="${kelas.nama}"
+                    data-original-name="${kelas.nama}"
+                    title="${titleAttr}">`;
+
+      // --- MODIFIKASI 2: Tombol Hapus ---
+      if (listToRender.length > 1) {
+        // Selalu render BUTTON, tapi tambahkan 'disabled' jika terkunci
+        const disabledAttr = isLocked ? 'disabled' : '';
+        html += `<button type="button" class="btn-aksi-kelas btn-remove-kelas" title="${titleAttr}" ${disabledAttr}>&times;</button>`;
       } else {
-        html = `<input type="text" 
-                      placeholder="Nama Kelas (Contoh: VI A)" 
-                      value="${kelas.nama}" 
-                      title="">`;
+        // Jika hanya 1 baris, beri placeholder agar tombol Add tetap di kanan
+        html += '<span class="btn-aksi-kelas" style="width: 40px; display: inline-block;"></span>';
       }
 
-      if (!isLocked && listToRender.length > 1) {
-        html += '<button type="button" class="btn-aksi-kelas btn-remove-kelas">&times;</button>';
-      } else if (isLocked) {
-        html += `<span class="btn-aksi-kelas-locked" title="${titleAttr}"><i class="fas fa-lock"></i></span>`;
-      }
-
-      if (index === listToRender.length - 1 && !isLocked) {
-        html += '<button type="button" class="btn-aksi-kelas btn-add-kelas">+</button>';
-      } else if (index === listToRender.length - 1 && isLocked) {
-        html += '<button type="button" class="btn-aksi-kelas btn-add-kelas">+</button>';
+      // --- MODIFIKASI 3: Tombol Tambah (Logika tidak berubah) ---
+      if (index === listToRender.length - 1) {
+        html += '<button type="button" class="btn-aksi-kelas btn-add-kelas" title="Tambah Baris Baru">+</button>';
       }
 
       div.innerHTML = html;
@@ -3895,17 +3897,29 @@
   function simpanKelas() {
     setLoading(true, 'Menyimpan data kelas...');
     hideMessage('kelas-message');
-    const list = getCurrentKelasList().map(n => String(n).trim()).filter(n => n.length > 0);
-    const uniqueList = new Set(list.map(n => n.toUpperCase()));
-    if (uniqueList.size !== list.length) {
+    
+    // --- PERBAIKAN DI SINI ---
+    // Hapus .map(n => String(n).trim()).filter(n => n.length > 0);
+    // Kita ingin mengirim array objek [ {oldName, newName}, ... ] secara langsung.
+    const list = getCurrentKelasList(); 
+    // --- AKHIR PERBAIKAN ---
+
+    const uniqueList = new Set(list.map(n => n.newName.trim().toUpperCase()));
+    
+    // Filter dulu nama yang tidak kosong sebelum cek duplikat
+    const filledNames = list.map(n => n.newName.trim()).filter(n => n.length > 0);
+    const uniqueFilledNames = new Set(filledNames.map(n => n.toUpperCase()));
+    
+    if (uniqueFilledNames.size !== filledNames.length) {
       setLoading(false);
       showMessage('kelas-message', 'Nama kelas duplikat.', true);
       return;
     }
+    
     google.script.run
       .withSuccessHandler(onKelasSaved)
       .withFailureHandler(onGagal)
-      .saveKelas(getToken(), list);
+      .saveKelas(getToken(), list); // Kirim 'list' (array objek)
   }
 
   function onKelasSaved(response) {
