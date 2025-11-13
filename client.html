@@ -157,6 +157,7 @@
   let globalTaList = [];
   let globalDataSekolahCache = null;
   let globalSemesterCache = null;
+  let globalPengaturanCetakCache = null;
   let isPenempatanSiswaDirty = false;
   let isPenempatanMapelDirty = false;
 
@@ -1334,7 +1335,17 @@
     document.getElementById('input-konfirmasi-nama-sekolah').addEventListener('input', validasiKonfirmasiNamaSekolah);
     document.getElementById('btn-proses-kelulusan').addEventListener('click', jalankanProsesKelulusan);
 
-    document.getElementById('btn-cetak-kartu-siswa').addEventListener('click', konfirmasiCetakKartuSiswa);
+    document.getElementById('btn-cetak-kartu-siswa').addEventListener('click', (e) => {
+      // Cek apakah tombol memiliki class 'card-disabled'
+      if (e.currentTarget.classList.contains('card-disabled')) {
+        e.preventDefault(); // Hentikan aksi default tombol
+        // Alihkan ke halaman donasi
+        handleNavigationConfirm(bukaHalamanDonasi);
+      } else {
+        // Premium aktif, jalankan fungsi cetak
+        konfirmasiCetakKartuSiswa();
+      }
+    });
 
     // --- [BARU] Listener untuk Pengaturan Cetak ---
     document.getElementById('btn-buka-pengaturan-cetak').addEventListener('click', () => {
@@ -1403,10 +1414,10 @@
 
     document.getElementById('pengaturan-reset-doc-id').addEventListener('click', (e) => {
       e.preventDefault();
-      if (globalDataSekolahCache && globalDataSekolahCache.data) {
+      if (globalPengaturanCetakCache && globalPengaturanCetakCache.data) {
         
         // --- [MODIFIKASI PERBAIKAN] ---
-        const defaultId = globalDataSekolahCache.data.defaultTemplateDocID;
+        const defaultId = globalPengaturanCetakCache.data.defaultTemplateDocID;
         
         if (defaultId) { // Cek jika defaultId ada isinya (tidak null, undefined, atau blank)
           document.getElementById('pengaturan-template-doc-id').value = defaultId;
@@ -1428,10 +1439,10 @@
 
     document.getElementById('pengaturan-reset-rekap-id').addEventListener('click', (e) => {
       e.preventDefault();
-      if (globalDataSekolahCache && globalDataSekolahCache.data) {
+      if (globalPengaturanCetakCache && globalPengaturanCetakCache.data) {
         
         // --- [MODIFIKASI PERBAIKAN] ---
-        const defaultId = globalDataSekolahCache.data.defaultTemplateRekapID;
+        const defaultId = globalPengaturanCetakCache.data.defaultTemplateRekapID;
         
         if (defaultId) { // Cek jika defaultId ada isinya
           document.getElementById('pengaturan-template-rekap-id').value = defaultId;
@@ -2491,7 +2502,7 @@
       }
     });
 
-    window.addEventListener('scroll', hideDynamicTooltip, true);
+    window.addEventListener('scroll', hideDynamicTooltip, { passive: true, capture: true });
 
     document.querySelector('#halaman-input-rapor-detail .tab-bar').addEventListener('click', (e) => {
       if (e.target.classList.contains('tab-link')) {
@@ -2835,8 +2846,8 @@
     window.addEventListener('mousemove', resetInactivityTimer);
     window.addEventListener('mousedown', resetInactivityTimer);
     window.addEventListener('keypress', resetInactivityTimer);
-    window.addEventListener('touchstart', resetInactivityTimer);
-    window.addEventListener('scroll', resetInactivityTimer);
+    window.addEventListener('touchstart', resetInactivityTimer, { passive: true });
+    window.addEventListener('scroll', resetInactivityTimer, { passive: true });
 
     // --- LOGIKA PEMUATAN AWAL (ROUTING) YANG SUDAH DIPERBAIKI ---
     const token = localStorage.getItem('sessionToken');
@@ -7220,32 +7231,30 @@
       if (response.status === 'sukses') {
           showToast('Semua data berhasil diperbarui dari server.', 'sukses');
           
-          // --- TAMBAHKAN BLOK INI UNTUK MEMBERSIHKAN CACHE KLIEN ---
+          // --- AWAL PERBAIKAN: Bersihkan SEMUA cache klien ---
           console.log("Membersihkan cache sisi klien...");
           globalSiswaList = [];
+          globalGridData = { siswaList: [], mapelList: [], nilaiData: {} };
+          globalRaporData = { P: { siswaList: [], mapelList: [], nilaiData: {} }, K: { siswaList: [], mapelList: [], nilaiData: {} }, Rekap: { siswaList: [], mapelList: [], nilaiRekapData: {} } };
+          jenjangBaseCache = '';
+          jenjangPilihanCache = '';
+          // (currentUserRole tidak perlu di-reset, user masih login)
+
+          // Variabel yang hilang sebelumnya, sekarang ditambahkan:
+          globalDataSekolahCache = null;
+          globalBobotCache = null;
+          globalKelasListCache = [];
           globalMapelList = [];
           globalGuruList = [];
-          globalKelasListCache = [];
-          
-          // Hapus juga data grid yang tersimpan
-          globalGridData = {
-              siswaList: [],
-              mapelList: [],
-              nilaiData: {}
-          };
-          globalRaporData = {
-              P: { siswaList: [], mapelList: [], nilaiData: {} },
-              K: { siswaList: [], mapelList: [], nilaiData: {} },
-              Rekap: { siswaList: [], mapelList: [], nilaiRekapData: {} }
-          };
-          globalIjazahData = {
-              siswaList: [],
-              mapelList: [],
-              dataUjian: {},
-              dataRapor: {},
-              dataIjazah: {}
-          };
-          // --- AKHIR BLOK TAMBAHAN ---
+          globalSemesterCache = null;
+          globalTaList = [];
+          globalNilaiGridCacheUM = null;
+          globalNilaiGridCachePraktek = null;
+          globalNilaiRaporGridCache.clear();
+          globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+          globalPengaturanCetakCache = null;
+          globalPenempatanData = { siswaData: [], mapelList: [], guruList: [], mapelAssignments: [] };
+          // --- AKHIR PERBAIKAN ---
           
           // Muat ulang data di halaman saat ini (logika asli Anda)
           const currentPage = localStorage.getItem(LAST_PAGE_KEY) || 'halaman-utama';
@@ -7254,6 +7263,9 @@
               setTimeout(() => {
                   bukaHalamanTersimpan(currentPage); // Ini sekarang akan memicu 'cache miss'
               }, 100);
+          } else {
+             // Jika sedang di halaman utama, refresh saja dashboard
+             tampilHalaman('halaman-utama');
           }
       } else {
           showToast('Gagal memperbarui data: ' + response.message, 'gagal');
@@ -7555,6 +7567,8 @@
       container.appendChild(table);
   }
 
+  // GANTI FUNGSI INI di client.html (sekitar baris 7278)
+
   function forceLogoutInstan() {
     setLoading(false); 
     localStorage.removeItem('sessionToken');
@@ -7565,24 +7579,34 @@
       inactivityTimer = null;
     }
     
+    // --- AWAL PERBAIKAN: Bersihkan SEMUA cache klien ---
     globalSiswaList = [];
-    globalGridData = {
-      siswaList: [],
-      mapelList: [],
-      nilaiData: {}
-    };
-    globalRaporData = {
-      P: { siswaList: [], mapelList: [], nilaiData: {} },
-      K: { siswaList: [], mapelList: [], nilaiData: {} },
-      Rekap: { siswaList: [], mapelList: [], nilaiRekapData: {} }
-    };
+    globalGridData = { siswaList: [], mapelList: [], nilaiData: {} };
+    globalRaporData = { P: { siswaList: [], mapelList: [], nilaiData: {} }, K: { siswaList: [], mapelList: [], nilaiData: {} }, Rekap: { siswaList: [], mapelList: [], nilaiRekapData: {} } };
     jenjangBaseCache = '';
     jenjangPilihanCache = '';
-
     currentUserRole = '';
+
+    // Variabel yang hilang (yang menyebabkan bug)
+    globalDataSekolahCache = null;
+    globalBobotCache = null;
+    globalKelasListCache = [];
+    globalMapelList = [];
+    globalGuruList = [];
+    globalSemesterCache = null;
+    globalTaList = [];
+    globalNilaiGridCacheUM = null;
+    globalNilaiGridCachePraktek = null;
+    globalNilaiRaporGridCache.clear(); // Ini adalah Map, gunakan .clear()
+    globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+    globalPengaturanCetakCache = null;
+    globalPenempatanData = { siswaData: [], mapelList: [], guruList: [], mapelAssignments: [] };
+    // --- AKHIR PERBAIKAN ---
+
     
     document.getElementById('halaman-hasil-siswa').style.display = 'none';
 
+    // --- [Sisa kode reset UI di bawah ini tidak berubah] ---
     const pSubjudul = document.querySelector('#halaman-utama h2#salam-sekolah + p');
     if (pSubjudul) {
       pSubjudul.style.marginBottom = '';
@@ -7593,15 +7617,20 @@
       'btn-buka-bobot', 'btn-buka-kelas', 'btn-buka-semester',
       'btn-buka-input-rapor', 'btn-buka-validasi-nilai', 
       'btn-buka-nilai-ijazah', 'btn-buka-kelola-kelulusan',
-      'btn-update-semua-data', 'btn-buka-guru'
+      'btn-update-semua-data', 'btn-buka-guru',
+      'btn-buka-penempatan', 'btn-buka-tahun-ajaran', 'btn-buka-proses-kelulusan', 'btn-buka-pengaturan-cetak', 'btn-buka-donasi'
     ];
     
     menuAdminIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
+        // Reset kartu dashboard (termasuk yang premium)
         const card = el.closest('.dashboard-card');
         if (card) {
           card.style.display = 'flex';
+          card.classList.remove('card-disabled');
+          const stamp = card.querySelector('.premium-stamp');
+          if(stamp) stamp.style.display = 'none';
         } else {
           el.style.display = 'flex';
         }
@@ -9592,6 +9621,20 @@
       }
     }
     
+    // --- TAMBAHKAN BLOK BARU INI DI SINI ---
+    const btnCetakKartuSiswa = document.getElementById('btn-cetak-kartu-siswa');
+    if (btnCetakKartuSiswa) {
+      const stamp = btnCetakKartuSiswa.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnCetakKartuSiswa.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnCetakKartuSiswa.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    // --- AKHIR BLOK TAMBAHAN ---
+
     if (tabGuru) {
       tabGuru.disabled = !isPremium;
       tabGuru.title = isPremium ? "Login sebagai Guru" : "Fitur Premium - Donasi untuk aktivasi";
@@ -11768,7 +11811,7 @@
 
     if (response.status === 'sukses') {
       
-      globalDataSekolahCache = response; 
+      globalPengaturanCetakCache = response;
 
       const data = response.data;
       document.getElementById('pengaturan-tanggal-cetak').value = data.tanggalCetak || '';
@@ -11823,7 +11866,7 @@
       document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
 
     } else {
-      globalDataSekolahCache = null; 
+      globalPengaturanCetakCache = null;
       showMessage('pengaturan-cetak-message', 'Gagal memuat pengaturan: ' + response.message, true);
     }
   }
