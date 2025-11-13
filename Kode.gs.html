@@ -2245,67 +2245,52 @@ function getKelasSheet(ss) {
 }
 
 
+/**
+ * [MODIFIKASI] Mengecek kelas yang terkunci (locked).
+ * Aturan baru: Kelas dianggap 'terkunci' jika sudah ada 
+ * minimal satu siswa yang ditempatkan di kelas tersebut di sheet 'Siswa'.
+ */
 function getLockedKelasSet(ss, sekolahID) {
   try {
     const cacheKey = LOCKED_KELAS_CACHE_KEY + "_" + sekolahID;
     const scriptCache = CacheService.getScriptCache();
     const cachedData = scriptCache.get(cacheKey);
+    
     if (cachedData != null) {
+      // Jika ada di cache, langsung kembalikan data cache
       return new Set(JSON.parse(cachedData));
     }
+    
+    Logger.log("CACHE MISS: getLockedKelasSet (Aturan Siswa) untuk " + sekolahID);
 
+    // Buka sheet 'Siswa'
     const sheetSiswa = getSiswaSheet(ss);
-    const sheetNilaiUjian = getNilaiUjianSheet(ss);
-    const sheetNilaiRapor = getNilaiRaporSheet(ss);
-
-    const siswaDataValues = (sheetSiswa.getLastRow() > 1) 
-      ? sheetSiswa.getRange("A2:H" + sheetSiswa.getLastRow()).getValues() 
-      : [];
-      
-    const siswaIdToKelasMap = new Map();
-    for (const row of siswaDataValues) {
-      if (row[0] && row[7]) siswaIdToKelasMap.set(row[0], row[7]);
-    }
-
-    const lockedSiswaIdSet = new Set();
-    
-    if (sheetNilaiUjian.getLastRow() > 1) {
-      const nilaiUjianData = sheetNilaiUjian.getRange("A2:D" + sheetNilaiUjian.getLastRow()).getValues();
-      for (const row of nilaiUjianData) {
-        if (row[0] && ((row[2] != null && row[2] !== "") || (row[3] != null && row[3] !== ""))) {
-          lockedSiswaIdSet.add(row[0]);
-        }
-      }
-    }
-
-    if (sheetNilaiRapor.getLastRow() > 1) {
-      const nilaiRaporData = sheetNilaiRapor.getRange("A2:E" + sheetNilaiRapor.getLastRow()).getValues();
-      for (const row of nilaiRaporData) {
-        if (row[0] && ((row[3] != null && row[3] !== "") || (row[4] != null && row[4] !== ""))) {
-          lockedSiswaIdSet.add(row[0]);
-        }
-      }
-    }
-
     const lockedKelasSet = new Set();
-    for (const siswaId of lockedSiswaIdSet) {
-      if (siswaIdToKelasMap.has(siswaId)) {
-        
-        // --- PERBAIKAN DI SINI ---
-        const namaKelas = siswaIdToKelasMap.get(siswaId);
-        // 1. Cek jika namaKelas ada (tidak null/undefined/"")
+
+    if (sheetSiswa.getLastRow() > 1) {
+      // Ambil HANYA kolom Kelas (Kolom H, index 7)
+      // getRange(baris_mulai, kolom_mulai, jumlah_baris, jumlah_kolom)
+      const kelasData = sheetSiswa.getRange(2, 8, sheetSiswa.getLastRow() - 1, 1).getValues();
+      
+      // Loop data kelas
+      for (const row of kelasData) {
+        const namaKelas = row[0];
+        // Jika sel kelas tidak kosong
         if (namaKelas) { 
-          // 2. Paksa jadi string SEBELUM .toUpperCase()
-          lockedKelasSet.add(String(namaKelas).toUpperCase()); 
+          // Tambahkan nama kelas (dikonversi ke string dan uppercase) ke Set.
+          // Set akan otomatis menangani duplikat.
+          lockedKelasSet.add(String(namaKelas).toUpperCase());
         }
-        // --- AKHIR PERBAIKAN ---
-        
       }
     }
     
-    scriptCache.put(cacheKey, JSON.stringify(Array.from(lockedKelasSet)), 3600);
+    // Simpan hasil (bisa jadi Set kosong jika tidak ada siswa) ke cache
+    scriptCache.put(cacheKey, JSON.stringify(Array.from(lockedKelasSet)), 3600); // Cache 1 jam
     return lockedKelasSet;
+
   } catch (e) {
+    Logger.log(`Error di getLockedKelasSet (Aturan Siswa): ${e.message}`);
+    // Jika error, kembalikan Set kosong agar tidak memblokir UI
     return new Set();
   }
 }
@@ -2361,6 +2346,7 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getKelasSheet(ss);
     // Kita tetap memerlukan lockedKelasSet untuk validasi HAPUS
+    // Ini sekarang akan memanggil getLockedKelasSet versi BARU (berbasis siswa)
     const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID); 
     
     const renameMap = new Map();
@@ -2391,23 +2377,32 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
     const oldData = sheet.getDataRange().getValues();
     oldData.shift();
     
-    // --- PERBAIKAN DI SINI ---
-    // 1. Filter dengan lebih aman
+    // Filter dengan lebih aman
     const oldClassList = oldData.map(row => row[0]).filter(nama => (nama !== null && nama !== undefined && nama !== ""));
     
     for (const item of oldClassList) { 
-      // 2. Paksa 'item' (yang bisa jadi angka) menjadi string
+      // Paksa 'item' (yang bisa jadi angka) menjadi string
       const oldClass = String(item); 
       const oldClassUpper = oldClass.toUpperCase(); // <-- Panggil .toUpperCase() pada string
 
       if (lockedKelasSet.has(oldClassUpper)) { 
-        if (!newClassSet.has(oldClassUpper)) {
-          // User mencoba menghapus kelas terkunci
-          return { status: "gagal", message: `Kelas '${oldClass}' tidak dapat dihapus karena sudah memiliki data nilai.` };
+        
+        // --- PERBAIKAN LOGIKA RENAME (DI SINI) ---
+        // Cek apakah kelas ini ada di daftar rename (sebagai 'oldName')
+        const isBeingRenamed = renameMap.has(oldClass);
+
+        // HANYA blokir jika:
+        // 1. Kelas ini TIDAK ada di daftar NAMA BARU (newClassSet)
+        // 2. DAN kelas ini TIDAK sedang di-rename (isBeingRenamed)
+        if (!newClassSet.has(oldClassUpper) && !isBeingRenamed) {
+          // Ini adalah upaya PENGHAPUSAN murni pada kelas yang terkunci.
+          return { status: "gagal", message: `Kelas '${oldClass}' tidak dapat dihapus karena sudah ada siswa yang terdaftar di kelas tersebut.` };
         }
+        // Jika isBeingRenamed = true, biarkan lolos.
+        // Cascade akan ditangani di langkah berikutnya.
+        // --- AKHIR PERBAIKAN ---
       }
     }
-    // --- AKHIR PERBAIKAN ---
     
     // --- TINDAKAN CASCADE ---
     if (renameMap.size > 0 && app2DbId) {
@@ -6550,6 +6545,11 @@ function getPenempatanData(token, id_tahun_ajaran) {
 }
 
 // GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
+/**
+ * [MODIFIKASI] Menyimpan data penempatan siswa.
+ * [PERBAIKAN] Memperbaiki logika hapus (Bug 1) dan menambah validasi server (Bug 2).
+ */
 function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); 
@@ -6564,11 +6564,11 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
     
     const idSekolahApp1 = sessionData.sekolahID;
     
-    // [BARU] Ambil data NISN dan Kelas dari App 1
+    // Ambil data App 1 (untuk info nisn/kelas)
     const siswaDataApp1 = _getSiswaInternal(app1DbId, sessionData.sekolahID);
-    const siswaInfoMapApp1 = new Map(siswaDataApp1.map(s => [s.id, { nisn: s.nisn, kelas: s.kelas }]));
+    const siswaInfoMapApp1 = new Map(siswaDataApp1.map(s => [s.id, { nisn: s.nisn, kelas: s.kelas, nama: s.nama }]));
     
-    // 1. Ambil data db_siswa (App 2)
+    // Ambil data db_siswa (App 2)
     const siswaApp2Map = new Map();
     if (sheetSiswa.getLastRow() > 1) {
       const siswaData = sheetSiswa.getRange(2, 1, sheetSiswa.getLastRow() - 1, 4).getValues(); // Baca 4 kolom
@@ -6584,15 +6584,16 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
       });
     }
     
-    // 2. Ambil data db_enrollment (App 2)
+    // Ambil data db_enrollment (App 2)
     const enrollMap = new Map();
     let allEnrollData = [];
     if (sheetEnroll.getLastRow() > 1) {
       allEnrollData = sheetEnroll.getDataRange().getValues();
       allEnrollData.shift();
       allEnrollData.forEach((row, index) => {
-        if (row[3] === id_tahun_ajaran) {
-          enrollMap.set(row[0], {
+        // Filter HANYA untuk T.A. yang sedang diedit
+        if (row[3] === id_tahun_ajaran) { 
+          enrollMap.set(row[0], { // key is id_siswa_app1 (row[0])
             sheetRow: index + 2, 
             nomor_ujian: String(row[1]),
             ruang_ujian: row[4]
@@ -6604,23 +6605,40 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
     // 3. Siapkan batch operasi
     const siswaBaruUntuk_db_siswa = new Map();
     const siswaUntukUpdate_db_siswa = []; 
-    
     const enrollBaruUntuk_db_enroll = [];
     const enrollUntukUpdate_db_enroll = [];
+    
+    // --- PERBAIKAN LOGIKA BUG 1 ---
+    // Inisialisasi Set ini dengan SEMUA siswa yang saat ini terdaftar di T.A. ini.
+    // Ini adalah daftar "calon yang akan dihapus".
     const enrollUntukDihapus = new Set(enrollMap.keys());
+    // --- AKHIR PERBAIKAN ---
     
     // 4. Proses data dari client
     for (const item of enrollmentData) {
-      enrollUntukDihapus.delete(item.id_siswa_app1);
       
       const existingEnroll = enrollMap.get(item.id_siswa_app1);
-      const infoApp1 = siswaInfoMapApp1.get(item.id_siswa_app1) || { nisn: '', kelas: '' };
+      // Ambil info dari App 1 (termasuk nama, untuk pesan error)
+      const infoApp1 = siswaInfoMapApp1.get(item.id_siswa_app1) || { nisn: '', kelas: '', nama: `ID ${item.id_siswa_app1}` };
       
       if (item.isEnrolled) {
-        const noUjianBaru = String(item.nomor_ujian_app2);
+        // --- PERBAIKAN LOGIKA BUG 1 ---
+        // Siswa ini dicentang (isEnrolled: true).
+        // HAPUS dia dari daftar "calon yang akan dihapus".
+        enrollUntukDihapus.delete(item.id_siswa_app1);
+        // --- AKHIR PERBAIKAN ---
+
+        // --- PERBAIKAN LOGIKA BUG 2 (Validasi Server) ---
+        const noUjianBaru = String(item.nomor_ujian_app2).trim();
+        if (!noUjianBaru) {
+          // Jika klien lolos validasi (seharusnya tidak), server akan menangkapnya.
+          throw new Error(`Nomor Ujian untuk siswa ${infoApp1.nama} tidak boleh kosong karena dicentang.`);
+        }
+        // --- AKHIR PERBAIKAN ---
+        
         const namaBaru = item.nama_app1;
-        const nisnBaru = infoApp1.nisn || ''; // <-- BARU
-        const kelasBaru = infoApp1.kelas || ''; // <-- BARU
+        const nisnBaru = infoApp1.nisn || '';
+        const kelasBaru = infoApp1.kelas || '';
 
         if (existingEnroll) {
           // === UPDATE PATH ===
@@ -6633,7 +6651,7 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
           const siswaLamaData = siswaApp2Map.get(noUjianLama);
 
           if (noUjianLama !== noUjianBaru) {
-            // --- KASUS RENAME ---
+            // --- KASUS RENAME (No Ujian Berubah) ---
             if (siswaLamaData) {
               siswaUntukUpdate_db_siswa.push({ row: siswaLamaData.sheetRow, no_ujian: noUjianBaru, nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
               siswaApp2Map.delete(noUjianLama);
@@ -6645,7 +6663,7 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
               }
             }
           } else if (siswaLamaData && (siswaLamaData.nama !== namaBaru || siswaLamaData.nisn !== nisnBaru || siswaLamaData.kelas !== kelasBaru)) {
-            // --- KASUS NAMA/NISN/KELAS BERUBAH ---
+            // --- KASUS UPDATE INFO (Nama/NISN/Kelas Berubah) ---
             siswaUntukUpdate_db_siswa.push({ row: siswaLamaData.sheetRow, no_ujian: noUjianBaru, nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
             siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru, sheetRow: siswaLamaData.sheetRow });
           }
@@ -6659,14 +6677,29 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
              siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru, sheetRow: -1 }); 
           }
         }
+      } 
+      // --- PERBAIKAN LOGIKA BUG 1 ---
+      else {
+        // item.isEnrolled adalah FALSE (tidak dicentang).
+        // Kita tidak melakukan apa-apa.
+        // Siswa ini akan tetap ada di dalam Set `enrollUntukDihapus`
+        // (jika dia sebelumnya terdaftar / ada di `enrollMap`),
+        // dan akan diproses untuk dihapus di Langkah 5.
       }
-    }
+      // --- AKHIR PERBAIKAN ---
+    } // end for loop
     
     // 5. Eksekusi Hapus (db_enrollment)
+    // Saat ini, `enrollUntukDihapus` berisi siswa yang SEBELUMNYA terdaftar
+    // TAPI di pengiriman data baru, mereka 'isEnrolled: false'.
     const rowsToDelete = Array.from(enrollUntukDihapus).map(id => enrollMap.get(id).sheetRow);
-    rowsToDelete.sort((a, b) => b - a);
-    rowsToDelete.forEach(rowNum => sheetEnroll.deleteRow(rowNum));
-
+    
+    // Hapus dari bawah ke atas agar indeks tidak bergeser
+    rowsToDelete.sort((a, b) => b - a); 
+    rowsToDelete.forEach(rowNum => {
+      sheetEnroll.deleteRow(rowNum);
+    });
+    
     // 6. Eksekusi Update (db_enrollment)
     enrollUntukUpdate_db_enroll.forEach(item => {
       sheetEnroll.getRange(item.row, 2).setValue("'" + item.nomor_ujian);
@@ -6675,18 +6708,19 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
     
     // 7. Eksekusi Tambah (db_enrollment)
     if (enrollBaruUntuk_db_enroll.length > 0) {
+      // Format No Ujian sebagai teks
       enrollBaruUntuk_db_enroll.forEach(row => row[1] = "'" + row[1]);
       sheetEnroll.getRange(sheetEnroll.getLastRow() + 1, 1, enrollBaruUntuk_db_enroll.length, 5).setValues(enrollBaruUntuk_db_enroll);
     }
     
-    // 8. Eksekusi Update (db_siswa) - [MODIFIKASI] Tulis 4 kolom
+    // 8. Eksekusi Update (db_siswa) - (4 kolom)
     if (siswaUntukUpdate_db_siswa.length > 0) {
       siswaUntukUpdate_db_siswa.forEach(item => {
         sheetSiswa.getRange(item.row, 1, 1, 4).setValues([["'" + item.no_ujian, item.nama, "'" + item.nisn, item.kelas]]);
       });
     }
     
-    // 9. Eksekusi Tambah (db_siswa) - [MODIFIKASI] Tulis 4 kolom
+    // 9. Eksekusi Tambah (db_siswa) - (4 kolom)
     const siswaBaruArray = Array.from(siswaBaruUntuk_db_siswa.entries()).map(([no_ujian, data]) => ["'" + no_ujian, data.nama, "'" + data.nisn, data.kelas]);
     if (siswaBaruArray.length > 0) {
       sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, siswaBaruArray.length, 4).setValues(siswaBaruArray);
