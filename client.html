@@ -3090,6 +3090,17 @@
          }
       }
     }
+    // --- START: TAMBAHKAN BLOK DI BAWAH INI ---
+    else if (document.getElementById('halaman-pengaturan-cetak').style.display !== 'none') {
+      // Aktifkan kembali input form jika gagal memuat
+      const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
+      formInputs.forEach(input => {
+        if(input.id !== 'btn-simpan-pengaturan-cetak') {
+            input.disabled = false;
+        }
+      });
+      showMessage('pengaturan-cetak-message', 'Error: ' + errorMsg, true);
+    }
     // --- AKHIR MODIFIKASI ---
     else if (document.getElementById('superadmin-sekolah-modal').classList.contains('show')) {
       showMessage('modal-sekolah-error', 'Error: ' + errorMsg, true);
@@ -3480,7 +3491,7 @@
 
   function bukaHalamanDataSekolah() {
     tampilHalaman('halaman-data-sekolah');
-    setLoading(true, 'Memuat data sekolah...', false, false); // Ubah ke non-blocking
+    setLoading(true, 'Memuat data sekolah...', false, true); // Ubah ke non-blocking
     isFormDirty = false;
     hideMessage('data-sekolah-message');
     document.getElementById('form-data-sekolah').reset();
@@ -3692,7 +3703,7 @@
 
   function bukaHalamanBobot() {
     tampilHalaman('halaman-bobot');
-    setLoading(true, 'Memuat data bobot...', false, false); // Ubah ke non-blocking toast
+    setLoading(true, 'Memuat data bobot...', false, true); // Ubah ke non-blocking toast
     isFormDirty = false;
     hideMessage('bobot-message');
     document.getElementById('form-bobot').reset();
@@ -11529,7 +11540,7 @@
    */
   function bukaHalamanPengaturanCetak() {
     tampilHalaman('halaman-pengaturan-cetak');
-    setLoading(true, 'Memuat pengaturan...', false, false);
+    setLoading(true, 'Memuat pengaturan...', false, true);
     hideMessage('pengaturan-cetak-message');
 
     // Reset form
@@ -11544,6 +11555,17 @@
     document.getElementById('file-upload-zone-kop').style.display = 'flex';
     document.getElementById('file-upload-text-kop').innerText = 'Klik untuk memilih gambar...';
 
+    // --- START: PERUBAHAN DI SINI ---
+    // Nonaktifkan semua input saat memuat
+    const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
+    formInputs.forEach(input => {
+      // Jangan disable tombol 'Kembali'
+      if(input.id !== 'btn-kembali-ke-dashboard-16') { 
+        input.disabled = true;
+      }
+    });
+    // --- END: PERUBAHAN DI SINI ---
+
     google.script.run
       .withSuccessHandler(onPengaturanCetakLoaded)
       .withFailureHandler(onGagal)
@@ -11555,12 +11577,23 @@
    */
   function onPengaturanCetakLoaded(response) {
     setLoading(false);
+
+    // --- START: PERUBAHAN DI SINI ---
+    // Aktifkan kembali input form
+    const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
+    formInputs.forEach(input => {
+      // Tetap biarkan tombol simpan nonaktif (akan aktif saat ada perubahan)
+      if(input.id !== 'btn-simpan-pengaturan-cetak') {
+          input.disabled = false;
+      }
+    });
+    // --- END: PERUBAHAN DI SINI ---
+
     if (response.status === 'sukses') {
       const data = response.data;
       document.getElementById('pengaturan-tanggal-cetak').value = data.tanggalCetak || '';
       document.getElementById('pengaturan-tempat-ttd').value = data.tempatTTD || '';
 
-      // <-- TAMBAHKAN BLOK INI -->
       const mode = data.tanggalTtdMode || 'otomatis';
       document.getElementById('pengaturan-tanggal-mode').value = mode;
       if (mode === 'manual') {
@@ -11568,7 +11601,6 @@
       } else {
         document.getElementById('pengaturan-tanggal-manual-container').style.display = 'none';
       }
-      // <-- AKHIR BLOK -->
 
       if (data.kopSuratUrl) {
         // Tampilkan preview gambar yang sudah ada
@@ -11576,6 +11608,11 @@
         document.getElementById('kop-surat-preview-container').style.display = 'block';
         document.getElementById('file-upload-zone-kop').style.display = 'none';
       }
+
+      // --- START: PERUBAHAN DI SINI ---
+      // Pastikan tombol simpan tetap nonaktif setelah memuat (hanya aktif jika ada editan)
+      document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
+      // --- END: PERUBAHAN DI SINI ---
 
     } else {
       showMessage('pengaturan-cetak-message', 'Gagal memuat pengaturan: ' + response.message, true);
