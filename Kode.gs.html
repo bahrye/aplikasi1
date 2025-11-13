@@ -475,7 +475,8 @@ function prosesVerifikasiToken(token) {
           
           Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
-          registerAdminAsGuruInApp2(email, namaSekolah.toUpperCase(), newSekolahID, dbPlainPassword); 
+          // [MODIFIKASI] Tambahkan NIP (kosong) sebagai argumen ke-6
+          registerAdminAsGuruInApp2(email, dbPlainPassword, namaSekolah.toUpperCase(), newSekolahID, 'guru', ''); // <-- UBAH DI SINI
           
           const appUrl = ScriptApp.getService().getUrl();
           return `<h1>Verifikasi Berhasil!</h1>
@@ -1194,6 +1195,11 @@ function superadminSaveSekolah(token, data) {
         "",     // DonasiDataJSON
         ""      // DonasiAlasanTolak
       ]);
+
+      // [MODIFIKASI] Tambahkan NIP (kosong) sebagai argumen ke-6
+      registerSchoolInApp2(newSekolahID, nama.toUpperCase());
+      registerAdminAsGuruInApp2(email, password, nama.toUpperCase(), newSekolahID, 'guru', ''); // <-- UBAH DI SINI
+
     } else {
       let rowToUpdate = -1;
       for (let i = 1; i < dataSekolah.length; i++) {
@@ -1213,6 +1219,10 @@ function superadminSaveSekolah(token, data) {
         const newHash = hashPassword(password, newSalt);
         sheetSekolah.getRange(rowToUpdate, 5).setValue(newHash);
         sheetSekolah.getRange(rowToUpdate, 7).setValue(newSalt);
+        
+        // [MODIFIKASI] Update password guru admin di App 2 juga (NIP dikirim sebagai null/kosong)
+        const guruNama = `Admin ${nama.toUpperCase()}`;
+        addOrUpdateGuruInApp2(email, password, guruNama, id, 'guru', null); // <-- UBAH DI SINI
       }
     }
     clearMasterSheetCache();
@@ -4905,24 +4915,29 @@ function prosesLoginGuru(npsn, email, password) {
   }
 }
 
-// --- FUNGSI KELOLA GURU (Admin) ---
-
 function getGuruSheet(ss) {
   let sheet = ss.getSheetByName('Akun_Guru');
   if (!sheet) {
     sheet = ss.insertSheet('Akun_Guru');
-    // Header: Email, Nama, Password (Hash), Salt, MapelKelasJSON
-    // --- PERUBAHAN NAMA KOLOM ---
-    sheet.appendRow(['Email', 'Nama', 'HashedPassword', 'Salt', 'MapelKelasJSON']);
-    // --- AKHIR PERUBAHAN ---
+    // [MODIFIKASI] Tambahkan NIP di header (Kolom C)
+    sheet.appendRow(['Email', 'Nama', 'NIP', 'HashedPassword', 'Salt', 'MapelKelasJSON']);
+    // --- AKHIR MODIFIKASI ---
     sheet.setFrozenRows(1);
   } else {
-    // --- PERBAIKAN MIGRASI (Jalankan sekali) ---
-    const header = sheet.getRange(1, 5).getValue();
-    if (header === "MapelIDs") {
-      sheet.getRange(1, 5).setValue("MapelKelasJSON");
+    // --- TAMBAHKAN BLOK MIGRASI INI ---
+    const headerNIP = sheet.getRange(1, 3).getValue();
+    if (headerNIP !== "NIP") {
+      sheet.insertColumnAfter(2); // Sisipkan kolom baru setelah Nama (Kolom B)
+      sheet.getRange(1, 3).setValue("NIP"); // Beri nama header
     }
-    // --- AKHIR PERBAIKAN ---
+    // --- AKHIR BLOK MIGRASI ---
+
+    // --- MODIFIKASI: Pindahkan pengecekan MapelKelasJSON ke Kolom F (index 6) ---
+    const header = sheet.getRange(1, 6).getValue();
+    if (header === "MapelIDs") {
+      sheet.getRange(1, 6).setValue("MapelKelasJSON");
+    }
+    // --- AKHIR MODIFIKASI ---
   }
   return sheet;
 }
@@ -4938,7 +4953,8 @@ function getGuru(token) {
     const guruList = data.map(row => {
       const email = row[0];
       const nama = row[1];
-      const dataMapel = row[4]; // Kolom E (MapelKelasJSON)
+      const nip = row[2] || ''; // <-- TAMBAHKAN BARIS INI (Kolom C, index 2)
+      const dataMapel = row[5]; // <-- UBAH KE INDEX 5 (Kolom F)
       let mapelKelasData = {};
 
       if (dataMapel) {
@@ -4960,6 +4976,7 @@ function getGuru(token) {
       return {
         email: email,
         nama: nama,
+        nip: nip, // <-- TAMBAHKAN BARIS INI
         mapelKelas: mapelKelasData // Kirim sebagai objek JSON
       };
     }).filter(g => g.email); // Hanya ambil yang emailnya ada
@@ -4981,6 +4998,7 @@ function saveGuru(token, guruData) {
     const data = sheet.getDataRange().getValues();
 
     const mapelKelasJSON = JSON.stringify(guruData.mapelKelas); 
+    const nip = guruData.nip || ""; // <-- Ambil NIP
 
     let rowIndex = -1;
     if (guruData.mode === 'edit') {
@@ -4996,15 +5014,27 @@ function saveGuru(token, guruData) {
          if (data[i][0] === guruData.email) return { status: "gagal", message: "Email guru sudah terdaftar (di sheet lokal)." };
        }
     }
+    
+    // --- [MODIFIKASI] Buat objek data baru untuk dikirim kembali ke klien ---
+    // Ini adalah data yang akan dikembalikan, terlepas dari mode
+    const newGuruData = {
+      email: guruData.email,
+      nama: guruData.nama,
+      nip: nip, // Sertakan NIP
+      mapelKelas: guruData.mapelKelas
+    };
+    // --- [AKHIR MODIFIKASI] ---
 
     if (guruData.mode === 'add') {
       if (!guruData.password) return { status: "gagal", message: "Password wajib untuk guru baru." };
       
       // 1. Simpan ke sheet LOKAL (plain text)
-      sheet.appendRow([guruData.email, guruData.nama, guruData.password, "", mapelKelasJSON]);
+      // [MODIFIKASI] Tambahkan 'nip' di Kolom C
+      sheet.appendRow([guruData.email, guruData.nama, nip, guruData.password, "", mapelKelasJSON]);
       
       // --- [PERBAIKAN] Sinkronisasi ke GLOBAL (App 2) ---
-      addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru');
+      // [MODIFIKASI] Kirim 'nip' sebagai argumen ke-6
+      addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru', nip);
       // --- [AKHIR PERBAIKAN] ---
       
     } else {
@@ -5015,13 +5045,14 @@ function saveGuru(token, guruData) {
       // 1. Simpan ke sheet LOKAL (plain text)
       sheet.getRange(rowIndex, 1).setValue(newEmail);
       sheet.getRange(rowIndex, 2).setValue(guruData.nama);
-      sheet.getRange(rowIndex, 5).setValue(mapelKelasJSON); 
+      sheet.getRange(rowIndex, 3).setValue(nip); // <-- Simpan NIP
+      sheet.getRange(rowIndex, 6).setValue(mapelKelasJSON); // <-- UBAH KE KOLOM F (index 6)
       
-      let passwordToSync = data[rowIndex-1][2]; // Ambil password lama (Kolom C, index 2)
+      let passwordToSync = data[rowIndex-1][3]; // Ambil password lama (Kolom D, index 3)
 
       if (guruData.password) {
-        sheet.getRange(rowIndex, 3).setValue(guruData.password); 
-        sheet.getRange(rowIndex, 4).setValue(""); // Salt kosong
+        sheet.getRange(rowIndex, 4).setValue(guruData.password); // <-- UBAH KE KOLOM D (index 4)
+        sheet.getRange(rowIndex, 5).setValue(""); // Salt kosong (Kolom E, index 5)
         passwordToSync = guruData.password; // Gunakan password baru
       }
 
@@ -5031,11 +5062,14 @@ function saveGuru(token, guruData) {
         deleteGuruFromApp2(originalEmail);
       }
       // Tambah/Update dengan data baru (email baru, password baru/lama, nama baru)
-      addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru');
+      // [MODIFIKASI] Kirim 'nip' sebagai argumen ke-6
+      addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru', nip);
       // --- [AKHIR PERBAIKAN] ---
     }
 
-    return { status: "sukses", message: "Data guru berhasil disimpan." };
+    // --- [MODIFIKASI] Kembalikan data baru ---
+    return { status: "sukses", message: "Data guru berhasil disimpan.", newData: newGuruData };
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   } finally {
@@ -5102,21 +5136,24 @@ function getGuruTemplateData(token) {
     }
     sheetMapel.setFrozenRows(1);
     
-    sheetTemplate.appendRow(['NamaGuru', 'Email', 'Password', 'MapelIDs']);
+    // [MODIFIKASI] Tambahkan NIP (Opsional)
+    sheetTemplate.appendRow(['NamaGuru', 'NIP (Opsional)', 'Email', 'Password', 'MapelIDs']);
     sheetTemplate.appendRow([
       'Budi Santoso, S.Pd.', 
+      '198001012005011001', // Contoh NIP
       'budi.santoso@email.com', 
       'PasswordMin8Karakter', 
       'PAI,MTK,BIN'
     ]);
-    sheetTemplate.getRange('A1:D1').setFontWeight('bold');
+    sheetTemplate.getRange('A1:E1').setFontWeight('bold'); // <-- UBAH KE E1
     
-    const helpText = "Kolom A, B, dan C wajib diisi. Kolom D (MapelIDs) diisi dengan KODE MAPEL dari sheet 'Daftar Mapel'. Pisahkan beberapa kode mapel dengan koma (,) tanpa spasi.";
+    const helpText = "Kolom A, C, dan D wajib diisi. Kolom B (NIP) opsional. Kolom E (MapelIDs) diisi dengan KODE MAPEL dari sheet 'Daftar Mapel'. Pisahkan beberapa kode mapel dengan koma (,) tanpa spasi.";
     sheetTemplate.getRange('A3').setValue(helpText).setFontStyle('italic').setFontColor('#666');
-    sheetTemplate.getRange('A3:D3').merge();
+    sheetTemplate.getRange('A3:E3').merge(); // <-- UBAH KE E3
     
-    sheetTemplate.getRange('D:D').setNumberFormat('@');
-    sheetTemplate.autoResizeColumns(1, 4);
+    sheetTemplate.getRange('B:B').setNumberFormat('@'); // [TAMBAHAN] Format NIP sebagai Teks
+    sheetTemplate.getRange('E:E').setNumberFormat('@'); // <-- UBAH KE E:E
+    sheetTemplate.autoResizeColumns(1, 5); // <-- UBAH KE 5
     
     SpreadsheetApp.flush(); 
 
@@ -5192,10 +5229,12 @@ function prosesImportExcelGuru(token, fileData) {
       const row = excelData[i];
       const barisKe = i + 2;
       
+      // [MODIFIKASI] Sesuaikan index kolom
       const nama = (row[0] ? String(row[0]) : '').trim();
-      const email = (row[1] ? String(row[1]) : '').trim().toLowerCase();
-      const password = (row[2] ? String(row[2]) : '');
-      const mapelIdsStr = (row[3] ? String(row[3]) : '').trim();
+      const nip = (row[1] ? String(row[1]) : '').trim(); // <-- TAMBAHKAN BARIS INI
+      const email = (row[2] ? String(row[2]) : '').trim().toLowerCase(); // <-- UBAH KE index 2
+      const password = (row[3] ? String(row[3]) : ''); // <-- UBAH KE index 3
+      const mapelIdsStr = (row[4] ? String(row[4]) : '').trim(); // <-- UBAH KE index 4
 
       if (!nama || !email || !password) {
         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Nama, Email, atau Password kosong." });
@@ -5237,14 +5276,17 @@ function prosesImportExcelGuru(token, fileData) {
       const mapelKelasJSON = JSON.stringify(mapelKelasData);
 
       // [PERBAIKAN] Sesuaikan data untuk sheet lokal (plain text)
-      rowsToAppend.push([email, nama, password, "", mapelKelasJSON]);
+      // [MODIFIKASI] Tambahkan 'nip'
+      rowsToAppend.push([email, nama, nip, password, "", mapelKelasJSON]);
       existingEmailSet.add(email);
       
       // [PERBAIKAN] Kumpulkan data untuk sinkronisasi global
+      // [MODIFIKASI] Tambahkan 'nip'
       gurusToSync.push({
         email: email,
         password: password,
         nama: nama,
+        nip: nip, // <-- TAMBAHKAN BARIS INI
         sekolahID: sessionData.sekolahID, // Ambil dari sesi
         role: 'guru'
       });
@@ -5256,8 +5298,9 @@ function prosesImportExcelGuru(token, fileData) {
         .setValues(rowsToAppend);
         
       // [PERBAIKAN] Jalankan sinkronisasi global setelah data lokal disimpan
+      // [MODIFIKASI] Kirim 'guru.nip'
       gurusToSync.forEach(guru => {
-        addOrUpdateGuruInApp2(guru.email, guru.password, guru.nama, guru.sekolahID, guru.role);
+        addOrUpdateGuruInApp2(guru.email, guru.password, guru.nama, guru.sekolahID, guru.role, guru.nip);
       });
       // --- [AKHIR PERBAIKAN] ---
     }
@@ -6943,9 +6986,9 @@ function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword)
 
 /**
  * [MODIFIKASI] Helper: Menambah/Memperbarui guru di db_guru global (Aplikasi 2)
- * Sekarang menyimpan HASH dan SALT.
+ * Sekarang menyimpan HASH, SALT, dan NIP.
  */
-function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role) {
+function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip) { // <-- TAMBAHKAN 'nip'
   try {
     const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
     const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
@@ -6986,17 +7029,25 @@ function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role) {
       hashToSave = hashPassword("PasswordDefault123!", saltToSave);
     }
 
-    // Siapkan data baris (Email, Hash, Nama, ID Sekolah, Role, Salt)
-    const rowData = [email, hashToSave, nama, sekolahID, role, saltToSave];
+    // [MODIFIKASI] Siapkan data baris (7 kolom: A-G)
+    const rowData = [
+      email,
+      hashToSave,            // Kolom B (HashedPassword)
+      nama,                 // Kolom C (Nama)
+      sekolahID,          // Kolom D (id_sekolah)
+      role,                 // Kolom E (role)
+      saltToSave,           // Kolom F (Salt)
+      nip || ""             // <-- TAMBAHKAN NIP (Kolom G)
+    ];
     // --- AKHIR PERUBAHAN ---
 
     if (foundRowIndex > -1) {
-      // Ditemukan -> Update baris yang ada (Kolom A-F)
-      sheetGuru_app2.getRange(foundRowIndex, 1, 1, 6).setValues([rowData]);
+      // Ditemukan -> Update baris yang ada (Kolom A-G)
+      sheetGuru_app2.getRange(foundRowIndex, 1, 1, 7).setValues([rowData]); // <-- UBAH KE 7
       Logger.log(`Sinkronisasi Update (App 2): Guru ${emailLower} diperbarui.`);
     } else {
       // Tidak ditemukan -> Tambah baris baru
-      sheetGuru_app2.appendRow(rowData);
+      sheetGuru_app2.appendRow(rowData); // appendRow akan otomatis menangani 7 kolom
       Logger.log(`Sinkronisasi Tambah (App 2): Guru ${emailLower} ditambahkan.`);
     }
   } catch (e) {
@@ -7696,5 +7747,50 @@ function HAPUS_CACHE_CONFIG_MANUAL() {
   } catch (e) {
     Logger.log("Gagal hapus cache: " + e.message);
     Browser.msgBox("Gagal: " + e.message);
+  }
+}
+
+// TAMBAHKAN FUNGSI INI di aplikasi2/Kode.gs.html
+
+/**
+ * [FUNGSI PERBAIKAN MANUAL]
+ * Jalankan fungsi ini SATU KALI SECARA MANUAL dari editor Apps Script
+ * untuk menambahkan kolom "NIP" (Kolom G) ke sheet 'db_guru' di Aplikasi 2.
+ */
+function _MIGRASI_TambahKolomNIPGuru() {
+  try {
+    const ss = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2); // Buka DB Global
+    const sheet = ss.getSheetByName('db_guru');
+    if (!sheet) {
+      Logger.log("Sheet 'db_guru' tidak ditemukan. Batal.");
+      Browser.msgBox("Sheet 'db_guru' tidak ditemukan. Batal.");
+      return;
+    }
+
+    const header = sheet.getRange(1, 7).getValue(); // Cek Kolom G
+
+    if (header === "NIP") {
+      Logger.log("Kolom 'NIP' sudah ada di Kolom G.");
+      Browser.msgBox("Kolom 'NIP' sudah ada di Kolom G. Tidak ada perubahan.");
+      return;
+    }
+    
+    // Cek apakah kolom G kosong (atau header lain yang salah)
+    if (header === "") {
+      // Kolom G kosong, cukup tambahkan header
+      sheet.getRange(1, 7).setValue("NIP");
+      Logger.log("BERHASIL! Header 'NIP' ditambahkan ke Kolom G.");
+      Browser.msgBox("BERHASIL! Header 'NIP' ditambahkan ke Kolom G.");
+    } else {
+      // Kolom G terisi data lain (seharusnya tidak terjadi, tapi untuk keamanan)
+      sheet.insertColumnAfter(6); // Sisipkan kolom baru setelah F (Salt)
+      sheet.getRange(1, 7).setValue("NIP"); // Set header di Kolom G baru
+      Logger.log("BERHASIL! Kolom baru 'NIP' disisipkan di Kolom G.");
+      Browser.msgBox("BERHASIL! Kolom baru 'NIP' disisipkan di Kolom G.");
+    }
+    
+  } catch (e) {
+    Logger.log("Gagal migrasi 'db_guru': " + e.message);
+    Browser.msgBox("Gagal migrasi 'db_guru': " + e.message);
   }
 }
