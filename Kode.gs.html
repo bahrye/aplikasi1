@@ -6410,12 +6410,16 @@ function getSiswaSheet_App2(ss_app2) {
   return sheet;
 }
 
-// New API function: getTahunAjaran
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
 function getTahunAjaran(token) {
   try {
+    // 1. Dapatkan database Aplikasi 2
     const app2DbId = getApp2DatabaseId(token);
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
-    const sheet = getTahunAjaranSheet(ss_app2);
+    
+    // 2. Ambil data T.A. (db_tahun_ajaran)
+    const sheet = getTahunAjaranSheet(ss_app2); // Ini db_tahun_ajaran
     
     if (sheet.getLastRow() <= 1) {
       return { status: "sukses", data: [] }; // Kosong
@@ -6423,27 +6427,51 @@ function getTahunAjaran(token) {
     
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
     
-    // Cek data nilai/status kirim untuk menentukan 'isLocked'
+    // --- AWAL MODIFIKASI: Pengecekan 'isUsed' ganda ---
+    
+    // 3. Cek dari 'db_status_kirim' (Status Nilai Terkirim)
     const statusKirimSheet = ss_app2.getSheetByName('db_status_kirim');
-    const lockedTaIds = new Set();
+    const usedByStatusIds = new Set();
     if (statusKirimSheet && statusKirimSheet.getLastRow() > 1) {
+      // Kolom B (index 1) adalah id_tahun_ajaran
       const statusData = statusKirimSheet.getRange(2, 2, statusKirimSheet.getLastRow() - 1, 1).getValues();
-      statusData.forEach(row => lockedTaIds.add(row[0]));
+      statusData.forEach(row => {
+        if(row[0]) usedByStatusIds.add(row[0]);
+      });
     }
+    
+    // 4. Cek dari 'db_enrollment' (Siswa Ditempatkan)
+    const enrollmentSheet = getEnrollmentSheet_App2(ss_app2); 
+    const usedByEnrollmentIds = new Set();
+    if (enrollmentSheet && enrollmentSheet.getLastRow() > 1) {
+      // Kolom D (index 3) adalah id_tahun_ajaran
+      const enrollmentData = enrollmentSheet.getRange(2, 4, enrollmentSheet.getLastRow() - 1, 1).getValues();
+      enrollmentData.forEach(row => {
+        if(row[0]) usedByEnrollmentIds.add(row[0]);
+      });
+    }
+    // --- AKHIR MODIFIKASI ---
 
+    // 5. Buat daftar T.A.
     const taList = data.map(row => {
       const id_ta = row[0];
-      const isManuallyLocked = row[2] === true;
-      const isUsed = lockedTaIds.has(id_ta);
+      const isManuallyLocked = row[2] === true; // Kuncian manual dari checkbox
+      
+      // --- PERUBAHAN LOGIKA 'isUsed' ---
+      // Dianggap "digunakan" jika ada di 'status' ATAU 'enrollment'
+      const isUsed = usedByStatusIds.has(id_ta) || usedByEnrollmentIds.has(id_ta);
+      // --- AKHIR PERUBAHAN ---
+
       return {
         id: id_ta,
         deskripsi: row[1],
-        isLocked: isManuallyLocked, // Kunci manual dari sheet
-        isUsed: isUsed // Apakah sudah dipakai (tidak bisa dihapus)
+        isLocked: isManuallyLocked, // Status checkbox
+        isUsed: isUsed // Status data (ada/tidaknya siswa atau nilai)
       };
     }).filter(item => item.id && item.deskripsi); // Filter baris kosong
     
     return { status: "sukses", data: taList };
+    
   } catch (e) {
     Logger.log(`getTahunAjaran error: ${e.message}`);
     return { status: "gagal", message: e.message };
