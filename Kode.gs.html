@@ -7317,6 +7317,32 @@ function PERBAIKI_SEKOLAH_ADMIN_LAMA() {
   }
 }
 
+/**
+ * [HELPER BARU] Mengubah blob gambar menjadi Data URL Base64.
+ * Ini adalah perbaikan untuk bug preview kop surat.
+ */
+function _getImageAsBase64DataUrl(fileId) {
+  try {
+    if (!fileId) return null;
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    const contentType = blob.getContentType();
+    
+    // Pastikan ini adalah gambar
+    if (!contentType || !contentType.startsWith('image/')) {
+      Logger.log(`File ID ${fileId} bukan gambar, tapi ${contentType}.`);
+      return null;
+    }
+    
+    const base64Data = Utilities.base64Encode(blob.getBytes());
+    return `data:${contentType};base64,${base64Data}`;
+    
+  } catch (e) {
+    Logger.log(`Gagal mengonversi gambar (ID: ${fileId}) ke Base64. Error: ${e.message}`);
+    return null; // Gagal, kembalikan null
+  }
+}
+
 function getPengaturanCetak(token) {
   try {
     const { sessionData } = validateAdminSession(token);
@@ -7327,9 +7353,9 @@ function getPengaturanCetak(token) {
     let pengaturan = {
       tanggalCetak: "",
       kopSuratFileId: null,
-      kopSuratUrl: null,
+      kopSuratUrl: null, // <-- Nama variabel ini tetap 'Url' agar client.html tidak error
       tempatTTD: "",
-      tanggalTtdMode: "otomatis" // <-- TAMBAHKAN INI
+      tanggalTtdMode: "otomatis"
     };
 
     // Cari baris sekolah
@@ -7345,16 +7371,15 @@ function getPengaturanCetak(token) {
         }
         
         pengaturan.tempatTTD = data[i][19] || ""; 
-        pengaturan.tanggalTtdMode = data[i][20] || "otomatis"; // <-- TAMBAHKAN INI
+        pengaturan.tanggalTtdMode = data[i][20] || "otomatis";
 
         const fileId = data[i][15];
         if (fileId) {
           pengaturan.kopSuratFileId = fileId;
           try {
-            // Buat URL sementara untuk preview
-            const file = DriveApp.getFileById(fileId);
-            // Dapatkan URL yang bisa dilihat (bukan di-download)
-            pengaturan.kopSuratUrl = file.getDownloadUrl().replace("&export=download", "");
+            // <-- PERUBAHAN DI SINI: Panggil helper baru, bukan getDownloadUrl()
+            pengaturan.kopSuratUrl = _getImageAsBase64DataUrl(fileId);
+            // <-- AKHIR PERUBAHAN
           } catch (e) {
             Logger.log("Gagal mendapatkan URL Kop Surat: " + e.message);
           }
@@ -7368,7 +7393,7 @@ function getPengaturanCetak(token) {
   }
 }
 
-function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode) { // <-- TAMBAHKAN tanggalTtdMode
+function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
@@ -7378,7 +7403,7 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
     if (!tempatTTD || tempatTTD.trim().length === 0) {
       throw new Error("Tempat Tanda Tangan wajib diisi.");
     }
-    if (tanggalTtdMode === 'manual' && !tanggalCetak) { // <-- TAMBAHKAN VALIDASI INI
+    if (tanggalTtdMode === 'manual' && !tanggalCetak) {
       throw new Error("Tanggal Tanda Tangan wajib diisi jika mode 'Manual' dipilih.");
     }
     if (tanggalTtdMode !== 'manual' && tanggalTtdMode !== 'otomatis') {
@@ -7407,12 +7432,12 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
 
     const folder = DriveApp.getFolderById(mainFolderId);
     let newFileId = oldFileId;
-    let newFileUrl = null;
+    let newFileUrl = null; // Ini akan menjadi Base64 Data URL
 
-    // 2. Proses file jika ada (Logika ini tetap sama)
+    // 2. Proses file jika ada
     if (fileData) {
       if (fileData.base64) {
-        // ... (logika upload file) ...
+        // User mengupload file baru
         if (oldFileId) {
           try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
         }
@@ -7420,29 +7445,38 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
         const blob = Utilities.newBlob(decodedData, fileData.mimeType, `KOP_SURAT - ${sessionData.namaSekolah}`);
         const newFile = folder.createFile(blob);
         newFileId = newFile.getId();
-        newFileUrl = newFile.getDownloadUrl().replace("&export=download", "");
+        
+        // <-- PERUBAHAN DI SINI: Panggil helper baru untuk mendapatkan Base64
+        newFileUrl = _getImageAsBase64DataUrl(newFileId);
+        // <-- AKHIR PERUBAHAN
+        
       } else if (fileData.delete === true) {
-        // ... (logika hapus file) ...
+        // User menekan "Hapus Gambar"
         if (oldFileId) {
           try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
         }
         newFileId = null;
         newFileUrl = null;
       }
+      // Jika 'fileData' ada tapi tidak ada 'base64' atau 'delete', itu artinya 'keep'
+      // dan 'newFileUrl' akan di-load ulang di langkah 3.
     }
 
     // 3. Update Sheet_Sekolah
-    // <-- PERUBAHAN DI SINI -->
-    // Jika mode 'otomatis', paksa tanggalCetak jadi null
     const formattedDate = (tanggalTtdMode === 'manual' && tanggalCetak) ? new Date(tanggalCetak) : null;
     
     sheetSekolah.getRange(rowToUpdate, 16).setValue(newFileId);     // Kolom P (KopSuratFileID)
     sheetSekolah.getRange(rowToUpdate, 17).setValue(formattedDate); // Kolom Q (TanggalCetak)
     sheetSekolah.getRange(rowToUpdate, 20).setValue(tempatTTD);     // Kolom T (TempatTTD)
     sheetSekolah.getRange(rowToUpdate, 21).setValue(tanggalTtdMode); // Kolom U (TanggalTtdMode)
-    // <-- AKHIR PERUBAHAN -->
 
     clearMasterSheetCache(); // Bersihkan cache master
+
+    // Jika user hanya menyimpan (keep), 'newFileUrl' masih null.
+    // Kita harus memuatnya sekarang.
+    if (status === 'keep' && !newFileUrl && newFileId) {
+      newFileUrl = _getImageAsBase64DataUrl(newFileId);
+    }
 
     return { status: "sukses", message: "Pengaturan berhasil disimpan.", newUrl: newFileUrl };
 
