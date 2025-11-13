@@ -4801,15 +4801,15 @@ function rebuildKelulusanCacheFromDB() {
   return { masterIndex, allHasilWrappers };
 }
 
+
 /**
  * [MODIFIKASI BESAR UNTUK SSO]
- * Mengautentikasi guru ke database Aplikasi 2
+ * Mengautentikasi guru ke database Aplikasi 2 menggunakan HASH & SALT.
  * dan MENCATAT One-Time Token (OTT) di spreadsheet Aplikasi 2.
  */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    // 1. Validasi NPSN/Kode Sekolah terhadap database Aplikasi 1
-    // (Mencari SekolahID berdasarkan NPSN/Nama dari App 1)
+    // 1. Validasi NPSN/Kode Sekolah (Logika tidak berubah)
     const masterSS_App1 = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah_App1 = masterSS_App1.getSheetByName('Sheet_Sekolah');
     let npsnFinder = sheetSekolah_App1.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
@@ -4817,19 +4817,18 @@ function prosesLoginGuru(npsn, email, password) {
     let idSekolahApp1 = null;
     if (npsnFinder.length > 0) {
         const rowNum = npsnFinder[0].getRow();
-        idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue(); // Ambil SekolahID (Kolom A)
+        idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue(); 
     } else {
          const namaFinder = sheetSekolah_App1.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
          if (namaFinder.length > 0) {
             const rowNum = namaFinder[0].getRow();
-            idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue(); // Ambil SekolahID (Kolom A)
+            idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue();
          } else {
             return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan di Aplikasi 1." };
          }
     }
 
     // 2. Buka database Aplikasi 2 (Pusat Guru)
-    // Pastikan ID_SPREADSHEET_APLIKASI_2 sudah diisi di atas
     const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
     const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
     if (!sheetGuru_app2) throw new Error("Database Guru (db_guru) di Aplikasi 2 tidak ditemukan.");
@@ -4845,8 +4844,13 @@ function prosesLoginGuru(npsn, email, password) {
       // Cek Email (Kolom A, index 0)
       if (row[0].toLowerCase() === userEmailLower) {
         
-        // Cek password (plain text, Kolom B, index 1)
-        if (row[1] === password) {
+        // --- PERUBAHAN LOGIKA LOGIN GURU ---
+        const storedHash = row[1]; // Kolom B (HashedPassword)
+        const storedSalt = row[5]; // Kolom F (Salt)
+        
+        // Cek password HASHED (menggunakan fungsi verifyPassword dari App 1)
+        if (verifyPassword(password, storedHash, storedSalt)) {
+        // --- AKHIR PERUBAHAN ---
           
           // Cek apakah guru ini terdaftar di sekolah yang benar (Kolom D vs ID App 1)
           if (row[3] == idSekolahApp1) { 
@@ -4873,26 +4877,23 @@ function prosesLoginGuru(npsn, email, password) {
     const emailPayload = foundGuruData.email;
     const timestamp = new Date();
     
-    // 5. [PERUBAHAN] Simpan OTT ke SPREADSHEET Aplikasi 2, bukan Cache
-    const ottSheet = ss_app2.getSheetByName('db_ott_cache'); // Kita akan buat sheet ini di App 2
+    // 5. Simpan OTT ke SPREADSHEET Aplikasi 2
+    const ottSheet = ss_app2.getSheetByName('db_ott_cache');
     if (!ottSheet) {
       throw new Error("Sheet 'db_ott_cache' tidak ditemukan di Aplikasi 2.");
     }
     
-    // Kunci sheet App 2 untuk penulisan
     const lock = LockService.getScriptLock();
-    lock.waitLock(10000); // Tunggu 10 detik
+    lock.waitLock(10000); 
     try {
-      // Tulis token di sheet App 2 (Token, Email, Timestamp)
       ottSheet.appendRow([ott, emailPayload, timestamp]);
       
-      // Hapus token lama (lebih dari 5 menit)
       const data = ottSheet.getDataRange().getValues();
       const now = timestamp.getTime();
       const expiryLimit = 5 * 60 * 1000; // 5 menit
       const rowsToDelete = [];
       
-      for (let i = data.length - 1; i >= 1; i--) { // Loop dari bawah
+      for (let i = data.length - 1; i >= 1; i--) { 
         if (data[i][2] instanceof Date && (now - data[i][2].getTime() > expiryLimit)) {
           rowsToDelete.push(i + 1);
         }
@@ -4904,8 +4905,7 @@ function prosesLoginGuru(npsn, email, password) {
     } finally {
       lock.releaseLock();
     }
-    // --- [AKHIR PERUBAHAN] ---
-
+    
     // 6. Buat URL Redirect
     const redirectUrl = URL_WEB_APP_APLIKASI_2 + (URL_WEB_APP_APLIKASI_2.includes('?') ? '&' : '?') + 'ott=' + ott;
 
@@ -6911,8 +6911,11 @@ function registerSchoolInApp2(sekolahID, namaSekolah) {
   }
 }
 
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
 /**
- * [BARU-MODIFIKASI] Mendaftarkan admin sekolah sebagai 'guru' di App 2 (GLOBAL).
+ * [MODIFIKASI] Mendaftarkan admin sekolah sebagai 'guru' di App 2 (GLOBAL)
+ * Sekarang menyimpan HASH dan SALT.
  */
 function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword) {
   try {
@@ -6929,14 +6932,21 @@ function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword)
       }
     }
     
+    // --- PERUBAHAN LOGIKA PENYIMPANAN ---
+    const newSalt = generateSalt();
+    const newHash = hashPassword(plainPassword, newSalt);
+    
     // Tambah guru baru (sebagai 'guru' biasa) ke 'db_guru' GLOBAL
     sheetGuru_app2.appendRow([
       email,
-      plainPassword, // Simpan password plain text (sesuai logika App 2)
-      `Admin ${namaSekolah}`, // Nama
-      sekolahID,           // id_sekolah
-      'guru'               // role
+      newHash,            // Kolom B (HashedPassword)
+      `Admin ${namaSekolah}`, // Kolom C (Nama)
+      sekolahID,          // Kolom D (id_sekolah)
+      'guru',             // Kolom E (role)
+      newSalt             // Kolom F (Salt)
     ]);
+    // --- AKHIR PERUBAHAN ---
+    
     Logger.log(`Admin ${email} berhasil didaftarkan sebagai guru di App 2 (Global).`);
 
   } catch (e) {
@@ -6944,9 +6954,11 @@ function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword)
   }
 }
 
+// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+
 /**
- * [BARU] Helper: Menambah/Memperbarui guru di db_guru global (Aplikasi 2)
- * Fungsi ini akan dipanggil oleh saveGuru dan prosesImportExcelGuru.
+ * [MODIFIKASI] Helper: Menambah/Memperbarui guru di db_guru global (Aplikasi 2)
+ * Sekarang menyimpan HASH dan SALT.
  */
 function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role) {
   try {
@@ -6966,12 +6978,36 @@ function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role) {
       }
     }
     
-    // Siapkan data baris (Email, Password, Nama, ID Sekolah, Role)
-    const rowData = [email, plainPassword, nama, sekolahID, role];
+    // --- PERUBAHAN LOGIKA PENYIMPANAN ---
+    // Selalu buat hash baru. Jika password tidak berubah, hash-nya akan sama.
+    // Jika password di-reset (misal admin lupa), hash-nya akan jadi baru.
+    // Jika plainPassword kosong (misal edit nama saja), kita harus ambil hash lama.
+    
+    let hashToSave, saltToSave;
+
+    if (plainPassword) {
+      // Jika password DIKIRIM (saat tambah baru atau reset)
+      saltToSave = generateSalt();
+      hashToSave = hashPassword(plainPassword, saltToSave);
+    } else if (foundRowIndex > -1) {
+      // Jika password TIDAK dikirim (edit nama) DAN guru sudah ada
+      // Ambil hash & salt LAMA agar tidak terhapus
+      hashToSave = data[foundRowIndex - 1][1]; // Kolom B
+      saltToSave = data[foundRowIndex - 1][5]; // Kolom F
+    } else {
+      // Skenario aneh: tambah baru tanpa password. Buat password dummy.
+      Logger.log(`Peringatan: addOrUpdateGuruInApp2 dipanggil untuk ${email} tanpa password. Membuat hash dummy.`);
+      saltToSave = generateSalt();
+      hashToSave = hashPassword("PasswordDefault123!", saltToSave);
+    }
+
+    // Siapkan data baris (Email, Hash, Nama, ID Sekolah, Role, Salt)
+    const rowData = [email, hashToSave, nama, sekolahID, role, saltToSave];
+    // --- AKHIR PERUBAHAN ---
 
     if (foundRowIndex > -1) {
-      // Ditemukan -> Update baris yang ada
-      sheetGuru_app2.getRange(foundRowIndex, 1, 1, 5).setValues([rowData]);
+      // Ditemukan -> Update baris yang ada (Kolom A-F)
+      sheetGuru_app2.getRange(foundRowIndex, 1, 1, 6).setValues([rowData]);
       Logger.log(`Sinkronisasi Update (App 2): Guru ${emailLower} diperbarui.`);
     } else {
       // Tidak ditemukan -> Tambah baris baru
