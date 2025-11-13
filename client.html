@@ -11091,6 +11091,10 @@
     }
   }
   
+  /**
+   * [BARU] Render tabel Penempatan Mapel.
+   * [MODIFIKASI V2] Memperbaiki dataset untuk menyimpan Nama Mapel (bukan ID)
+   */
   function renderPenempatanMapelTable() {
     const container = document.getElementById('penempatan-mapel-container');
     container.innerHTML = ""; // 1. Kosongkan container
@@ -11126,7 +11130,8 @@
       const fragment = document.createDocumentFragment();
       
       const guruMap = new Map(guruList.map(g => [g.email, g.nama]));
-      const mapelMap = new Map(mapelList.map(m => [m.id, m.nama]));
+      // mapelList (dari App 1) Peta-nya: [MapelID, NamaMapel]
+      const mapelMap = new Map(mapelList.map(m => [m.id, m.nama])); 
 
       mapelAssignments.sort((a, b) => {
         const namaGuruA = guruMap.get(a.email_guru) || a.email_guru;
@@ -11136,14 +11141,20 @@
 
       mapelAssignments.forEach(item => {
         const tr = document.createElement('tr');
+        
+        // --- [MODIFIKASI DI SINI] ---
+        const idMapel = item.mapel; // Ini adalah ID/Singkatan (cth: "BINDO")
+        const namaMapel = mapelMap.get(idMapel) || `(${idMapel})`; // Ini Nama Panjang (cth: "Bahasa Indonesia")
+        const singkatan = item.singkatan || idMapel; // Singkatan (jika ada) atau fallback ke ID
+        
         tr.dataset.email = item.email_guru;
-        tr.dataset.mapel = item.mapel;
-        tr.dataset.singkatan = item.singkatan;
+        tr.dataset.mapel = namaMapel;     // <-- DIUBAH: Simpan Nama Panjang
+        tr.dataset.singkatan = idMapel; // <-- DIUBAH: Simpan ID/Singkatan
         tr.dataset.isus = item.isUS;
         tr.dataset.isup = item.isUP;
+        // --- [AKHIR MODIFIKASI] ---
         
         const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
-        const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
         
         // Membuat HTML untuk dropdown kelas
         const currentKelasJson = item.kelas_json || '["*"]';
@@ -11151,7 +11162,6 @@
         
         let optionsHtml = `<option value='${allKelasValue}' ${currentKelasJson === allKelasValue ? 'selected' : ''}>Semua Kelas</option>`;
         
-        // [MODIFIKASI] Loop 'kelasList' yang sudah di-sort
         kelasList.forEach(kelas => {
           const kelasValue = JSON.stringify([kelas.nama]); // Simpan sbg array JSON
           optionsHtml += `<option value='${kelasValue}' ${currentKelasJson === kelasValue ? 'selected' : ''}>${kelas.nama}</option>`;
@@ -11159,8 +11169,8 @@
 
         tr.innerHTML = `
           <td><strong>${namaGuru}</strong></td>
-          <td>${namaMapel}</td>
-          <td>${item.singkatan || '-'}</td>
+          <td>${namaMapel}</td> 
+          <td>${singkatan}</td> 
           <td>
             <select class="form-control form-control-sm penempatan-mapel-kelas-select" data-email="${item.email_guru}" data-mapel="${item.mapel}">
               ${optionsHtml}
@@ -11218,6 +11228,7 @@
   /**
    * [BARU] Menambahkan item dari modal ke tabel penempatan mapel.
    * VERSI MODIFIKASI: Membaca dari tag, bukan multi-select. Singkatan otomatis.
+   * [MODIFIKASI V2] Memperbaiki dataset untuk menyimpan Nama Mapel (bukan ID)
    */
   function tambahkanMapelKeTabel() {
     hideMessage('modal-mapel-app2-error');
@@ -11252,8 +11263,8 @@
       optionsHtml += `<option value='${JSON.stringify([kelas.nama])}'>${kelas.nama}</option>`; 
     });
 
-    for (const mapelId of selectedMapels) { 
-      const existingRow = document.querySelector(`#penempatan-mapel-container tr[data-email="${email}"][data-mapel="${mapelId}"]`);
+    for (const mapelId of selectedMapels) { // mapelId adalah "BINDO" 
+      const existingRow = document.querySelector(`#penempatan-mapel-container tr[data-email="${email}"][data-mapel-id="${mapelId}"]`); // <-- [PERBAIKAN] Cek berdasarkan ID
       if (existingRow) {
         skippedCount++;
         continue; 
@@ -11267,19 +11278,24 @@
         continue; 
       }
       
-      const singkatan = mapelId; 
+      // --- [MODIFIKASI DI SINI] ---
+      const namaMapel = mapelData.nama; // "Bahasa Indonesia"
+      const singkatan = mapelId;     // "BINDO"
       
       const tr = tbody.insertRow();
       tr.dataset.email = email;
-      tr.dataset.mapel = mapelId;
-      tr.dataset.singkatan = singkatan; 
+      tr.dataset.mapel = namaMapel;     // <-- DIUBAH: Simpan Nama Panjang
+      tr.dataset.singkatan = singkatan; // <-- DIUBAH: Simpan ID/Singkatan
       tr.dataset.isus = mapelData.isUS;
       tr.dataset.isup = mapelData.isUP;
       
-      // [MODIFIKASI] Mengubah tombol hapus
+      // [PERBAIKAN] Tambahkan data-mapel-id agar pencarian duplikat di atas berfungsi
+      tr.dataset.mapelId = mapelId; 
+      // --- [AKHIR MODIFIKASI] ---
+      
       tr.innerHTML = `
         <td><strong>${guru.nama}</strong></td>
-        <td>${mapelData.nama}</td>
+        <td>${namaMapel}</td>
         <td>${singkatan || '-'}</td>
         <td>
           <select class="form-control form-control-sm penempatan-mapel-kelas-select" data-email="${email}" data-mapel="${mapelId}">
