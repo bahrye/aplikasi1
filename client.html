@@ -8857,6 +8857,7 @@
           const guruDataJson = JSON.stringify({
               email: guru.email,
               nama: guru.nama,
+              nip: guru.nip, // <-- BARIS INI DIMODIFIKASI
               mapelKelas: guru.mapelKelas // Data ini tetap disimpan di tombol untuk modal
           }).replace(/"/g, '&quot;');
 
@@ -8903,6 +8904,7 @@
       if (mode === 'add') {
           document.getElementById('modal-guru-title').innerText = "Tambah Guru Baru";
           document.getElementById('modal-guru-nama').value = "";
+          document.getElementById('modal-guru-nip').value = ""; // <-- BARIS INI DIMODIFIKASI
           document.getElementById('modal-guru-email').value = "";
           document.getElementById('modal-guru-original-email').value = "";
           passInput.value = "";
@@ -8912,6 +8914,7 @@
           // Mode Edit
           document.getElementById('modal-guru-title').innerText = "Edit Data Guru";
           document.getElementById('modal-guru-nama').value = guruData.nama;
+          document.getElementById('modal-guru-nip').value = guruData.nip || ""; // <-- BARIS INI DIMODIFIKASI
           document.getElementById('modal-guru-email').value = guruData.email;
           document.getElementById('modal-guru-original-email').value = guruData.email;
           passInput.value = "";
@@ -8933,6 +8936,7 @@
       hideMessage('modal-guru-error');
 
       const nama = document.getElementById('modal-guru-nama').value.trim();
+      const nip = document.getElementById('modal-guru-nip').value.trim(); // <-- Data NIP
       const email = document.getElementById('modal-guru-email').value.trim();
       const password = document.getElementById('modal-guru-password').value;
       const mode = document.getElementById('modal-guru-mode').value;
@@ -8963,6 +8967,7 @@
           mode: mode,
           originalEmail: originalEmail,
           nama: nama,
+          nip: nip, // <-- Data NIP
           email: email,
           password: password,
           mapelKelas: mapelKelasData // Kirim objek (bukan JSON string)
@@ -8974,7 +8979,41 @@
               if (response.status === 'sukses') {
                   tutupModalGuru();
                   showToast(response.message, 'sukses');
-                  bukaHalamanGuru(); 
+                  
+                  // --- [PERBAIKAN DIMULAI DI SINI] ---
+                  // Logika Optimistic Update untuk cache 'globalGuruList'
+                  if (response.newData) {
+                    const newData = response.newData; // {email, nama, nip, mapelKelas}
+                    
+                    if (mode === 'add') {
+                      // Tambahkan data baru ke cache global
+                      globalGuruList.push(newData);
+                    } else {
+                      // Cari dan perbarui data di cache global
+                      const emailToFind = (originalEmail || newData.email);
+                      const indexToUpdate = globalGuruList.findIndex(g => g.email === emailToFind);
+                      
+                      if (indexToUpdate > -1) {
+                        // Perbarui data di cache
+                        globalGuruList[indexToUpdate] = newData;
+                      } else {
+                        // Tidak ketemu (aneh, mungkin email berubah), coba cari berdasarkan nama
+                         const indexToUpdateByName = globalGuruList.findIndex(g => g.nama === newData.nama);
+                         if(indexToUpdateByName > -1) {
+                           globalGuruList[indexToUpdateByName] = newData;
+                         } else {
+                           globalGuruList.push(newData); // Fallback: tambahkan saja
+                         }
+                      }
+                    }
+                  } else {
+                    // Jika backend tidak mengembalikan newData (versi lama),
+                    // kita paksa bersihkan cache agar dimuat ulang
+                    globalGuruList = [];
+                  }
+                  // --- [PERBAIKAN SELESAI] ---
+
+                  bukaHalamanGuru(); // Panggil ini SETELAH cache diperbarui
               } else {
                   showMessage('modal-guru-error', response.message, true);
               }
