@@ -1654,15 +1654,25 @@
       
       } 
       else if (target.classList.contains('btn-remove-ta-row')) {
+        
         const rowToRemove = target.closest('.ta-input-row');
-        const allRows = Array.from(document.querySelectorAll('#ta-list-container .ta-input-row'));
-        const indexToRemove = allRows.indexOf(rowToRemove);
+        // 'allRows' menyertakan baris HEADER (yang juga punya kelas .ta-input-row)
+        const allRows = Array.from(document.querySelectorAll('#ta-list-container .ta-input-row')); 
+        const indexToRemoveInDOM = allRows.indexOf(rowToRemove);
         
-        const currentList = getCurrentTahunAjaranList(); // Ambil data saat ini
+        // 'currentList' HANYA berisi data (TIDAK termasuk header)
+        const currentList = getCurrentTahunAjaranList(); 
         
-        if (indexToRemove > -1) {
-          currentList.splice(indexToRemove, 1); // Hapus dari array
+        // --- PERBAIKAN BUG DI SINI ---
+        // Kita harus mengonversi indeks DOM (yang ada header) 
+        // ke indeks data (tanpa header) dengan mengurangi 1.
+        const indexToRemoveInData = indexToRemoveInDOM - 1; 
+
+        // Pastikan indeksnya valid (bukan header (indeks -1) dan ada di dalam list)
+        if (indexToRemoveInData > -1 && indexToRemoveInData < currentList.length) { 
+          currentList.splice(indexToRemoveInData, 1); // Hapus item yang benar
         }
+        // --- AKHIR PERBAIKAN ---
         
         renderTahunAjaranList(currentList); // Render ulang
       }
@@ -3927,12 +3937,25 @@
       if (response.status === 'sukses') {
         isFormDirty = false; 
         
-        // --- TAMBAHKAN BARIS INI ---
         // Hapus cache kelas di klien agar dimuat ulang nanti
         globalKelasListCache = []; 
-        // --- AKHIR TAMBAHAN ---
+        
+        // --- TAMBAHAN BARU (SOLUSI) ---
+        // Karena nama kelas mungkin berubah, kita harus membersihkan
+        // cache siswa agar 'Kelola Siswa' memuat data baru.
+        globalSiswaList = []; 
+        console.log("Cache Siswa (globalSiswaList) dibersihkan karena ada perubahan kelas.");
+        // --- AKHIR TAMBAHAN BARU ---
         
         showMessage('kelas-message', 'Data kelas berhasil disimpan!', false);
+        
+        // Panggil ulang bukaHalamanKelas untuk me-refresh DOM
+        // dengan data-original-name yang baru dan status lock yang benar.
+        setTimeout(() => {
+          // Ini akan memaksa pengambilan data baru dari server
+          bukaHalamanKelas(); 
+        }, 500); // Jeda 0.5 detik
+        
       } else {
         showMessage('kelas-message', response.message, true);
       }
@@ -10377,6 +10400,7 @@
 
   /**
    * [BARU] Membaca data T.A. saat ini dari DOM.
+   * [PERBAIKAN] Sekarang juga membaca status 'isUsed' dari 'dataset.isUsed'.
    */
   function getCurrentTahunAjaranList() {
     const allRows = document.querySelectorAll('#ta-list-container .ta-input-row');
@@ -10389,11 +10413,16 @@
       
       // Lewati header row
       if (idInput && deskripsiInput && kunciInput) {
+        
+        // *** FIX 1: Read 'isUsed' state from the DOM ***
+        // Konversi string 'true'/'false' kembali ke boolean
+        const isUsed = (row.dataset.isUsed === 'true'); 
+        
         list.push({
           id: idInput.value,
           deskripsi: deskripsiInput.value,
-          isLocked: kunciInput.checked
-          // isUsed tidak perlu dibaca dari DOM, server akan validasi
+          isLocked: kunciInput.checked,
+          isUsed: isUsed // <-- Masukkan kembali ke dalam data
         });
       }
     });
@@ -10403,6 +10432,7 @@
 
   /**
    * [BARU] Merender list T.A. ke DOM.
+   * [PERBAIKAN] Menyimpan 'data-is-used' dan memperbaiki logika tombol Hapus/Tambah.
    */
   function renderTahunAjaranList(taList) {
     const container = document.getElementById('ta-list-container');
@@ -10432,44 +10462,59 @@
       const isUsed = ta.isUsed || false;
       const isLocked = ta.isLocked || false;
       
-      // Jika sudah dipakai (ada nilai), ID tidak bisa diedit
+      // *** FIX 1: Store isUsed state in the DOM ***
+      div.dataset.isUsed = String(isUsed); // Simpan sebagai string 'true'/'false'
+      
+      const titleAttr = isUsed ? 'ID tidak bisa diubah/dihapus karena T.A. sudah dipakai.' : '';
+
       const idInputHtml = isUsed ? 
-        `<input type="text" class="ta-id-input" value="${ta.id}" readonly style="background-color: var(--bg-light); cursor: not-allowed;" title="ID tidak bisa diubah karena T.A. sudah dipakai.">` :
+        `<input type="text" class="ta-id-input" value="${ta.id}" readonly style="background-color: var(--bg-light); cursor: not-allowed;" title="${titleAttr}">` :
         `<input type="text" class="ta-id-input" value="${ta.id}" placeholder="TA-2024-2025">`;
         
-      // Jika sudah dipakai, tombol hapus dinonaktifkan
-      const removeButtonHtml = (isUsed || listToRender.length <= 1) ? 
-        `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" disabled title="Tidak bisa dihapus karena T.A. sudah dipakai atau hanya tersisa satu baris.">&times;</button>` :
-        `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" title="Hapus Baris">&times;</button>`;
-        
-      const checkboxHtml = isUsed ? 
-        `<input type="checkbox" class="ta-kunci-input" id="kunci_${index}" ${isLocked ? 'checked' : ''} title="Kunci/Buka Kunci T.A.">` :
-        `<input type="checkbox" class="ta-kunci-input" id="kunci_${index}" ${isLocked ? 'checked' : ''} title="Kunci/Buka Kunci T.A. (Hanya berdampak jika T.A. sudah dipakai)">`;
-        
-      let html = `
+      const checkboxHtml = `<input type="checkbox" class="ta-kunci-input" id="kunci_${index}" ${isLocked ? 'checked' : ''} title="Kunci/Buka Kunci T.A.">`;
+      
+      // *** FIX 2: Logic for buttons ***
+      
+      // 1. Buat tombol Hapus.
+      // Selalu ada, kecuali jika ini satu-satunya baris.
+      const isOnlyRow = (listToRender.length === 1);
+      let removeButtonHtml;
+      
+      if (isOnlyRow) {
+        // Jika hanya 1 baris, buat placeholder non-fungsional
+         removeButtonHtml = `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" disabled style="opacity: 0; pointer-events: none;">&times;</button>`;
+      } else if (isUsed) {
+        // Jika 'isUsed' (terkunci), buat tombol non-fungsional
+        removeButtonHtml = `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" disabled title="${titleAttr}">&times;</button>`;
+      } else {
+        // Jika tidak terkunci, buat tombol fungsional
+        removeButtonHtml = `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" title="Hapus Baris">&times;</button>`;
+      }
+          
+      // 2. Buat tombol Tambah (hanya untuk baris terakhir)
+      const addButtonHtml = (index === listToRender.length - 1) ?
+        `<button type="button" class="btn-aksi-kelas btn-add-ta-row btn-add-kelas" title="Tambah Baris Baru">+</button>` :
+        ''; // Kosong untuk semua baris lain
+
+      // 3. Gabungkan dalam wrapper (sesuai perbaikan CSS)
+      const actionsHtml = `
+        <div class="ta-action-buttons">
+          ${removeButtonHtml}
+          ${addButtonHtml}
+        </div>
+      `;
+      
+      // 4. Build final row
+      div.innerHTML = `
         ${idInputHtml}
         <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A.">
         <div class="ta-lock-wrapper">
           <label for="kunci_${index}">Kunci</label>
           ${checkboxHtml}
         </div>
-        ${removeButtonHtml}
+        ${actionsHtml} 
       `;
-
-      if (index === listToRender.length - 1) {
-        // Ganti tombol hapus dengan tombol tambah di baris terakhir
-        html = `
-          ${idInputHtml}
-          <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A.">
-          <div class="ta-lock-wrapper">
-            <label for="kunci_${index}">Kunci</label>
-            ${checkboxHtml}
-          </div>
-          <button type="button" class="btn-aksi-kelas btn-add-ta-row btn-add-kelas" title="Tambah Baris Baru">+</button>
-        `;
-      }
-
-      div.innerHTML = html;
+      
       container.appendChild(div);
     });
   }
@@ -10807,6 +10852,7 @@
 
   /**
    * [BARU] Menyimpan data penempatan siswa (db_enrollment).
+   * [PERBAIKAN] Validasi No. Ujian HANYA jika siswa dicentang.
    */
   function simpanPenempatanSiswa() {
     setLoading(true, 'Menyimpan penempatan siswa...', true, true);
@@ -10823,41 +10869,35 @@
         
         const checkbox = tr.querySelector('.enroll-checkbox');
         const ruangInput = tr.querySelector('.enroll-ruang-input');
-        
-        // --- MODIFIKASI DIMULAI ---
-        // Dapatkan No Ujian. Sekarang *selalu* dari input.
-        let nomorUjianApp2;
         const noUjianInput = tr.querySelector('.enroll-noujian-input');
-        if (noUjianInput) {
-          nomorUjianApp2 = noUjianInput.value.trim();
-        } else {
-          // Fallback jika barisnya aneh, tapi seharusnya tidak terjadi
-          nomorUjianApp2 = `ERROR-NO-INPUT-${siswaId}`;
-        }
-        // --- MODIFIKASI SELESAI ---
-        
-        // Dapatkan Nama App 1
         const namaApp1 = tr.cells[1].textContent.trim();
         
-        if (!nomorUjianApp2) {
-          throw new Error(`Nomor Ujian untuk siswa ${namaApp1} tidak boleh kosong.`);
+        let nomorUjianApp2 = noUjianInput ? noUjianInput.value.trim() : '';
+        
+        // --- PERBAIKAN BUG 2 DI SINI ---
+        // Hanya validasi (throw error) jika Nomor Ujian kosong DAN siswa tersebut dicentang.
+        if (checkbox.checked && !nomorUjianApp2) {
+          throw new Error(`Nomor Ujian untuk siswa ${namaApp1} tidak boleh kosong (karena dicentang).`);
         }
+        // --- AKHIR PERBAIKAN ---
         
         enrollmentData.push({
           id_siswa_app1: siswaId,
-          isEnrolled: checkbox.checked,
-          nomor_ujian_app2: nomorUjianApp2,
+          isEnrolled: checkbox.checked, // Kirim status centang
+          nomor_ujian_app2: nomorUjianApp2, // Kirim no ujian (bisa kosong jika tdk dicentang)
           ruang_ujian: ruangInput.value.trim(),
           nama_app1: namaApp1 // Untuk sinkronisasi db_siswa App 2
         });
       });
       
+      // Kirim data ke server
       google.script.run
         .withSuccessHandler(onPenempatanSiswaSaved)
         .withFailureHandler(onGagal)
         .saveSiswaEnrollment(getToken(), taId, enrollmentData);
         
     } catch (e) {
+      // Tangkap error validasi (dari throw new Error)
       setLoading(false);
       showMessage('penempatan-message', e.message, true);
     }
