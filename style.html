@@ -817,10 +817,13 @@
   .ta-input-row {
     display: grid;
     /* ID, Deskripsi, Kunci, Aksi (Hapus/Tambah) */
-    grid-template-columns: 1fr 1fr 80px 90px; /* <-- Kolom ke-4 dilebarkan dari 40px ke 90px */
+    /* [PERBAIKAN] Menggunakan minmax agar tidak 'wrap' di ponsel */
+    grid-template-columns: minmax(150px, 1.2fr) minmax(180px, 2fr) 80px 90px; 
     gap: 10px;
     margin-bottom: 10px;
     align-items: center;
+    /* [PERBAIKAN] Tetapkan lebar minimum total agar memicu scroll */
+    min-width: 500px; 
   }
   .ta-input-row input[type="text"] {
     margin: 0;
@@ -4945,4 +4948,88 @@
     border: 1px solid var(--border-color);
     background-color: white;
   }
+
+  /* [PERBAIKAN] Membuat kontainer T.A. bisa scroll horizontal */
+  #ta-list-container {
+    overflow-x: auto;
+    padding-bottom: 5px; /* Memberi sedikit ruang untuk scrollbar */
+  }
+
+  /* [PERBAIKAN] Memastikan label header T.A. tidak terpotong/wrap */
+  #ta-list-container .ta-input-row label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* --- [FINAL] Style Premium untuk Tombol Cetak Kartu Siswa --- */
+      
+  /* 1. Atur Tampilan Tombol saat .card-disabled */
+  #btn-cetak-kartu-siswa.card-disabled {
+    /* Paksa warna kembali ke biru (menimpa style:disabled abu-abu jika ada) */
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    
+    /* Hapus efek 'disabled' bawaan */
+    opacity: 1 !important; 
+    box-shadow: none !important;
+    transform: none !important;
+    
+    /* Tetap bisa diklik (untuk ke halaman donasi) */
+    cursor: pointer; 
+  }
+
+  /* 2. Pastikan Ikon & Teks tetap putih */
+  #btn-cetak-kartu-siswa.card-disabled i,
+  #btn-cetak-kartu-siswa.card-disabled span {
+    color: white !important;
+    position: relative; /* Agar di atas shimmer */
+    z-index: 2;
+  }
+
+  /* 3. Atur Shimmer (::before) saat 'card-disabled' */
+  #btn-cetak-kartu-siswa.card-disabled::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    
+    /* Kilau PUTIH (lebih kontras di atas biru) */
+    --shimmer-color: rgba(255, 255, 255, 0.8); 
+    
+    background: linear-gradient(
+      100deg, 
+      rgba(255, 255, 255, 0) 30%, 
+      var(--shimmer-color) 50%, 
+      rgba(255, 255, 255, 0) 70%
+    );
+    
+    transform: translateX(-150%);
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+    z-index: 1; /* Di bawah teks/ikon */
+    display: block;
+    border-radius: 8px; /* Sesuaikan dengan border-radius tombol */
+  }
+
+  /* 4. Atur Stamp (.premium-stamp) saat 'card-disabled' */
+  #btn-cetak-kartu-siswa.card-disabled .premium-stamp {
+    display: block !important;
+    z-index: 3; /* Di atas segalanya */
+  }
+
+  /* 5. HAPUS semua efek hover (no pop, no color change) */
+  #btn-cetak-kartu-siswa.card-disabled:hover {
+    background-color: var(--primary-color) !important; /* TETAP BIRU */
+    color: white !important; /* TETAP PUTIH */
+    transform: none !important; /* JANGAN MENYEMBUL */
+    box-shadow: none !important; /* JANGAN ADA SHADOW */
+  }
+
+  /* 6. (Opsional) Jaga agar shimmer tetap berubah saat hover */
+  #btn-cetak-kartu-siswa.card-disabled:hover::before {
+      --shimmer-color: rgba(255, 255, 255, 0.95); /* Kilau lebih terang saat hover */
+  }
+  /* --- Akhir Style Premium --- */
 </style>
