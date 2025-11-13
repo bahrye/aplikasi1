@@ -5679,60 +5679,69 @@ function syncGuruClassesToSingleClass(token) {
 
 /**
  * [ADMIN] Mendapatkan detail status donasi saat ini.
+ * Fungsi ini mengambil data dari Master Sheet untuk ditampilkan di halaman donasi.
  */
 function getDonasiStatusDetail(token) {
   try {
-    const { sessionData } = validateAdminSession(token); // Ini sudah refresh sesi
+    // 1. Validasi sesi dan dapatkan sekolahID
+    const { sessionData } = validateAdminSession(token); // Ini sudah me-refresh sesi
     
-    // Siapkan data dasar untuk dikirim
+    // 2. Siapkan data dasar untuk dikirim (dari sesi)
     const adminData = {
-      email: "", // Kita akan ambil ini di bawah
+      email: "", // Kita akan coba ambil ini dari sheet di bawah
       namaSekolah: sessionData.namaSekolah
     };
 
-    // Jika tidak NONE, ambil detail lengkap dari Master Sheet
+    // 3. Buka Master Sheet untuk mengambil detail lengkap
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const dataSekolah = sheetSekolah.getDataRange().getValues();
     
-    let donasiDetail = { status: "NONE" };
+    let donasiDetail = { status: "NONE" }; // Default
 
-    for (let i = 1; i < dataSekolah.length; i++) {
-      if (dataSekolah[i][0] === sessionData.sekolahID) {
+    // 4. Loop untuk menemukan sekolah yang sesuai
+    for (let i = 1; i < dataSekolah.length; i++) { // Mulai dari 1 (skip header)
+      if (dataSekolah[i][0] === sessionData.sekolahID) { // Kolom A (SekolahID)
         
-        adminData.email = dataSekolah[i][3]; // Ambil email dari Kolom D
+        // Ambil email admin dari Kolom D (index 3)
+        adminData.email = dataSekolah[i][3]; 
         
-        const donasiStatus = dataSekolah[i][8] || "NONE";
+        const donasiStatus = dataSekolah[i][8] || "NONE"; // Kolom I (DonasiStatus)
         
+        // Hanya ambil detail jika statusnya BUKAN "NONE"
         if (donasiStatus !== "NONE") {
-            const fileId = dataSekolah[i][9]; // Kolom J (FileID)
+            const fileId = dataSekolah[i][9]; // Kolom J (DonasiFileID)
             let fileUrl = null;
+            
             if (fileId) {
               try {
-                // Buat link view sementara
+                // Buat link view sementara untuk file bukti
                 const file = DriveApp.getFileById(fileId);
-                fileUrl = file.getDownloadUrl().replace("&export=download", ""); // Dapatkan link viewer
+                // Dapatkan link viewer (bukan download)
+                fileUrl = file.getDownloadUrl().replace("&export=download", ""); 
               } catch (e) {
-                Logger.log("Gagal get file URL untuk donasi: " + e.message);
+                Logger.log("Gagal mendapatkan URL file donasi: " + e.message);
+                fileUrl = null; // Set ke null jika file tidak dapat diakses
               }
             }
             
             donasiDetail = {
                 status: donasiStatus,     // Kolom I
                 fileId: fileId,
-                fileUrl: fileUrl,
-                dataJson: dataSekolah[i][10],  // Kolom K
-                alasan: dataSekolah[i][11]   // Kolom L
+                fileUrl: fileUrl,         // Link file yang baru dibuat
+                dataJson: dataSekolah[i][10],  // Kolom K (Data Form JSON)
+                alasan: dataSekolah[i][11]   // Kolom L (Alasan Tolak)
             };
         }
         break; // Hentikan loop setelah sekolah ditemukan
       }
     }
     
-    // Kembalikan kedua objek
+    // 5. Kembalikan kedua objek
     return { status: "sukses", donasi: donasiDetail, admin: adminData };
 
   } catch (e) {
+    Logger.log("Error di getDonasiStatusDetail: " + e.message + "\n" + e.stack);
     return { status: "gagal", message: e.message };
   }
 }
