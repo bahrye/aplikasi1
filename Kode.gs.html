@@ -4801,27 +4801,47 @@ function rebuildKelulusanCacheFromDB() {
  * [MODIFIKASI BESAR UNTUK SSO]
  * Mengautentikasi guru ke database Aplikasi 2 menggunakan HASH & SALT.
  * dan MENCATAT One-Time Token (OTT) di spreadsheet Aplikasi 2.
+ * [MODIFIKASI V2] Sekarang mengirim payload JSON {email, jenjangPilihan}.
  */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    // 1. Validasi NPSN/Kode Sekolah (Logika tidak berubah)
+    // 1. Validasi NPSN/Kode Sekolah dan AMBIL DATA BARIS
     const masterSS_App1 = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah_App1 = masterSS_App1.getSheetByName('Sheet_Sekolah');
-    let npsnFinder = sheetSekolah_App1.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
     
-    let idSekolahApp1 = null;
-    if (npsnFinder.length > 0) {
-        const rowNum = npsnFinder[0].getRow();
-        idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue(); 
-    } else {
-         const namaFinder = sheetSekolah_App1.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
-         if (namaFinder.length > 0) {
-            const rowNum = namaFinder[0].getRow();
-            idSekolahApp1 = sheetSekolah_App1.getRange(rowNum, 1).getValue();
-         } else {
-            return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan di Aplikasi 1." };
-         }
+    // [MODIFIKASI] Baca data yang relevan (A-H)
+    const dataSekolahApp1 = sheetSekolah_App1.getRange("A2:H" + sheetSekolah_App1.getLastRow()).getValues();
+    
+    let rowDataSekolah = null;
+    const npsnLower = npsn.toLowerCase();
+
+    for (const row of dataSekolahApp1) {
+      const npsnDb = String(row[7]).toLowerCase(); // Kolom H
+      const namaDb = String(row[1]).toLowerCase(); // Kolom B
+      
+      if (npsnDb === npsnLower || namaDb === npsnLower) {
+        rowDataSekolah = row;
+        break;
+      }
     }
+
+    if (!rowDataSekolah) {
+      return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan di Aplikasi 1." };
+    }
+
+    const idSekolahApp1 = rowDataSekolah[0]; // Kolom A
+    const app1DbId = rowDataSekolah[5];      // Kolom F (App 1 DB ID)
+    
+    // [MODIFIKASI BARU] Ambil jenjangPilihan dari DB App 1
+    if (!app1DbId) {
+      return { status: "gagal", message: `Database App 1 (Kolom F) untuk sekolah ${idSekolahApp1} belum diatur.` };
+    }
+    const jenjangPilihan = getJenjangPilihanFromSheet(app1DbId);
+    if (!jenjangPilihan) {
+      return { status: "gagal", message: `Jenjang Pilihan (Data_Sekolah!A2) di database sekolah ${idSekolahApp1} belum diatur.` };
+    }
+    // --- [AKHIR MODIFIKASI BARU] ---
+
 
     // 2. Buka database Aplikasi 2 (Pusat Guru)
     const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
@@ -4836,18 +4856,11 @@ function prosesLoginGuru(npsn, email, password) {
     
     for (let i = 1; i < dataGuru_app2.length; i++) {
       const row = dataGuru_app2[i];
-      // Cek Email (Kolom A, index 0)
       if (row[0].toLowerCase() === userEmailLower) {
-        
-        // --- PERUBAHAN LOGIKA LOGIN GURU ---
         const storedHash = row[1]; // Kolom B (HashedPassword)
         const storedSalt = row[5]; // Kolom F (Salt)
         
-        // Cek password HASHED (menggunakan fungsi verifyPassword dari App 1)
         if (verifyPassword(password, storedHash, storedSalt)) {
-        // --- AKHIR PERUBAHAN ---
-          
-          // Cek apakah guru ini terdaftar di sekolah yang benar (Kolom D vs ID App 1)
           if (row[3] == idSekolahApp1) { 
             foundGuruData = {
               email: row[0],
@@ -4869,7 +4882,15 @@ function prosesLoginGuru(npsn, email, password) {
 
     // 4. Buat One-Time Token (OTT)
     const ott = 'ott-' + Utilities.getUuid();
-    const emailPayload = foundGuruData.email;
+    
+    // [MODIFIKASI] Buat payload JSON
+    const payload = {
+      email: foundGuruData.email,
+      jenjangPilihan: jenjangPilihan // <-- Data baru
+    };
+    const payloadString = JSON.stringify(payload);
+    // --- [AKHIR MODIFIKASI] ---
+    
     const timestamp = new Date();
     
     // 5. Simpan OTT ke SPREADSHEET Aplikasi 2
@@ -4881,7 +4902,8 @@ function prosesLoginGuru(npsn, email, password) {
     const lock = LockService.getScriptLock();
     lock.waitLock(10000); 
     try {
-      ottSheet.appendRow([ott, emailPayload, timestamp]);
+      // [MODIFIKASI] Simpan string JSON
+      ottSheet.appendRow([ott, payloadString, timestamp]);
       
       const data = ottSheet.getDataRange().getValues();
       const now = timestamp.getTime();
