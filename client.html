@@ -4038,12 +4038,12 @@
     }
   }
 
-function populateSiswaFilters() {
+  function populateSiswaFilters() {
     const selectKelas = document.getElementById('siswa-filter-kelas');
     const selectedValue = selectKelas.value;
     
     const kelasSet = new Set(globalSiswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
   
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -4248,7 +4248,6 @@ function populateSiswaFilters() {
     // --- AKHIR LOGIKA PEMUATAN KELAS ---
   }
 
-  // GANTI FUNGSI LAMA ANDA DENGAN YANG INI
   function onKelasListLoadedForModal(response, siswaData) {
     const selectKelas = document.getElementById('modal-siswa-kelas');
     const btnSimpan = document.getElementById('btn-simpan-siswa');
@@ -4263,21 +4262,19 @@ function populateSiswaFilters() {
     
     } else {
       
-      // --- TAMBAHKAN BARIS INI ---
-      // Simpan/Perbarui cache jika kita harus mengambil dari server
       if (globalKelasListCache.length === 0) {
         globalKelasListCache = response.kelasList;
       }
-      // --- AKHIR TAMBAHAN ---
 
-      const kelasList = response.kelasList; // Ini adalah array objek [ {nama, isLocked}, ... ]
+      const kelasList = response.kelasList;
       selectKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
       
-      kelasList.forEach(kelasObj => { 
+      // [MODIFIKASI]
+      kelasList.sort((a, b) => compareKelas(a.nama, b.nama)).forEach(kelasObj => { 
         selectKelas.innerHTML += `<option value="${kelasObj.nama}">${kelasObj.nama}</option>`;
       });
       
-      btnSimpan.disabled = false; // <-- Tombol langsung aktif
+      btnSimpan.disabled = false;
 
       if (currentMode === 'edit') {
         document.getElementById('modal-siswa-kelas').value = siswaData.kelas;
@@ -5045,7 +5042,7 @@ function populateSiswaFilters() {
     const selectedValue = selectKelas.value;
   
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
   
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -5384,7 +5381,7 @@ function populateSiswaFilters() {
     const selectedValue = selectKelas.value;
   
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
   
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -5706,7 +5703,7 @@ function populateSiswaFilters() {
     const selectKelas = document.getElementById('input-rapor-filter-kelas');
     const selectedValue = selectKelas.value;
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
       optionsHtml += `<option value="${kelas}">${kelas}</option>`;
@@ -6092,7 +6089,7 @@ function populateSiswaFilters() {
     const selectKelas = document.getElementById('rekap-rapor-filter-kelas');
     const selectedValue = selectKelas.value;
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
       optionsHtml += `<option value="${kelas}">${kelas}</option>`;
@@ -6556,7 +6553,7 @@ function populateSiswaFilters() {
     const selectedValue = selectKelas.value;
   
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
   
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -7264,7 +7261,7 @@ function populateSiswaFilters() {
     const selectedValue = selectKelas.value;
   
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
   
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -10661,15 +10658,12 @@ function populateSiswaFilters() {
     document.getElementById(`tab-penempatan-${tabName}`).style.display = 'block';
   }
 
-  /**
-   * [BARU] Populate filter kelas di tab Penempatan Siswa.
-   */
   function populatePenempatanSiswaFilters(siswaList) {
     const selectKelas = document.getElementById('penempatan-siswa-filter-kelas');
     selectKelas.innerHTML = '';
     
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort();
+    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
   
     let optionsHtml = '<option value="semua">-- Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -10871,28 +10865,21 @@ function populateSiswaFilters() {
     }
   }
   
-  /**
-   * [BARU] Render tabel Penempatan Mapel.
-   * [PERBAIKAN] Fungsi ini sekarang selalu membuat <table> bahkan jika kosong.
-   */
   function renderPenempatanMapelTable() {
     const container = document.getElementById('penempatan-mapel-container');
     container.innerHTML = ""; // 1. Kosongkan container
     
     const { mapelAssignments, guruList, mapelList } = globalPenempatanData;
     
-    // [MODIFIKASI] Ambil data kelas dari cache App 1
-    const kelasList = globalKelasListCache || [];
+    // [MODIFIKASI]
+    const kelasList = (globalKelasListCache || []).sort((a, b) => compareKelas(a.nama, b.nama));
     
     // 2. Selalu buat struktur tabel
     const table = document.createElement('table');
-    // [MODIFIKASI] Menggunakan class 'siswa-table' untuk styling yang konsisten
-    table.className = 'siswa-table guru-table penempatan-mapel-table'; // Mengganti 'mapel-table'
+    table.className = 'siswa-table guru-table penempatan-mapel-table'; 
     
     const thead = table.createTHead();
-    // [MODIFIKASI] Menambahkan 'thead-dark'
     thead.className = 'thead-dark'; 
-    // [MODIFIKASI] Menambahkan header KELAS (dan mengubah ke UPPERCASE)
     thead.innerHTML = `
       <tr>
         <th>GURU PENGAMPU</th>
@@ -10907,13 +10894,11 @@ function populateSiswaFilters() {
 
     // 3. Cek apakah ada data untuk diisi
     if (mapelAssignments.length === 0) {
-      // [MODIFIKASI] Colspan diubah dari 4 menjadi 5
       tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Belum ada mapel yang ditempatkan untuk T.A. ini.</td></tr>';
     } else {
       // Jika ada data, isi seperti biasa
       const fragment = document.createDocumentFragment();
       
-      // Buat map untuk lookup nama
       const guruMap = new Map(guruList.map(g => [g.email, g.nama]));
       const mapelMap = new Map(mapelList.map(m => [m.id, m.nama]));
 
@@ -10928,8 +10913,8 @@ function populateSiswaFilters() {
         tr.dataset.email = item.email_guru;
         tr.dataset.mapel = item.mapel;
         tr.dataset.singkatan = item.singkatan;
-        tr.dataset.isus = item.isUS; // <-- TAMBAHKAN INI
-        tr.dataset.isup = item.isUP; // <-- TAMBAHKAN INI
+        tr.dataset.isus = item.isUS;
+        tr.dataset.isup = item.isUP;
         
         const namaGuru = guruMap.get(item.email_guru) || `(${item.email_guru})`;
         const namaMapel = mapelMap.get(item.mapel) || `(${item.mapel})`;
@@ -10939,12 +10924,13 @@ function populateSiswaFilters() {
         const allKelasValue = '["*"]';
         
         let optionsHtml = `<option value='${allKelasValue}' ${currentKelasJson === allKelasValue ? 'selected' : ''}>Semua Kelas</option>`;
+        
+        // [MODIFIKASI] Loop 'kelasList' yang sudah di-sort
         kelasList.forEach(kelas => {
           const kelasValue = JSON.stringify([kelas.nama]); // Simpan sbg array JSON
           optionsHtml += `<option value='${kelasValue}' ${currentKelasJson === kelasValue ? 'selected' : ''}>${kelas.nama}</option>`;
         });
 
-        // [MODIFIKASI] Mengubah tombol hapus
         tr.innerHTML = `
           <td><strong>${namaGuru}</strong></td>
           <td>${namaMapel}</td>
@@ -11639,6 +11625,80 @@ function populateSiswaFilters() {
     } else {
       showMessage('pengaturan-cetak-message', 'Gagal menyimpan: ' + response.message, true);
     }
+  }
+
+  /**
+   * [BARU] Helper untuk konversi angka Romawi (hingga 39, cukup untuk kelas).
+   */
+  function romanToInt(s) {
+    if (!s) return 0;
+    const map = { 'I': 1, 'V': 5, 'X': 10 };
+    let num = 0;
+    try {
+      for (let i = 0; i < s.length; i++) {
+        const curr = map[s[i].toUpperCase()];
+        const next = map[s[i+1]?.toUpperCase()];
+        if (curr < next) {
+          num -= curr;
+        } else {
+          num += curr;
+        }
+      }
+    } catch(e) { return 0; }
+    return num;
+  }
+
+  /**
+   * [BARU] Helper untuk mengekstrak nilai sortable dari nama kelas.
+   */
+  function getKelasSortValue(className) {
+    if (!className) return { type: 'string', value: 999, original: '' };
+    
+    // Regex untuk Romawi (sebagai kata utuh, misal "VI" tapi bukan "VIP")
+    const romanMatch = className.toUpperCase().match(/\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\b/);
+    if (romanMatch) {
+      return { 
+        type: 'number', 
+        value: romanToInt(romanMatch[0]), 
+        original: className 
+      };
+    }
+    
+    // Regex untuk angka Arab
+    const arabicMatch = className.match(/(\d+)/);
+    if (arabicMatch) {
+      return { 
+        type: 'number', 
+        value: parseInt(arabicMatch[0], 10), 
+        original: className 
+      };
+    }
+    
+    // Tidak ada angka, urutkan berdasarkan abjad
+    return { type: 'string', value: 999, original: className };
+  }
+
+  /**
+   * [BARU] Fungsi komparator untuk sorting nama kelas.
+   */
+  function compareKelas(a, b) {
+    const valA = getKelasSortValue(a);
+    const valB = getKelasSortValue(b);
+
+    // Angka (Romawi/Arab) selalu di atas string
+    if (valA.type === 'number' && valB.type === 'string') return -1;
+    if (valA.type === 'string' && valB.type === 'number') return 1;
+
+    // Jika keduanya angka
+    if (valA.type === 'number' && valB.type === 'number') {
+      if (valA.value !== valB.value) {
+        return valA.value - valB.value; // Urutkan berdasarkan angkanya (1, 2, 6, 9, 10)
+      }
+    }
+    
+    // Jika keduanya string, atau angkanya sama (misal VI A vs VI B)
+    // Urutkan berdasarkan teks aslinya
+    return valA.original.localeCompare(valB.original);
   }
 
 </script>
