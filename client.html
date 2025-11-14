@@ -1093,16 +1093,39 @@
       this.classList.toggle('fa-eye-slash');
     });
 
+    // --- [TAMBAHAN BARU] Event Listener Fase Capture untuk Halaman Guru ---
+    // Ini harus ditambahkan di dalam DOMContentLoaded
+    document.getElementById('halaman-guru').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+      
+      // Cek apakah mode read-only aktif
+      if (halaman.classList.contains('non-premium-readonly')) {
+        // Cari elemen interaktif yang diklik (atau parent-nya)
+        const targetButton = e.target.closest('button');
+        const targetInput = e.target.closest('input, select, textarea');
+        const targetSwitch = e.target.closest('.switch');
+        
+        const interactiveTarget = targetButton || targetInput || targetSwitch;
+
+        // Jangan blokir tombol 'Kembali ke Dasbor'
+        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-guru') {
+          // Cegah aksi default (mengetik, membuka modal, toggle, dll.)
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Arahkan ke halaman Donasi
+          // Kita tidak perlu handleNavigationConfirm di sini karena kita MENCEGAH perubahan data
+          bukaHalamanDonasi();
+        }
+      }
+      // Jika tidak dalam mode read-only, biarkan event berjalan normal
+    }, true); // <-- Gunakan fase CAPTURE (true)
+    // --- [AKHIR TAMBAHAN BARU] ---
+
     // --- Event Listeners untuk Guru ---
     document.getElementById('btn-buka-guru').addEventListener('click', (e) => {
-        // Cek apakah kartu memiliki class 'card-disabled'
-        if (e.currentTarget.classList.contains('card-disabled')) {
-            // Jika ya (non-premium), alihkan ke halaman donasi
-            handleNavigationConfirm(bukaHalamanDonasi);
-        } else {
-            // Jika tidak (premium aktif), buka halaman guru
-            handleNavigationConfirm(bukaHalamanGuru);
-        }
+        // Selalu buka halaman guru. Logika premium akan ditangani di dalam bukaHalamanGuru()
+        handleNavigationConfirm(bukaHalamanGuru);
     });
     document.getElementById('btn-kembali-ke-dashboard-guru').addEventListener('click', () => {
         handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
@@ -8627,6 +8650,18 @@
 
   function bukaHalamanGuru() {
       tampilHalaman('halaman-guru');
+
+      // --- [TAMBAHAN BARU] ---
+      // Terapkan kelas read-only jika non-premium
+      const isPremium = (globalDonasiStatus === 'APPROVED');
+      const halaman = document.getElementById('halaman-guru');
+      
+      if (isPremium) {
+        halaman.classList.remove('non-premium-readonly');
+      } else {
+        halaman.classList.add('non-premium-readonly');
+      }
+      // --- [AKHIR TAMBAHAN BARU] ---
       
       // 1. Panggil data Pengaturan (selalu panggil, datanya kecil)
       google.script.run
@@ -8893,18 +8928,19 @@
           // 5. Buat <tr> baru di memori
           const tr = document.createElement('tr');
           
-          // 6. Isi <td> menggunakan .innerHTML
-          // [MODIFIKASI] Menghilangkan <td> untuk mapelBadges
+          // 6. [MODIFIKASI] Isi <td> (menambahkan premium-stamp dan wrapper)
           tr.innerHTML = `
               <td><strong>${guru.nama}</strong></td>
               <td>${guru.email}</td>
               <td>
                 <div class="btn-grup-aksi">
                       <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
-                        <i class="fas fa-pencil-alt"></i> Edit
+                        <span class="btn-content-wrapper"><i class="fas fa-pencil-alt"></i> Edit</span>
+                        <div class="premium-stamp" style="display: none;">Premium</div>
                       </button>
                       <button class="btn-aksi btn-delete btn-delete-guru" data-email="${guru.email}" data-nama="${guru.nama}">
-                        <i class="fas fa-trash-alt"></i> Hapus
+                        <span class="btn-content-wrapper"><i class="fas fa-trash-alt"></i> Hapus</span>
+                        <div class="premium-stamp" style="display: none;">Premium</div>
                       </button>
                 </div>
               </td>
@@ -9553,22 +9589,22 @@
     const tabGuru = document.getElementById('tab-btn-guru');
     const tabSiswa = document.getElementById('tab-btn-siswa');
     const btnKelulusan = document.getElementById('btn-buka-kelola-kelulusan'); 
-    const btnProsesKelulusan = document.getElementById('btn-buka-proses-kelulusan'); // <-- BARIS BARU
-    // --- TAMBAHAN BARU ---
+    const btnProsesKelulusan = document.getElementById('btn-buka-proses-kelulusan');
     const btnPenempatan = document.getElementById('btn-buka-penempatan');
     const btnTahunAjaran = document.getElementById('btn-buka-tahun-ajaran');
-    // --- AKHIR TAMBAHAN ---
     
     if (btnGuru) {
       const stamp = btnGuru.querySelector('.premium-stamp');
       if (isPremium) {
         btnGuru.classList.remove('card-disabled');
-        // btnGuru.disabled = false; // <-- HAPUS BARIS INI
         if (stamp) stamp.style.display = 'none';
       } else {
-        btnGuru.classList.add('card-disabled');
-        // btnGuru.disabled = true; // <-- HAPUS BARIS INI
+        // --- [PERBAIKAN DI SINI] ---
+        // 'add' BUKAN 'remove'. Ini akan mengaktifkan shimmer
+        // dan CSS override akan membuatnya tetap bisa diklik.
+        btnGuru.classList.add('card-disabled'); 
         if (stamp) stamp.style.display = 'block';
+        // --- [AKHIR PERBAIKAN] ---
       }
     }
     
