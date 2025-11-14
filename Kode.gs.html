@@ -4465,7 +4465,36 @@ function validateAdminSession(token) {
   if (!sessionData.spreadsheetID) {
     throw new Error("Sesi Admin tidak valid (Spreadsheet ID tidak ditemukan).");
   }
-  return { sessionData, spreadsheetID: sessionData.spreadsheetID };
+
+  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+  const data = sheetSekolah.getRange("A2:M" + sheetSekolah.getLastRow()).getValues();
+
+  let app2DbId = null;
+  for (const row of data) {
+    if (row[0] == sessionData.sekolahID) {
+      app2DbId = row[12]; // Kolom M
+      break;
+    }
+  }
+
+  if (!app2DbId) {
+    Logger.log(`Gagal menemukan App2_DB_ID untuk ${sessionData.sekolahID} di validateAdminSession. Mencoba perbaikan...`);
+    try {
+      app2DbId = getApp2DatabaseId(token);
+      Logger.log(`Perbaikan App2_DB_ID berhasil, ID: ${app2DbId}`);
+    } catch (e) {
+      Logger.log(`Perbaikan App2_DB_ID gagal: ${e.message}`);
+      throw new Error("Database Aplikasi 2 (Nilai Ujian) tidak tertaut. Hubungi Superadmin untuk memperbaiki (Kolom M).");
+    }
+  }
+
+  return { 
+    sessionData: sessionData, 
+    spreadsheetID: sessionData.spreadsheetID,
+    app2DbId: app2DbId,
+    sekolahID: sessionData.sekolahID
+  };
 }
 
 // Salin dan GANTI fungsi _internalPublishLogic() Anda dengan yang ini
@@ -6340,13 +6369,11 @@ function getApp2DatabaseId(token) {
   return app2DbId;
 }
 
-// Helper to get/create db_tahun_ajaran sheet in App2 DB
 function getTahunAjaranSheet(ss_app2) {
   let sheet = ss_app2.getSheetByName('db_tahun_ajaran');
   if (!sheet) {
     sheet = ss_app2.insertSheet('db_tahun_ajaran');
     sheet.appendRow(["id_tahun_ajaran", "deskripsi", "status_kunci"]);
-    // Add default if empty
     const currentYear = new Date().getFullYear();
     const nextYear = currentYear + 1;
     const defaultTaDeskripsi = `${currentYear}/${nextYear}`;
@@ -6375,11 +6402,9 @@ function getMapelSheet_App2(ss_app2) {
   let sheet = ss_app2.getSheetByName('db_mapel');
   if (!sheet) {
     sheet = ss_app2.insertSheet('db_mapel');
-    // [MODIFIKASI] Menambahkan isUS (F) dan isUP (G)
     sheet.appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json", "isUS", "isUP"]);
     sheet.setFrozenRows(1);
   } else {
-    // Perbaikan otomatis untuk header yang ada
     const header = sheet.getRange(1, 6).getValue();
     if (header !== "isUS") {
       sheet.getRange(1, 6).setValue("isUS");
@@ -6389,18 +6414,15 @@ function getMapelSheet_App2(ss_app2) {
   return sheet;
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
 function getSiswaSheet_App2(ss_app2) {
   let sheet = ss_app2.getSheetByName('db_siswa');
   if (!sheet) {
     sheet = ss_app2.insertSheet('db_siswa');
-    // [MODIFIKASI] Tambah nisn dan kelas
     sheet.appendRow(["nomor_ujian", "nama", "nisn", "kelas"]);
     sheet.setFrozenRows(1);
-    sheet.getRange("A:A").setNumberFormat('@'); // Format Nomor Ujian sebagai Teks
-    sheet.getRange("C:C").setNumberFormat('@'); // [BARU] Format NISN sebagai Teks
+    sheet.getRange("A:A").setNumberFormat('@');
+    sheet.getRange("C:C").setNumberFormat('@');
   } else {
-    // [BARU] Perbaikan otomatis header
     if (sheet.getRange(1, 3).getValue() !== "nisn") {
       sheet.getRange(1, 3).setValue("nisn");
       sheet.getRange(1, 4).setValue("kelas");
@@ -7876,4 +7898,435 @@ function _MIGRASI_TambahKolomNIPGuru() {
     Logger.log("Gagal migrasi 'db_guru': " + e.message);
     Browser.msgBox("Gagal migrasi 'db_guru': " + e.message);
   }
+}
+
+function getPendingTeacherScores(token) {
+  try {
+    const { app2DbId, sekolahID } = validateAdminSession(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+
+    const statusSheet = ss_app2.getSheetByName('db_status_kirim');
+    if (!statusSheet) {
+      return { status: "sukses", pendingScores: [] };
+    }
+
+    const guruMap = new Map();
+    try {
+      const ss_app2_global = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+      const guruSheetGlobal = ss_app2_global.getSheetByName('db_guru');
+      const guruDataGlobal = guruSheetGlobal.getDataRange().getValues().slice(1);
+      guruDataGlobal.forEach(row => {
+        if (row[3] == sekolahID) {
+          guruMap.set(row[0].toLowerCase(), row[2]);
+        }
+      });
+    } catch (e) {
+      Logger.log("Gagal mengambil nama guru global: " + e.message);
+    }
+    
+    const taMap = new Map();
+    try {
+      const taSheet = ss_app2.getSheetByName('db_tahun_ajaran');
+      const taData = taSheet.getDataRange().getValues().slice(1);
+      taData.forEach(row => taMap.set(row[0], row[1]));
+    } catch (e) {
+      Logger.log("Gagal mengambil nama TA: " + e.message);
+    }
+
+    const statusData = statusSheet.getDataRange().getValues().slice(1);
+    const pendingScores = [];
+    
+    statusData.forEach(row => {
+      const status = row[6];
+      if (status === "PENDING") {
+        const email = row[2].toLowerCase();
+        pendingScores.push({
+          key: row[0],
+          id_ta: row[1],
+          email_guru: row[2],
+          nama_mapel: row[3],
+          timestamp_kirim: row[4] instanceof Date ? row[4].toISOString() : row[4],
+          nama_guru: guruMap.get(email) || email,
+          deskripsi_ta: taMap.get(row[1]) || row[1]
+        });
+      }
+    });
+
+    return { status: "sukses", pendingScores: pendingScores };
+
+  } catch (e) {
+    Logger.log("getPendingTeacherScores Error: " + e.message);
+    return { status: "gagal", message: e.message };
+  }
+}
+
+function _updateNilaiUjianSheet(sheetNilaiApp1, siswaId, mapelId, nilaiUM, nilaiUP) {
+  const data = sheetNilaiApp1.getDataRange().getValues();
+  let rowToUpdate = -1;
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] == siswaId && data[i][1] == mapelId) {
+      rowToUpdate = i + 1;
+      break;
+    }
+  }
+  
+  const umToSave = (nilaiUM === null || nilaiUM === undefined) ? null : nilaiUM;
+  const upToSave = (nilaiUP === null || nilaiUP === undefined) ? null : nilaiUP;
+
+  if (rowToUpdate > -1) {
+    sheetNilaiApp1.getRange(rowToUpdate, 3).setValue(umToSave);
+    sheetNilaiApp1.getRange(rowToUpdate, 4).setValue(upToSave);
+  } else {
+    sheetNilaiApp1.appendRow([siswaId, mapelId, umToSave, upToSave]);
+  }
+}
+
+function approveTeacherScore(token, submissionKey) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000); 
+  
+  let app1DbId, app2DbId, sekolahID, spreadsheetID;
+
+  try {
+    const session = validateAdminSession(token);
+    app1DbId = session.spreadsheetID;
+    app2DbId = session.app2DbId;
+    sekolahID = session.sekolahID;
+    spreadsheetID = session.spreadsheetID;
+    
+    const ss_app1 = SpreadsheetApp.openById(app1DbId);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+
+    const statusSheetApp2 = getStatusKirimSheet(ss_app2);
+    const statusDataApp2 = statusSheetApp2.getDataRange().getValues();
+    
+    let statusRowIndex = -1;
+    let id_ta_app2, email_guru, nama_mapel_app2;
+    
+    for (let i = 1; i < statusDataApp2.length; i++) {
+      if (statusDataApp2[i][0] === submissionKey) {
+        if (statusDataApp2[i][6] !== "PENDING") {
+          throw new Error("Status nilai ini bukan 'PENDING'. Mungkin sudah diproses.");
+        }
+        statusRowIndex = i + 1;
+        id_ta_app2 = statusDataApp2[i][1];
+        email_guru = statusDataApp2[i][2];
+        nama_mapel_app2 = statusDataApp2[i][3];
+        break;
+      }
+    }
+
+    if (statusRowIndex === -1) {
+      throw new Error("Data pengiriman tidak ditemukan. Mungkin sudah diproses.");
+    }
+    
+    const sheetMapelApp1 = getMapelSheet(ss_app1);
+    const dataMapelApp1 = sheetMapelApp1.getDataRange().getValues().slice(1);
+    let mapelIdApp1 = null;
+    let mapelInfoApp1 = null;
+    
+    for (const row of dataMapelApp1) {
+      if (row[1] === nama_mapel_app2) {
+        mapelIdApp1 = row[0];
+        mapelInfoApp1 = { isUS: row[2] === true, isUP: row[3] === true };
+        break;
+      }
+    }
+    
+    if (!mapelIdApp1) {
+      throw new Error(`Mata pelajaran "${nama_mapel_app2}" tidak ditemukan di 'Mapel' Aplikasi 1. Pastikan nama mapel sama persis.`);
+    }
+
+    const enrollmentSheetApp2 = getEnrollmentSheet_App2(ss_app2);
+    const enrollDataApp2 = enrollmentSheetApp2.getDataRange().getValues().slice(1);
+    const enrollmentMap = new Map();
+    enrollDataApp2.forEach(row => {
+      if (row[3] === id_ta_app2) {
+        enrollmentMap.set(String(row[1]), row[0]);
+      }
+    });
+    
+    if (enrollmentMap.size === 0) {
+      throw new Error("Tidak ada siswa terdaftar (enrolled) di T.A. ini di Aplikasi 2.");
+    }
+
+    const taSheet_App2 = getTahunAjaranSheet(ss_app2);
+    const taData_App2 = taSheet_App2.getDataRange().getValues().slice(1);
+    const taMap = new Map(taData_App2.map(row => [row[0], row[1]]));
+    const taDeskripsi = taMap.get(id_ta_app2);
+
+    if (!taDeskripsi) {
+      throw new Error(`Deskripsi Tahun Ajaran untuk ID '${id_ta_app2}' tidak ditemukan.`);
+    }
+    
+    const nilaiSheetName = `db_nilai_${taDeskripsi.replace('/', '-')}`;
+    const nilaiSheetApp2 = ss_app2.getSheetByName(nilaiSheetName);
+    if (!nilaiSheetApp2) {
+      throw new Error(`Sheet nilai '${nilaiSheetName}' tidak ditemukan di Aplikasi 2.`);
+    }
+    
+    const nilaiDataApp2 = nilaiSheetApp2.getDataRange().getValues().slice(1);
+    const nilaiMapApp2 = new Map();
+    nilaiDataApp2.forEach(row => {
+      if (row[2] === nama_mapel_app2) {
+        nilaiMapApp2.set(String(row[1]), { ujian: row[3], praktek: row[4] });
+      }
+    });
+    
+    const sheetNilaiApp1 = getNilaiUjianSheet(ss_app1);
+    
+    let copyCount = 0;
+    for (const [nomor_ujian_app2, id_siswa_app1] of enrollmentMap.entries()) {
+      const scores_app2 = nilaiMapApp2.get(nomor_ujian_app2) || { ujian: null, praktek: null };
+      
+      const umToSave = mapelInfoApp1.isUS ? scores_app2.ujian : null;
+      const upToSave = mapelInfoApp1.isUP ? scores_app2.praktek : null;
+
+      if (umToSave !== null || upToSave !== null) {
+        _updateNilaiUjianSheet(sheetNilaiApp1, id_siswa_app1, mapelIdApp1, umToSave, upToSave);
+        copyCount++;
+      }
+    }
+
+    statusSheetApp2.getRange(statusRowIndex, 7).setValue("APPROVED");
+    statusSheetApp2.getRange(statusRowIndex, 8).setValue("");
+    
+    clearNilaiUjianCache(sekolahID, spreadsheetID);
+    CacheService.getScriptCache().put('IJAZAH_IS_DIRTY_' + sekolahID, 'true');
+
+    return { status: "sukses", message: `Berhasil disetujui. ${copyCount} data nilai siswa disalin ke Nilai_Ujian.` };
+
+  } catch (e) {
+    Logger.log("approveTeacherScore Error: " + e.message + "\n" + e.stack);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function rejectTeacherScore(token, submissionKey, reason) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000); 
+  
+  try {
+    const { app2DbId } = validateAdminSession(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+
+    const statusSheetApp2 = ss_app2.getSheetByName('db_status_kirim');
+    const statusDataApp2 = statusSheetApp2.getDataRange().getValues();
+    
+    let statusRowIndex = -1;
+    for (let i = 1; i < statusDataApp2.length; i++) {
+      if (statusDataApp2[i][0] === submissionKey) {
+        if (statusDataApp2[i][6] !== "PENDING") {
+          throw new Error("Status nilai ini bukan 'PENDING'. Mungkin sudah diproses.");
+        }
+        statusRowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (statusRowIndex === -1) {
+      throw new Error("Data pengiriman tidak ditemukan. Mungkin sudah diproses.");
+    }
+    
+    if (!reason || reason.trim() === "") {
+      throw new Error("Alasan penolakan wajib diisi.");
+    }
+
+    statusSheetApp2.getRange(statusRowIndex, 7).setValue("REJECTED");
+    statusSheetApp2.getRange(statusRowIndex, 8).setValue(reason);
+    
+    return { status: "sukses", message: "Nilai berhasil ditolak dan notifikasi dikirim ke guru." };
+
+  } catch (e) {
+    Logger.log("rejectTeacherScore Error: " + e.message);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getTeacherSubmittedScores(token, submissionKey) {
+  try {
+    const { app2DbId, sekolahID } = validateAdminSession(token);
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+
+    // 1. Get submission details from db_status_kirim
+    const statusSheetApp2 = getStatusKirimSheet(ss_app2);
+    const statusDataApp2 = statusSheetApp2.getDataRange().getValues();
+    
+    let id_ta_app2, email_guru, nama_mapel_app2;
+    let found = false;
+    for (let i = 1; i < statusDataApp2.length; i++) {
+      if (statusDataApp2[i][0] === submissionKey) {
+        id_ta_app2 = statusDataApp2[i][1];
+        email_guru = statusDataApp2[i][2];
+        nama_mapel_app2 = statusDataApp2[i][3];
+        found = true;
+        break;
+      }
+    }
+    if (!found) throw new Error("Data pengiriman tidak ditemukan.");
+
+    // 2. Get Mapel Info (isUS/isUP) from db_mapel (App 2)
+    const sheetMapelApp2 = getMapelSheet_App2(ss_app2);
+    const mapelDataApp2 = sheetMapelApp2.getDataRange().getValues().slice(1);
+    let mapelInfo = null;
+    for (const row of mapelDataApp2) {
+      if (row[2] === id_ta_app2 && row[1] === nama_mapel_app2 && row[0].toLowerCase() === email_guru.toLowerCase()) {
+        mapelInfo = { isUS: row[5] === true, isUP: row[6] === true };
+        break;
+      }
+    }
+    if (!mapelInfo) throw new Error("Info mapel (isUS/isUP) tidak ditemukan di db_mapel Aplikasi 2.");
+
+    // 3. Get Student List for this TA
+    // 3a. Get db_siswa (App 2)
+    const sheetSiswaApp2 = getSiswaSheet_App2(ss_app2);
+    const siswaDataApp2 = sheetSiswaApp2.getDataRange().getValues().slice(1);
+    const siswaMap = new Map(siswaDataApp2.map(row => [row[0], { nama: row[1], kelas: row[3] || 'N/A' }])); // no_ujian -> {nama, kelas}
+    
+    // 3b. Get db_enrollment (App 2)
+    const sheetEnrollment = getEnrollmentSheet_App2(ss_app2);
+    const enrollDataApp2 = sheetEnrollment.getDataRange().getValues().slice(1);
+    const enrolledSiswa = [];
+    
+    enrollDataApp2.forEach(row => {
+      if (row[3] === id_ta_app2) { // row[3] = id_ta
+        const no_ujian = String(row[1]);
+        const siswaDetail = siswaMap.get(no_ujian);
+        if (siswaDetail) {
+          enrolledSiswa.push({
+            no_ujian: no_ujian,
+            nama: siswaDetail.nama,
+            kelas: siswaDetail.kelas
+          });
+        }
+      }
+    });
+    
+    const allKelas = Array.from(new Set(enrolledSiswa.map(s => s.kelas)));
+    
+    // 4. Get Scores from db_nilai_... (App 2)
+    const taSheet_App2 = getTahunAjaranSheet(ss_app2);
+    const taData_App2 = taSheet_App2.getDataRange().getValues().slice(1);
+    const taMap_App2 = new Map(taData_App2.map(row => [row[0], row[1]]));
+    const taDeskripsi = taMap_App2.get(id_ta_app2);
+    if (!taDeskripsi) throw new Error("Deskripsi Tahun Ajaran tidak ditemukan.");
+
+    const nilaiSheetName = `db_nilai_${taDeskripsi.replace('/', '-')}`;
+    const nilaiSheetApp2 = ss_app2.getSheetByName(nilaiSheetName);
+    if (!nilaiSheetApp2) throw new Error(`Sheet nilai '${nilaiSheetName}' tidak ditemukan.`);
+    
+    const nilaiDataApp2 = nilaiSheetApp2.getDataRange().getValues().slice(1);
+    const nilaiMap = new Map();
+    nilaiDataApp2.forEach(row => {
+      if (row[2] === nama_mapel_app2) { // row[2] = mapel
+        nilaiMap.set(String(row[1]), { ujian: row[3], praktek: row[4] }); // no_ujian -> {ujian, praktek}
+      }
+    });
+
+    // 5. Combine data
+    const scoresList = enrolledSiswa
+      .map(siswa => {
+        const scores = nilaiMap.get(siswa.no_ujian) || { ujian: null, praktek: null };
+        return {
+          nama: siswa.nama,
+          kelas: siswa.kelas,
+          no_ujian: siswa.no_ujian,
+          nilai_ujian: (scores.ujian === null || scores.ujian === "") ? "-" : scores.ujian,
+          nilai_praktek: (scores.praktek === null || scores.praktek === "") ? "-" : scores.praktek
+        };
+      })
+      .sort((a, b) => compareKelas_GS(a.kelas, b.kelas) || a.nama.localeCompare(b.nama)); // Sort by class, then name
+
+    return { status: "sukses", scores: scoresList, mapelInfo: mapelInfo, allKelas: allKelas };
+    
+  } catch (e) {
+    Logger.log("getTeacherSubmittedScores Error: " + e.message + "\n" + e.stack);
+    return { status: "gagal", message: e.message };
+  }
+}
+
+function getStatusKirimSheet(ss_sekolah) {
+  const sheetName = 'db_status_kirim';
+  let sheet = ss_sekolah.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss_sekolah.insertSheet(sheetName);
+    const headers = [
+      "key", "id_tahun_ajaran", "email_guru", "nama_mapel", 
+      "timestamp_kirim", "tanggal_ttd", "status_approval", "alasan_tolak"
+    ];
+    sheet.appendRow(headers);
+    sheet.getRange("A1:H1").setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  } else {
+    const headerStatus = sheet.getRange(1, 7).getValue();
+    if (headerStatus !== "status_approval") {
+      sheet.getRange(1, 7).setValue("status_approval");
+      sheet.getRange(1, 8).setValue("alasan_tolak");
+    }
+  }
+  return sheet;
+}
+
+function romanToInt_GS(s) {
+  if (!s) return 0;
+  const map = { 'I': 1, 'V': 5, 'X': 10 };
+  let num = 0;
+  try {
+    for (let i = 0; i < s.length; i++) {
+      const curr = map[s[i].toUpperCase()];
+      const next = (i + 1 < s.length) ? map[s[i+1].toUpperCase()] : 0;
+      if (curr < next) {
+        num -= curr;
+      } else {
+        num += curr;
+      }
+    }
+  } catch(e) { return 0; }
+  return num;
+}
+
+function getKelasSortValue_GS(className) {
+  if (!className) return { type: 'string', value: 999, original: '' };
+  
+  const romanMatch = className.toUpperCase().match(/\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\b/);
+  if (romanMatch) {
+    return { 
+      type: 'number', 
+      value: romanToInt_GS(romanMatch[0]), 
+      original: className 
+    };
+  }
+  
+  const arabicMatch = className.match(/(\d+)/);
+  if (arabicMatch) {
+    return { 
+      type: 'number', 
+      value: parseInt(arabicMatch[0], 10), 
+      original: className 
+    };
+  }
+  
+  return { type: 'string', value: 999, original: className };
+}
+
+function compareKelas_GS(a, b) {
+  const valA = getKelasSortValue_GS(a);
+  const valB = getKelasSortValue_GS(b);
+
+  if (valA.type === 'number' && valB.type === 'string') return -1;
+  if (valA.type === 'string' && valB.type === 'number') return 1;
+
+  if (valA.type === 'number' && valB.type === 'number') {
+    if (valA.value !== valB.value) {
+      return valA.value - valB.value;
+    }
+  }
+  
+  return valA.original.localeCompare(b.original);
 }
