@@ -5032,4 +5032,109 @@
       --shimmer-color: rgba(255, 255, 255, 0.95); /* Kilau lebih terang saat hover */
   }
   /* --- Akhir Style Premium --- */
+
+  /* --- ============================================= --- */
+  /* --- GAYA BARU: Read-Only Premium Gating (halaman-guru) --- */
+  /* --- ============================================= --- */
+
+  /* 1. Wrapper untuk shimmer dan stamp pada tombol dan toggle */
+  #halaman-guru.non-premium-readonly .header-buttons button,
+  #halaman-guru.non-premium-readonly .btn-grup-aksi button,
+  #halaman-guru.non-premium-readonly .form-actions button,
+  #halaman-guru.non-premium-readonly .form-group-toggle {
+    position: relative;
+    overflow: hidden; /* Penting untuk memotong shimmer dan stamp */
+  }
+
+  /* 2. Gaya "disabled" untuk input (mempertahankan warna) */
+  #halaman-guru.non-premium-readonly input,
+  #halaman-guru.non-premium-readonly select,
+  #halaman-guru.non-premium-readonly textarea {
+    cursor: not-allowed;
+    opacity: 0.85; /* Sedikit pudar */
+    pointer-events: none; /* Cegah fokus */
+  }
+  
+  /* 3. Gaya "disabled" untuk sakelar (toggle) */
+  #halaman-guru.non-premium-readonly .switch {
+    cursor: not-allowed;
+    opacity: 0.85;
+    pointer-events: none; /* Cegah toggle */
+  }
+  
+  /* 4. Tampilkan Premium Stamp pada elemen yang dibungkus */
+  #halaman-guru.non-premium-readonly .header-buttons button .premium-stamp,
+  #halaman-guru.non-premium-readonly .btn-grup-aksi button .premium-stamp,
+  #halaman-guru.non-premium-readonly .form-actions button .premium-stamp,
+  #halaman-guru.non-premium-readonly .form-group-toggle .premium-stamp {
+    position: absolute;
+    top: 10px;
+    right: -30px;
+    background-color: #fd7e14; /* Oranye */
+    color: white;
+    padding: 5px 30px;
+    font-size: 12px;
+    font-weight: 700;
+    transform: rotate(45deg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    z-index: 3; /* Di atas shimmer dan konten */
+    display: block; /* Selalu tampilkan dalam mode ini */
+  }
+  
+  /* 5. Tambahkan Shimmer Effect (::before) PUTIH */
+  #halaman-guru.non-premium-readonly .header-buttons button::before,
+  #halaman-guru.non-premium-readonly .btn-grup-aksi button::before,
+  #halaman-guru.non-premium-readonly .form-actions button::before,
+  #halaman-guru.non-premium-readonly .form-group-toggle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    
+    /* Kilau PUTIH */
+    --shimmer-color: rgba(255, 255, 255, 0.8); 
+    
+    background: linear-gradient(
+      100deg, 
+      rgba(255, 255, 255, 0) 30%, 
+      var(--shimmer-color) 50%, 
+      rgba(255, 255, 255, 0) 70%
+    );
+    
+    transform: translateX(-150%);
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+    z-index: 1; /* Di bawah konten */
+    display: block;
+    
+    /* Sesuaikan radius (radius default tombol adalah 8px) */
+    border-radius: 8px; 
+  }
+  
+  /* 6. Pastikan konten (ikon/teks) berada di atas shimmer */
+  /* --- [MODIFIKASI DI BAWAH INI] --- */
+  #halaman-guru.non-premium-readonly button .btn-content-wrapper,
+  #halaman-guru.non-premium-readonly .form-group-toggle > label,
+  #halaman-guru.non-premium-readonly .form-group-toggle > .switch {
+     position: relative;
+     z-index: 2;
+     pointer-events: none;
+  }
+  /* --- [AKHIR MODIFIKASI] --- */
+
+  /* 7. Penyesuaian stempel untuk tombol Edit/Hapus yang kecil */
+  #halaman-guru.non-premium-readonly .btn-grup-aksi button .premium-stamp {
+    font-size: 8px;
+    padding: 2px 20px;
+    top: 2px;
+    right: -25px;
+  }
+  
+  /* 8. Penyesuaian shimmer/radius untuk sakelar (toggle) */
+  #halaman-guru.non-premium-readonly .form-group-toggle,
+  #halaman-guru.non-premium-readonly .form-group-toggle::before {
+     border-radius: 12px; /* Sesuaikan dengan radius aslinya */
+  }
+  
 </style>
