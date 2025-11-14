@@ -608,8 +608,7 @@ function clearNilaiUjianCache(sekolahID, spreadsheetID) { // <--- Terima spreads
     } // Akhir dari 'if (spreadsheetID)'
     
     // --- TAMBAHAN: Pastikan Ijazah dan Rekap juga bersih ---
-    clearRekapNilaiCache(sekolahID);
-    scriptCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID);
+    clearRekapNilaiCache(sekolahID); // Ini sudah otomatis membersihkan Ijazah
     // --- AKHIR TAMBAHAN ---
 
   } catch (e) {
@@ -636,7 +635,7 @@ function clearRekapNilaiRaporCache(sekolahID) {
   }
 }
 
-// Fungsi ini sudah benar, tidak perlu diubah, tapi pastikan ada di kode Anda.
+// Salin dan ganti fungsi clearNilaiRaporCache() Anda dengan yang ini
 function clearNilaiRaporCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
     const scriptCache = CacheService.getScriptCache();
@@ -689,7 +688,9 @@ function clearNilaiRaporCache(sekolahID, spreadsheetID) { // <--- Terima spreads
 function clearSiswaCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
     const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
-    CacheService.getScriptCache().remove(cacheKey);
+    const scriptCache = CacheService.getScriptCache(); // <-- [PERBAIKAN]
+    
+    scriptCache.remove(cacheKey); // Hapus cache siswa
     
     // --- PERBAIKAN: AKTIFKAN (UN-COMMENT) DUA BARIS DI BAWAH INI ---
     clearNilaiUjianCache(sekolahID, spreadsheetID);
@@ -697,6 +698,8 @@ function clearSiswaCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetI
     // --- AKHIR PERBAIKAN ---
 
     clearLockedKelasCache(sekolahID); // Ini tidak perlu spreadsheetID
+    
+    scriptCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID); // <-- [TAMBAHAN]
 
   } catch (e) {
      Logger.log("Gagal clearSiswaCache: " + e.message);
@@ -708,10 +711,6 @@ function clearMapelCache(sekolahID, spreadsheetID) { // <--- TAMBAHKAN spreadshe
   try {
     const cacheKey = MAPEL_CACHE_KEY + "_" + sekolahID;
     
-    // --- PERBAIKAN: Hapus baris lama yang salah ---
-    // CacheService.getScriptCache().remove(cacheKey);
-    // --- AKHIR PERBAIKAN ---
-    
     // --- TAMBAHAN: Ganti dengan baris di bawah ini ---
     const scriptCache = CacheService.getScriptCache();
     scriptCache.remove(cacheKey);
@@ -719,6 +718,7 @@ function clearMapelCache(sekolahID, spreadsheetID) { // <--- TAMBAHKAN spreadshe
     // Data mapel mempengaruhi SEMUA cache nilai.
     clearNilaiUjianCache(sekolahID, spreadsheetID);
     clearNilaiRaporCache(sekolahID, spreadsheetID);
+    // (Kedua fungsi di atas sudah otomatis membersihkan Ijazah & Rekap)
     // --- AKHIR TAMBAHAN ---
 
   } catch (e) {
@@ -761,24 +761,20 @@ function prosesLogin(email, password) {
     
     let cachedRow = null;
     let passwordIsValid = false;
+    let rowNumGlobal = -1; // Simpan nomor baris
 
     if (adminEmailFinder.length > 0) {
-      const rowNum = adminEmailFinder[0].getRow();
-      const rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
+      rowNumGlobal = adminEmailFinder[0].getRow(); // Dapatkan nomor baris
+      const rowData = sheetSekolah.getRange(rowNumGlobal, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
       
-      // --- [PERUBAHAN LOGIKA PASSWORD] ---
-      // Verifikasi HASHED password (Kolom E = Hash, Kolom G = Salt)
       const storedHash = rowData[4]; // Kolom E (index 4)
       const storedSalt = rowData[6]; // Kolom G (index 6)
       
       if (storedHash && storedSalt) {
-         // Jika HASH ADA, gunakan verifikasi hash
          passwordIsValid = verifyPassword(password, storedHash, storedSalt);
       } else if (storedHash && !storedSalt) {
-         // Fallback ke PLAIN TEXT (untuk akun lama sebelum migrasi)
          passwordIsValid = (storedHash === password);
       }
-      // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
 
       if (passwordIsValid) {
         cachedRow = rowData;
@@ -791,17 +787,53 @@ function prosesLogin(email, password) {
     
     const token = Utilities.getUuid();
     const namaSekolahUpper = cachedRow[1].toUpperCase();
-    const userSpreadsheetID = cachedRow[5];
+    const sekolahID = cachedRow[0]; // Kolom A
+    const userSpreadsheetID = cachedRow[5]; // Kolom F (App 1 DB ID)
+    let app2DbId = cachedRow[12]; // Kolom M (App 2 DB ID)
+    
+    // Validasi ID
+    if (!userSpreadsheetID) {
+      return { status: "gagal", message: "Database sekolah (Kolom F) belum diatur oleh Superadmin." };
+    }
+    
+    // Perbaikan Otomatis: Jika App 2 DB ID (Kolom M) kosong, buatkan sekarang.
+    if (!app2DbId) {
+      Logger.log(`PERBAIKAN LOGIN: Kolom M kosong untuk ${sekolahID}. Memulai pembuatan DB App 2...`);
+      const lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+      try {
+        // Cek ulang jika proses lain sudah mengisi
+        const freshApp2DbId = sheetSekolah.getRange(rowNumGlobal, 13).getValue();
+        if (freshApp2DbId) {
+          app2DbId = freshApp2DbId;
+        } else {
+          // Panggil fungsi internal (yang ada di file Kode.gs.html App 1)
+          app2DbId = buatDatabaseAplikasi2Baru(namaSekolahUpper); 
+          sheetSekolah.getRange(rowNumGlobal, 13).setValue(app2DbId);
+          registerSchoolInApp2(sekolahID, namaSekolahUpper);
+          // Daftarkan dengan password yang baru saja digunakan untuk login
+          registerAdminAsGuruInApp2(email, namaSekolahUpper, sekolahID, password, 'guru', ''); // NIP kosong
+          clearMasterSheetCache();
+          Logger.log(`PERBAIKAN LOGIN: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
+        }
+      } catch (e) {
+         Logger.log(`PERBAIKAN LOGIN: Gagal. ${e.message}`);
+         return { status: "gagal", message: `Gagal menautkan ke DB App 2: ${e.message}` };
+      } finally {
+        lock.releaseLock();
+      }
+    }
+    
     const jenjangPilihan = getJenjangPilihanFromSheet(userSpreadsheetID);
-
     const donasiStatus = cachedRow[8] || "NONE"; // Kolom I adalah DonasiStatus
 
     const sessionData = {
       role: 'admin',
-      sekolahID: cachedRow[0],
+      sekolahID: sekolahID,
       namaSekolah: namaSekolahUpper,
-      jenjang: cachedRow[2],
-      spreadsheetID: userSpreadsheetID,
+      jenjang: cachedRow[2], // Kolom C
+      spreadsheetID: userSpreadsheetID, // ID DB App 1
+      app2DbId: app2DbId, // ID DB App 2
       jenjangPilihan: jenjangPilihan,
       donasiStatus: donasiStatus,
       lastActivity: new Date().getTime()
@@ -964,46 +996,109 @@ function validateAndRefreshSession(token) {
   const sessionData = JSON.parse(sessionJson);
   const now = new Date().getTime();
 
-  // --- TAMBAHKAN BLOK INI ---
-  // Refresh status donasi dari DB jika admin
-  if (sessionData.role === 'admin' && !sessionData.isImpersonating) {
-    try {
-      const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-      const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-      const dataSekolah = sheetSekolah.getDataRange().getValues();
-      for (let i = 1; i < dataSekolah.length; i++) {
-        if (dataSekolah[i][0] === sessionData.sekolahID) {
-          sessionData.donasiStatus = dataSekolah[i][8] || "NONE"; // Kolom I
-          break;
-        }
-      }
-    } catch (e) {
-      Logger.log("Gagal refresh donasi status untuk " + sessionData.sekolahID + ": " + e.message);
-    }
-  }
-  // --- AKHIR BLOK ---
-
   const threeHours = 3 * 60 * 60 * 1000;
   if (now - sessionData.lastActivity > threeHours) {
     cache.remove('SESSION_' + token);
     throw new Error("Sesi Anda telah berakhir (3 jam tidak aktif). Silakan login ulang.");
   }
+  
+  // Variabel untuk menyimpan data yang mungkin perlu diambil
+  let needsDBSave = false;
+  let sheetSekolah = null;
+  let dataSekolah = null;
+  let targetRowData = null;
+  let targetRowIndex = -1; // 0-based index
+
+  // Refresh status donasi dari DB jika admin
+  if (sessionData.role === 'admin' && !sessionData.isImpersonating) {
+    try {
+      const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+      sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+      dataSekolah = sheetSekolah.getDataRange().getValues(); // Baca sekali
+      
+      for (let i = 1; i < dataSekolah.length; i++) { // Mulai dari 1 (skip header)
+        if (dataSekolah[i][0] === sessionData.sekolahID) {
+          targetRowData = dataSekolah[i];
+          targetRowIndex = i - 1; // 0-based index dari data (tanpa header)
+          sessionData.donasiStatus = targetRowData[8] || "NONE"; // Kolom I
+          break;
+        }
+      }
+    } catch (e) {
+      Logger.log("Gagal refresh donasi status untuk " + sessionData.sekolahID + ": " + e.message);
+      // Jangan gagalkan sesi, lanjutkan dengan status donasi yang lama
+    }
+  }
+  
+  // Validasi ID Database (HANYA JIKA BELUM ADA DI SESI)
+  if (sessionData.role === 'admin') {
+    if (!sessionData.spreadsheetID || !sessionData.app2DbId) {
+      Logger.log(`Sesi lama terdeteksi untuk ${sessionData.sekolahID}. Mengambil ID database...`);
+      needsDBSave = true; // Tandai bahwa kita perlu menyimpan sesi baru
+      
+      if (!sheetSekolah || !dataSekolah || !targetRowData) {
+        // Jika belum dibuka oleh 'donasiStatus', buka sekarang
+        try {
+          if (!masterSS) masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+          if (!sheetSekolah) sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+          if (!dataSekolah) dataSekolah = sheetSekolah.getDataRange().getValues();
+          
+          for (let i = 1; i < dataSekolah.length; i++) {
+            if (dataSekolah[i][0] === sessionData.sekolahID) {
+              targetRowData = dataSekolah[i];
+              targetRowIndex = i - 1; 
+              break;
+            }
+          }
+        } catch (e) {
+           throw new Error(`Gagal mengambil data sesi: ${e.message}`);
+        }
+      }
+      
+      if (!targetRowData) {
+        throw new Error("Data sekolah tidak ditemukan lagi di Master Sheet.");
+      }
+
+      sessionData.spreadsheetID = targetRowData[5]; // Kolom F
+      sessionData.app2DbId = targetRowData[12]; // Kolom M
+
+      if (!sessionData.spreadsheetID) {
+         throw new Error("Database sekolah (Kolom F) belum diatur oleh Superadmin.");
+      }
+      
+      // Jika App 2 DB ID (Kolom M) masih kosong, perbaiki sekarang
+      if (!sessionData.app2DbId) {
+        Logger.log(`PERBAIKAN SESI: Kolom M kosong untuk ${sessionData.sekolahID}. Memulai pembuatan DB App 2...`);
+        // Panggil fungsi perbaikan. getApp2DatabaseId sudah memiliki lock internal.
+        try {
+          // getApp2DatabaseId akan memvalidasi token (lagi, tapi cepat), menemukan, membuat, dan menyimpan
+          const newApp2DbId = getApp2DatabaseId(token); 
+          sessionData.app2DbId = newApp2DbId;
+        } catch (e) {
+           throw new Error(`Gagal memperbaiki tautan database App 2: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  // Simpan sesi kembali dengan timestamp baru (dan mungkin ID baru)
   sessionData.lastActivity = now;
   cache.put('SESSION_' + token, JSON.stringify(sessionData), 21600);
-  return sessionData;
+  
+  return sessionData; // Kembalikan data sesi yang LENGKAP
 }
 
 function checkToken(tokenFromClient) {
   try {
     const sessionData = validateAndRefreshSession(tokenFromClient);
-    const appUrl = ScriptApp.getService().getUrl(); // <-- TAMBAHKAN INI
+    const appUrl = ScriptApp.getService().getUrl(); 
 
     if (sessionData.role === 'superadmin') {
       return {
         status: "sukses",
         role: "superadmin",
-        namaSekolah: sessionData.nama,
-        appUrl: appUrl // <-- TAMBAHKAN INI
+        namaSekolah: sessionData.nama, // Nama Superadmin
+        appUrl: appUrl
       };
     } else if (sessionData.role === 'admin') {
       return {
@@ -1014,7 +1109,7 @@ function checkToken(tokenFromClient) {
         jenjang: sessionData.jenjang,
         jenjangPilihan: sessionData.jenjangPilihan,
         donasiStatus: sessionData.donasiStatus || "NONE",
-        appUrl: appUrl // <-- TAMBAHKAN INI
+        appUrl: appUrl
       };
     } else if (sessionData.role === 'guru') {
       return {
@@ -1025,7 +1120,7 @@ function checkToken(tokenFromClient) {
         jenjangPilihan: sessionData.jenjangPilihan,
         hasUjianPraktek: sessionData.hasUjianPraktek,
         hasUjianMadrasah: sessionData.hasUjianMadrasah,
-        appUrl: appUrl // <-- TAMBAHKAN INI
+        appUrl: appUrl
       };
     } else {
       throw new Error("Sesi tidak valid (role tidak dikenal).");
@@ -1239,19 +1334,60 @@ function superadminImpersonate(sekolahID, token) {
     const sessionData = validateSuperadminSession(token);
     const dataSekolahFromCache = getCachedMasterSheetData();
     let targetRow = null;
+    let rowNumGlobal = -1; // Simpan nomor baris
+
     for (let i = 1; i < dataSekolahFromCache.length; i++) {
       if (dataSekolahFromCache[i][0] === sekolahID) {
         targetRow = dataSekolahFromCache[i];
+        rowNumGlobal = i + 1; // 1-based index (data[0] is header)
         break;
       }
     }
     if (!targetRow) {
       return { status: "gagal", message: "SekolahID tidak ditemukan." };
     }
-    const spreadsheetID = targetRow[5];
+    const spreadsheetID = targetRow[5]; // Kolom F (App 1 DB ID)
     if (!spreadsheetID) {
       return { status: "gagal", message: "Sekolah ini tidak memiliki SpreadsheetID." };
     }
+    
+    let app2DbId = targetRow[12]; // Kolom M (App 2 DB ID)
+    
+    // Perbaikan Otomatis: Jika App 2 DB ID (Kolom M) kosong, buatkan sekarang.
+    if (!app2DbId) {
+      Logger.log(`PERBAIKAN IMPERSONATE: Kolom M kosong untuk ${sekolahID}. Memulai pembuatan DB App 2...`);
+      const lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+      try {
+        const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+        const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+        
+        const freshApp2DbId = sheetSekolah.getRange(rowNumGlobal, 13).getValue();
+        if (freshApp2DbId) {
+          app2DbId = freshApp2DbId;
+        } else {
+          const namaSekolah = targetRow[1];
+          const emailAdmin = targetRow[3];
+          
+          app2DbId = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase());
+          sheetSekolah.getRange(rowNumGlobal, 13).setValue(app2DbId);
+          
+          // Daftarkan dengan password dummy
+          const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+          registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
+          registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword, 'guru', ''); // NIP kosong
+          
+          clearMasterSheetCache();
+          Logger.log(`PERBAIKAN IMPERSONATE: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
+        }
+      } catch (e) {
+         Logger.log(`PERBAIKAN IMPERSONATE: Gagal. ${e.message}`);
+         return { status: "gagal", message: `Gagal menautkan ke DB App 2: ${e.message}` };
+      } finally {
+        lock.releaseLock();
+      }
+    }
+    
     const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
     
     sessionData.originalRole = 'superadmin';
@@ -1261,7 +1397,9 @@ function superadminImpersonate(sekolahID, token) {
     sessionData.namaSekolah = targetRow[1].toUpperCase();
     sessionData.jenjang = targetRow[2];
     sessionData.spreadsheetID = spreadsheetID;
+    sessionData.app2DbId = app2DbId; // Simpan App 2 ID di sesi
     sessionData.jenjangPilihan = jenjangPilihan;
+    sessionData.donasiStatus = targetRow[8] || "NONE"; // Simpan Donasi Status
 
     const appUrl = ScriptApp.getService().getUrl();
 
@@ -1274,6 +1412,7 @@ function superadminImpersonate(sekolahID, token) {
       namaSekolah: sessionData.namaSekolah,
       jenjang: sessionData.jenjang,
       jenjangPilihan: jenjangPilihan,
+      donasiStatus: sessionData.donasiStatus, // Kirim ke client
       token: token,
       appUrl: appUrl
     };
@@ -1671,7 +1810,6 @@ function deleteAllMapel(token) {
     return { status: "gagal", message: e.message };
   }
 }
-
 
 function saveMapelTipeUjianBatch(token, tipeUjianData) {
   let spreadsheetID, sessionData;
@@ -2884,7 +3022,11 @@ function saveNilaiUjianBatch(token, dataToSave) {
     try {
       // const ss = SpreadsheetApp.openById(spreadsheetID); // <-- Baris ini dipindah ke atas
       const sheet = getNilaiUjianSheet(ss); // <-- Gunakan 'ss' dari atas
-      const data = sheet.getDataRange().getValues();
+      
+      // --- Modifikasi Batch Dimulai ---
+      const range = sheet.getDataRange();
+      const data = range.getValues(); // Baca semua data SEKALI
+      
       const dataMap = new Map();
       for (let i = 1; i < data.length; i++) {
         dataMap.set(`${data[i][0]}_${data[i][1]}`, {row: i + 1, um: data[i][2], up: data[i][3]});
@@ -2904,18 +3046,20 @@ function saveNilaiUjianBatch(token, dataToSave) {
         const existing = dataMap.get(key);
         
         if (existing !== undefined) {
-          const colIdx = (item.tipeUjian === 'UM') ? 3 : 4;
-          const oldNilai = (item.tipeUjian === 'UM') ? existing.um : existing.up;
+          const colIdx = (item.tipeUjian === 'UM') ? 2 : 3; // 0-based index (C=2, D=3)
+          const rowIndex_0based = existing.row - 1; // Konversi ke 0-based
+          
+          const oldNilai = data[rowIndex_0based][colIdx];
           
           if (oldNilai !== nilaiBaru) {
-            sheet.getRange(existing.row, colIdx).setValue(nilaiBaru);
-            if(item.tipeUjian === 'UM') existing.um = nilaiBaru;
-            else existing.up = nilaiBaru;
+            // Modifikasi array di memori
+            data[rowIndex_0based][colIdx] = nilaiBaru;
           }
         } else {
           let newRow = [item.siswaId, item.mapelId, null, null];
           newRow[(item.tipeUjian === 'UM') ? 2 : 3] = nilaiBaru;
           rowsToAppend.push(newRow);
+          // Update map agar data baru dikenali
           dataMap.set(key, {
             row: data.length + rowsToAppend.length, 
             um: newRow[2], 
@@ -2924,25 +3068,24 @@ function saveNilaiUjianBatch(token, dataToSave) {
         }
       });
       
+      // Tulis semua perubahan sekaligus
+      range.setValues(data); 
+      
       if (rowsToAppend.length > 0) {
         sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
       }
+      // --- Akhir Modifikasi Batch ---
       
       const sekolahID = sessionData.sekolahID;
-      
-      // --- PERBAIKAN ---
       const scriptCache = CacheService.getScriptCache();
-      // --- AKHIR PERBAIKAN ---
 
       if (tipeUjianDisimpan) {
-         // --- PERBAIKAN ---
          scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID);
          if (isGuru) {
              scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID + `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}`);
          }
-         // --- AKHIR PERBAIKAN ---
       } else {
-         clearNilaiUjianCache(sekolahID);
+         clearNilaiUjianCache(sekolahID, spreadsheetID);
       }
 
       if (!isGuru) {
@@ -3171,7 +3314,10 @@ function saveSemesterSetting(token, jumlahSemester) {
       }
     }
     if (!found) sheet.appendRow(['Jumlah_Semester', settingAngka]);
-    clearNilaiRaporCache(sessionData.sekolahID);
+    
+    // Panggil clearNilaiRaporCache dengan spreadsheetID
+    clearNilaiRaporCache(sessionData.sekolahID, spreadsheetID);
+    
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -3337,9 +3483,12 @@ function saveNilaiRaporBatch(token, dataToSave, tipeNilai) {
   try {
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getNilaiRaporSheet(ss);
-    const data = sheet.getDataRange().getValues();
-    const kolomIndex = (tipeNilai === 'P') ? 3 : 4;
-    const kolomNomor = kolomIndex + 1;
+    
+    // --- Modifikasi Batch Dimulai ---
+    const range = sheet.getDataRange();
+    const data = range.getValues(); // Baca semua data SEKALI
+    
+    const kolomIndex = (tipeNilai === 'P') ? 3 : 4; // 0-based index (D=3, E=4)
     
     const dataMap = new Map();
     for (let i = 1; i < data.length; i++) {
@@ -3360,14 +3509,16 @@ function saveNilaiRaporBatch(token, dataToSave, tipeNilai) {
       const existing = dataMap.get(key);
       
       if (existing !== undefined) {
-        if (existing.value !== nilaiAngka) {
-          sheet.getRange(existing.row, kolomNomor).setValue(nilaiAngka);
-          existing.value = nilaiAngka;
+        const rowIndex_0based = existing.row - 1; // Konversi ke 0-based
+        if (data[rowIndex_0based][kolomIndex] !== nilaiAngka) {
+          // Modifikasi array di memori
+          data[rowIndex_0based][kolomIndex] = nilaiAngka;
         }
       } else {
         let newRow = [item.siswaId, item.mapelId, item.semesterId, null, null];
         newRow[kolomIndex] = nilaiAngka;
         rowsToAppend.push(newRow);
+        // Update map agar data baru dikenali
         dataMap.set(key, {
           row: data.length + rowsToAppend.length, 
           value: nilaiAngka
@@ -3375,24 +3526,18 @@ function saveNilaiRaporBatch(token, dataToSave, tipeNilai) {
       }
     });
 
+    // Tulis semua perubahan sekaligus
+    range.setValues(data);
+
     if (rowsToAppend.length > 0) {
       sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 5).setValues(rowsToAppend);
     }
+    // --- Akhir Modifikasi Batch ---
 
     const sekolahID = sessionData.sekolahID;
     
-    // --- PERBAIKAN ---
-    const scriptCache = CacheService.getScriptCache();
-    // --- AKHIR PERBAIKAN ---
-    
-    new Set(dataToSave.map(i => i.semesterId)).forEach(semId => {
-      if (semId) {
-        // --- PERBAIKAN ---
-        scriptCache.remove(NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semId + "_" + sekolahID);
-        // --- AKHIR PERBAIKAN ---
-      }
-    });
-    clearRekapNilaiRaporCache(sekolahID);
+    // Panggil fungsi clearNilaiRaporCache dengan spreadsheetID
+    clearNilaiRaporCache(sekolahID, spreadsheetID);
     clearLockedKelasCache(sekolahID);
     return { status: "sukses", message: "Nilai rapor tersimpan." };
   } catch (e) {
@@ -4439,60 +4584,48 @@ function BUAT_SUPERADMIN_PERTAMA_KALI() {
 }
 */
 
-/**
- * Memvalidasi sesi Admin ATAU Guru.
- */
 function validateAdminOrGuruSession(token) {
+  // 1. Panggil fungsi validasi inti
   const sessionData = validateAndRefreshSession(token);
   
+  // 2. Cek Role
   if (sessionData.role !== 'admin' && sessionData.role !== 'guru') {
     throw new Error("Akses ditolak. API ini hanya untuk Admin atau Guru.");
   }
   
+  // 3. Cek ID yang sudah ada di sesi
   if (!sessionData.spreadsheetID) {
     throw new Error("Sesi tidak valid (Spreadsheet ID tidak ditemukan).");
   }
   
-  // Mengembalikan data lengkap untuk digunakan di fungsi pemanggil
+  // 4. Kembalikan data yang diperlukan
   return { sessionData, spreadsheetID: sessionData.spreadsheetID };
 }
 
 function validateAdminSession(token) {
+  // 1. Panggil fungsi validasi inti
   const sessionData = validateAndRefreshSession(token);
+  
+  // 2. Cek Role
   if (sessionData.role !== 'admin') {
     throw new Error("Akses ditolak. API ini hanya untuk Admin Sekolah.");
   }
+  
+  // 3. Cek ID yang sudah ada di sesi
   if (!sessionData.spreadsheetID) {
     throw new Error("Sesi Admin tidak valid (Spreadsheet ID tidak ditemukan).");
   }
-
-  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-  const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-  const data = sheetSekolah.getRange("A2:M" + sheetSekolah.getLastRow()).getValues();
-
-  let app2DbId = null;
-  for (const row of data) {
-    if (row[0] == sessionData.sekolahID) {
-      app2DbId = row[12]; // Kolom M
-      break;
-    }
+  if (!sessionData.app2DbId) {
+    // Ini seharusnya sudah diperbaiki oleh validateAndRefreshSession,
+    // tapi sebagai failsafe, kita cek lagi.
+    throw new Error("Sesi Admin tidak valid (App 2 DB ID tidak ditemukan).");
   }
 
-  if (!app2DbId) {
-    Logger.log(`Gagal menemukan App2_DB_ID untuk ${sessionData.sekolahID} di validateAdminSession. Mencoba perbaikan...`);
-    try {
-      app2DbId = getApp2DatabaseId(token);
-      Logger.log(`Perbaikan App2_DB_ID berhasil, ID: ${app2DbId}`);
-    } catch (e) {
-      Logger.log(`Perbaikan App2_DB_ID gagal: ${e.message}`);
-      throw new Error("Database Aplikasi 2 (Nilai Ujian) tidak tertaut. Hubungi Superadmin untuk memperbaiki (Kolom M).");
-    }
-  }
-
+  // 4. Kembalikan data yang diperlukan
   return { 
     sessionData: sessionData, 
     spreadsheetID: sessionData.spreadsheetID,
-    app2DbId: app2DbId,
+    app2DbId: sessionData.app2DbId,
     sekolahID: sessionData.sekolahID
   };
 }
@@ -6677,12 +6810,6 @@ function getPenempatanData(token, id_tahun_ajaran) {
   }
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
-
-/**
- * [MODIFIKASI] Menyimpan data penempatan siswa.
- * [PERBAIKAN] Memperbaiki logika hapus (Bug 1) dan menambah validasi server (Bug 2).
- */
 function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); 
@@ -6697,167 +6824,89 @@ function saveSiswaEnrollment(token, id_tahun_ajaran, enrollmentData) {
     
     const idSekolahApp1 = sessionData.sekolahID;
     
-    // Ambil data App 1 (untuk info nisn/kelas)
+    // Ambil data App 1 (untuk info nisn/kelas/nama)
     const siswaDataApp1 = _getSiswaInternal(app1DbId, sessionData.sekolahID);
     const siswaInfoMapApp1 = new Map(siswaDataApp1.map(s => [s.id, { nisn: s.nisn, kelas: s.kelas, nama: s.nama }]));
     
-    // Ambil data db_siswa (App 2)
-    const siswaApp2Map = new Map();
-    if (sheetSiswa.getLastRow() > 1) {
-      const siswaData = sheetSiswa.getRange(2, 1, sheetSiswa.getLastRow() - 1, 4).getValues(); // Baca 4 kolom
-      siswaData.forEach((row, index) => {
-         if(row[0]) {
-           siswaApp2Map.set(String(row[0]), { 
-             nama: row[1], 
-             nisn: row[2], // <-- BARU
-             kelas: row[3], // <-- BARU
-             sheetRow: index + 2 
-           });
-         }
+    // --- Modifikasi Batch Dimulai ---
+
+    // 1. Baca semua data LAMA dari db_siswa
+    const siswaRange = sheetSiswa.getDataRange();
+    const allSiswaData = siswaRange.getValues();
+    const newSiswaData = [allSiswaData[0]]; // Mulai dengan header
+    const siswaApp2Map = new Map(); // Kunci: no_ujian
+    if (allSiswaData.length > 1) {
+      allSiswaData.slice(1).forEach(row => {
+        if(row[0]) siswaApp2Map.set(String(row[0]), { nama: row[1], nisn: row[2], kelas: row[3] });
       });
     }
+
+    // 2. Baca semua data LAMA dari db_enrollment
+    const enrollRange = sheetEnroll.getDataRange();
+    const allEnrollData = enrollRange.getValues();
+    const newEnrollData = [allEnrollData[0]]; // Mulai dengan header
     
-    // Ambil data db_enrollment (App 2)
-    const enrollMap = new Map();
-    let allEnrollData = [];
-    if (sheetEnroll.getLastRow() > 1) {
-      allEnrollData = sheetEnroll.getDataRange().getValues();
-      allEnrollData.shift();
-      allEnrollData.forEach((row, index) => {
-        // Filter HANYA untuk T.A. yang sedang diedit
-        if (row[3] === id_tahun_ajaran) { 
-          enrollMap.set(row[0], { // key is id_siswa_app1 (row[0])
-            sheetRow: index + 2, 
-            nomor_ujian: String(row[1]),
-            ruang_ujian: row[4]
-          });
+    // 3. Salin data T.A. LAIN ke array baru
+    if (allEnrollData.length > 1) {
+      allEnrollData.slice(1).forEach(row => {
+        if (String(row[3]) !== id_tahun_ajaran) { // row[3] = id_tahun_ajaran
+          newEnrollData.push(row);
         }
       });
     }
 
-    // 3. Siapkan batch operasi
-    const siswaBaruUntuk_db_siswa = new Map();
-    const siswaUntukUpdate_db_siswa = []; 
-    const enrollBaruUntuk_db_enroll = [];
-    const enrollUntukUpdate_db_enroll = [];
-    
-    // --- PERBAIKAN LOGIKA BUG 1 ---
-    // Inisialisasi Set ini dengan SEMUA siswa yang saat ini terdaftar di T.A. ini.
-    // Ini adalah daftar "calon yang akan dihapus".
-    const enrollUntukDihapus = new Set(enrollMap.keys());
-    // --- AKHIR PERBAIKAN ---
-    
-    // 4. Proses data dari client
+    // 4. Proses data BARU dari client
     for (const item of enrollmentData) {
-      
-      const existingEnroll = enrollMap.get(item.id_siswa_app1);
-      // Ambil info dari App 1 (termasuk nama, untuk pesan error)
       const infoApp1 = siswaInfoMapApp1.get(item.id_siswa_app1) || { nisn: '', kelas: '', nama: `ID ${item.id_siswa_app1}` };
       
       if (item.isEnrolled) {
-        // --- PERBAIKAN LOGIKA BUG 1 ---
-        // Siswa ini dicentang (isEnrolled: true).
-        // HAPUS dia dari daftar "calon yang akan dihapus".
-        enrollUntukDihapus.delete(item.id_siswa_app1);
-        // --- AKHIR PERBAIKAN ---
-
-        // --- PERBAIKAN LOGIKA BUG 2 (Validasi Server) ---
+        // Siswa ini dicentang (isEnrolled: true)
+        
         const noUjianBaru = String(item.nomor_ujian_app2).trim();
         if (!noUjianBaru) {
-          // Jika klien lolos validasi (seharusnya tidak), server akan menangkapnya.
           throw new Error(`Nomor Ujian untuk siswa ${infoApp1.nama} tidak boleh kosong karena dicentang.`);
         }
-        // --- AKHIR PERBAIKAN ---
         
-        const namaBaru = item.nama_app1;
+        const namaBaru = infoApp1.nama;
         const nisnBaru = infoApp1.nisn || '';
         const kelasBaru = infoApp1.kelas || '';
 
-        if (existingEnroll) {
-          // === UPDATE PATH ===
-          const noUjianLama = String(existingEnroll.nomor_ujian);
-          
-          if (noUjianLama !== noUjianBaru || existingEnroll.ruang_ujian !== item.ruang_ujian) {
-            enrollUntukUpdate_db_enroll.push({ row: existingEnroll.sheetRow, nomor_ujian: noUjianBaru, ruang_ujian: item.ruang_ujian });
-          }
-          
-          const siswaLamaData = siswaApp2Map.get(noUjianLama);
-
-          if (noUjianLama !== noUjianBaru) {
-            // --- KASUS RENAME (No Ujian Berubah) ---
-            if (siswaLamaData) {
-              siswaUntukUpdate_db_siswa.push({ row: siswaLamaData.sheetRow, no_ujian: noUjianBaru, nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
-              siswaApp2Map.delete(noUjianLama);
-              siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru, sheetRow: siswaLamaData.sheetRow });
-            } else {
-              if (!siswaApp2Map.has(noUjianBaru)) {
-                siswaBaruUntuk_db_siswa.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
-                siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru, sheetRow: -1 });
-              }
-            }
-          } else if (siswaLamaData && (siswaLamaData.nama !== namaBaru || siswaLamaData.nisn !== nisnBaru || siswaLamaData.kelas !== kelasBaru)) {
-            // --- KASUS UPDATE INFO (Nama/NISN/Kelas Berubah) ---
-            siswaUntukUpdate_db_siswa.push({ row: siswaLamaData.sheetRow, no_ujian: noUjianBaru, nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
-            siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru, sheetRow: siswaLamaData.sheetRow });
-          }
-
-        } else {
-          // === INSERT PATH ===
-          enrollBaruUntuk_db_enroll.push([ item.id_siswa_app1, noUjianBaru, idSekolahApp1, id_tahun_ajaran, item.ruang_ujian ]);
-          
-          if (!siswaApp2Map.has(noUjianBaru)) {
-             siswaBaruUntuk_db_siswa.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
-             siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru, sheetRow: -1 }); 
-          }
-        }
-      } 
-      // --- PERBAIKAN LOGIKA BUG 1 ---
-      else {
-        // item.isEnrolled adalah FALSE (tidak dicentang).
-        // Kita tidak melakukan apa-apa.
-        // Siswa ini akan tetap ada di dalam Set `enrollUntukDihapus`
-        // (jika dia sebelumnya terdaftar / ada di `enrollMap`),
-        // dan akan diproses untuk dihapus di Langkah 5.
+        // Tambahkan ke array enrollment baru
+        const newId = `enroll-${new Date().getTime()}-${Math.random().toString(36).substring(2, 7)}`;
+        newEnrollData.push([
+          newId,
+          "'" + noUjianBaru,
+          idSekolahApp1,
+          id_tahun_ajaran,
+          item.ruang_ujian || ''
+        ]);
+        
+        // Update/Tambah ke Peta Siswa
+        siswaApp2Map.set(noUjianBaru, { nama: namaBaru, nisn: nisnBaru, kelas: kelasBaru });
       }
-      // --- AKHIR PERBAIKAN ---
-    } // end for loop
+      // Jika item.isEnrolled == false, kita tidak melakukan apa-apa.
+      // Karena kita hanya menyalin data T.A. LAIN (langkah 3),
+      // siswa yang tidak dicentang otomatis tidak akan masuk ke `newEnrollData`.
+    }
     
-    // 5. Eksekusi Hapus (db_enrollment)
-    // Saat ini, `enrollUntukDihapus` berisi siswa yang SEBELUMNYA terdaftar
-    // TAPI di pengiriman data baru, mereka 'isEnrolled: false'.
-    const rowsToDelete = Array.from(enrollUntukDihapus).map(id => enrollMap.get(id).sheetRow);
-    
-    // Hapus dari bawah ke atas agar indeks tidak bergeser
-    rowsToDelete.sort((a, b) => b - a); 
-    rowsToDelete.forEach(rowNum => {
-      sheetEnroll.deleteRow(rowNum);
+    // 5. Ubah Peta Siswa kembali menjadi array
+    siswaApp2Map.forEach((data, no_ujian) => {
+      newSiswaData.push(["'" + no_ujian, data.nama, "'" + data.nisn, data.kelas]);
     });
-    
-    // 6. Eksekusi Update (db_enrollment)
-    enrollUntukUpdate_db_enroll.forEach(item => {
-      sheetEnroll.getRange(item.row, 2).setValue("'" + item.nomor_ujian);
-      sheetEnroll.getRange(item.row, 5).setValue(item.ruang_ujian);
-    });
-    
-    // 7. Eksekusi Tambah (db_enrollment)
-    if (enrollBaruUntuk_db_enroll.length > 0) {
-      // Format No Ujian sebagai teks
-      enrollBaruUntuk_db_enroll.forEach(row => row[1] = "'" + row[1]);
-      sheetEnroll.getRange(sheetEnroll.getLastRow() + 1, 1, enrollBaruUntuk_db_enroll.length, 5).setValues(enrollBaruUntuk_db_enroll);
+
+    // 6. Hapus data lama dan Tulis data baru (db_siswa)
+    if (allSiswaData.length > 1) {
+      siswaRange.clearContent(); // Hapus semua (termasuk header)
     }
+    sheetSiswa.getRange(1, 1, newSiswaData.length, 4).setValues(newSiswaData);
     
-    // 8. Eksekusi Update (db_siswa) - (4 kolom)
-    if (siswaUntukUpdate_db_siswa.length > 0) {
-      siswaUntukUpdate_db_siswa.forEach(item => {
-        sheetSiswa.getRange(item.row, 1, 1, 4).setValues([["'" + item.no_ujian, item.nama, "'" + item.nisn, item.kelas]]);
-      });
+    // 7. Hapus data lama dan Tulis data baru (db_enrollment)
+    if (allEnrollData.length > 1) {
+      enrollRange.clearContent(); // Hapus semua
     }
+    sheetEnroll.getRange(1, 1, newEnrollData.length, 5).setValues(newEnrollData);
     
-    // 9. Eksekusi Tambah (db_siswa) - (4 kolom)
-    const siswaBaruArray = Array.from(siswaBaruUntuk_db_siswa.entries()).map(([no_ujian, data]) => ["'" + no_ujian, data.nama, "'" + data.nisn, data.kelas]);
-    if (siswaBaruArray.length > 0) {
-      sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, siswaBaruArray.length, 4).setValues(siswaBaruArray);
-    }
+    // --- Akhir Modifikasi Batch ---
     
     SpreadsheetApp.flush(); 
     
@@ -7960,28 +8009,6 @@ function getPendingTeacherScores(token) {
   }
 }
 
-function _updateNilaiUjianSheet(sheetNilaiApp1, siswaId, mapelId, nilaiUM, nilaiUP) {
-  const data = sheetNilaiApp1.getDataRange().getValues();
-  let rowToUpdate = -1;
-
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == siswaId && data[i][1] == mapelId) {
-      rowToUpdate = i + 1;
-      break;
-    }
-  }
-  
-  const umToSave = (nilaiUM === null || nilaiUM === undefined) ? null : nilaiUM;
-  const upToSave = (nilaiUP === null || nilaiUP === undefined) ? null : nilaiUP;
-
-  if (rowToUpdate > -1) {
-    sheetNilaiApp1.getRange(rowToUpdate, 3).setValue(umToSave);
-    sheetNilaiApp1.getRange(rowToUpdate, 4).setValue(upToSave);
-  } else {
-    sheetNilaiApp1.appendRow([siswaId, mapelId, umToSave, upToSave]);
-  }
-}
-
 function approveTeacherScore(token, submissionKey) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); 
@@ -8074,25 +8101,62 @@ function approveTeacherScore(token, submissionKey) {
       }
     });
     
-    const sheetNilaiApp1 = getNilaiUjianSheet(ss_app1);
+    // --- Modifikasi Batch Dimulai ---
     
+    const sheetNilaiApp1 = getNilaiUjianSheet(ss_app1);
+    const rangeApp1 = sheetNilaiApp1.getDataRange();
+    const valuesApp1 = rangeApp1.getValues(); // Baca semua data App 1 SEKALI
+    
+    // Buat Peta: "SiswaID_MapelID" -> index baris 0-based
+    const nilaiApp1Map = new Map();
+    for (let i = 1; i < valuesApp1.length; i++) { // Mulai dari 1 (skip header)
+      const key = `${valuesApp1[i][0]}_${valuesApp1[i][1]}`;
+      nilaiApp1Map.set(key, i); // Simpan 0-based index
+    }
+    
+    const rowsToAppendApp1 = [];
     let copyCount = 0;
+    
     for (const [nomor_ujian_app2, id_siswa_app1] of enrollmentMap.entries()) {
       const scores_app2 = nilaiMapApp2.get(nomor_ujian_app2) || { ujian: null, praktek: null };
       
-      const umToSave = mapelInfoApp1.isUS ? scores_app2.ujian : null;
-      const upToSave = mapelInfoApp1.isUP ? scores_app2.praktek : null;
+      const umToSave = (mapelInfoApp1.isUS && scores_app2.ujian !== null && scores_app2.ujian !== undefined) ? scores_app2.ujian : null;
+      const upToSave = (mapelInfoApp1.isUP && scores_app2.praktek !== null && scores_app2.praktek !== undefined) ? scores_app2.praktek : null;
 
       if (umToSave !== null || upToSave !== null) {
-        _updateNilaiUjianSheet(sheetNilaiApp1, id_siswa_app1, mapelIdApp1, umToSave, upToSave);
         copyCount++;
+        
+        const key = `${id_siswa_app1}_${mapelIdApp1}`;
+        const existingRowIndex_0based = nilaiApp1Map.get(key);
+        
+        if (existingRowIndex_0based !== undefined) {
+          // === UPDATE ===
+          // Modifikasi array di memori
+          valuesApp1[existingRowIndex_0based][2] = umToSave; // Kolom C (UjianMadrasah)
+          valuesApp1[existingRowIndex_0based][3] = upToSave; // Kolom D (UjianPraktek)
+        } else {
+          // === INSERT ===
+          // Kumpulkan di array baru
+          rowsToAppendApp1.push([id_siswa_app1, mapelIdApp1, umToSave, upToSave]);
+          // Tambahkan ke map agar tidak duplikat
+          nilaiApp1Map.set(key, valuesApp1.length + rowsToAppendApp1.length - 1);
+        }
       }
     }
+
+    // Tulis semua perubahan sekaligus
+    rangeApp1.setValues(valuesApp1); 
+    
+    if (rowsToAppendApp1.length > 0) {
+      sheetNilaiApp1.getRange(sheetNilaiApp1.getLastRow() + 1, 1, rowsToAppendApp1.length, 4)
+                   .setValues(rowsToAppendApp1);
+    }
+    // --- Akhir Modifikasi Batch ---
 
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("APPROVED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue("");
     
-    clearNilaiUjianCache(sekolahID, spreadsheetID);
+    clearNilaiUjianCache(sekolahID, spreadsheetID); // <--- Kirim spreadsheetID
     CacheService.getScriptCache().put('IJAZAH_IS_DIRTY_' + sekolahID, 'true');
 
     return { status: "sukses", message: `Berhasil disetujui. ${copyCount} data nilai siswa disalin ke Nilai_Ujian.` };
