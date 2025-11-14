@@ -3367,6 +3367,7 @@
       showMessage('kelas-message', 'Error: ' + errorMsg, true);
     }
     else if (document.getElementById('halaman-siswa').style.display !== 'none') {
+      document.getElementById('btn-cetak-kartu-siswa').disabled = false;
       document.getElementById('btn-tambah-siswa-baru').disabled = false;
       document.getElementById('btn-import-siswa').disabled = false;
       document.getElementById('btn-hapus-semua-siswa').disabled = false;
