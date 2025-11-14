@@ -1060,14 +1060,9 @@
     });
 
     document.getElementById('btn-buka-kelola-kelulusan').addEventListener('click', (e) => {
-        // Cek apakah kartu memiliki class 'card-disabled'
-        if (e.currentTarget.classList.contains('card-disabled')) {
-            // Jika ya (non-premium), alihkan ke halaman donasi
-            handleNavigationConfirm(bukaHalamanDonasi);
-        } else {
-            // Jika tidak (premium aktif), buka halaman kelola kelulusan
-            handleNavigationConfirm(bukaHalamanKelolaKelulusan);
-        }
+        // MODIFIKASI: Selalu buka halaman kelola kelulusan.
+        // Logika read-only/premium sekarang ditangani DI DALAM bukaHalamanKelolaKelulusan().
+        handleNavigationConfirm(bukaHalamanKelolaKelulusan);
     });
     document.getElementById('btn-kembali-ke-dashboard-11').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
@@ -1094,32 +1089,114 @@
     });
 
     // --- [TAMBAHAN BARU] Event Listener Fase Capture untuk Halaman Guru ---
-    // Ini harus ditambahkan di dalam DOMContentLoaded
+    // --- [MODIFIKASI DI SINI: Hapus bukaHalamanDonasi] ---
     document.getElementById('halaman-guru').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+
+      if (halaman.classList.contains('non-premium-readonly')) {
+        const targetButton = e.target.closest('button');
+        const targetInput = e.target.closest('input, select, textarea');
+        const targetSwitch = e.target.closest('.switch');
+
+        const interactiveTarget = targetButton || targetInput || targetSwitch;
+
+        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-guru') {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Tampilkan toast, JANGAN redirect
+          // showToast("Fitur Premium. Silakan Donasi untuk mengaktifkan.", 'gagal', 2500);
+        }
+      }
+    }, true); 
+    // --- [AKHIR MODIFIKASI] ---
+
+    // --- [TAMBAHAN BARU UNTUK KELOLA KELULUSAN] ---
+    // Tambahkan listener fase capture untuk halaman kelulusan
+    document.getElementById('halaman-kelola-kelulusan').addEventListener('click', (e) => {
       const halaman = e.currentTarget;
       
       // Cek apakah mode read-only aktif
       if (halaman.classList.contains('non-premium-readonly')) {
-        // Cari elemen interaktif yang diklik (atau parent-nya)
+        // Cari tombol interaktif yang diklik
         const targetButton = e.target.closest('button');
         const targetInput = e.target.closest('input, select, textarea');
-        const targetSwitch = e.target.closest('.switch');
         
-        const interactiveTarget = targetButton || targetInput || targetSwitch;
+        const interactiveTarget = targetButton || targetInput;
 
         // Jangan blokir tombol 'Kembali ke Dasbor'
-        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-guru') {
-          // Cegah aksi default (mengetik, membuka modal, toggle, dll.)
+        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-11') {
+          // Cegah aksi default (submit, dll.)
           e.preventDefault();
           e.stopPropagation();
           
           // Arahkan ke halaman Donasi
-          // Kita tidak perlu handleNavigationConfirm di sini karena kita MENCEGAH perubahan data
           bukaHalamanDonasi();
         }
       }
       // Jika tidak dalam mode read-only, biarkan event berjalan normal
     }, true); // <-- Gunakan fase CAPTURE (true)
+    // --- [AKHIR TAMBAHAN BARU] ---
+
+    // --- [TAMBAHAN BARU UNTUK PENGATURAN CETAK] ---
+    document.getElementById('halaman-pengaturan-cetak').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+      if (halaman.classList.contains('non-premium-readonly')) {
+        // Target interaktif termasuk tombol, input, select, zona upload, dan toggle
+        const interactiveTarget = e.target.closest('button, input, select, .file-upload-zone, .form-group-toggle');
+        // Jangan blokir tombol 'Kembali'
+        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-16') {
+          e.preventDefault();
+          e.stopPropagation();
+          // Tampilkan toast (sesuai permintaan sebelumnya)
+          showToast("Fitur Premium. Silakan Donasi untuk mengaktifkan.", 'gagal', 2500);
+        }
+      }
+    }, true); // Gunakan fase CAPTURE
+    // --- [AKHIR TAMBAHAN BARU] ---
+
+    // --- [TAMBAHAN BARU UNTUK HALAMAN LAIN] ---
+
+    // Listener untuk Halaman Proses Kelulusan
+    document.getElementById('halaman-proses-kelulusan').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+      if (halaman.classList.contains('non-premium-readonly')) {
+        const interactiveTarget = e.target.closest('button, input');
+        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-13') {
+          e.preventDefault();
+          e.stopPropagation();
+          showToast("Fitur Premium. Silakan Donasi untuk mengaktifkan.", 'gagal', 2500);
+        }
+      }
+    }, true);
+
+    // Listener untuk Halaman Tahun Ajaran
+    document.getElementById('halaman-tahun-ajaran').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+      if (halaman.classList.contains('non-premium-readonly')) {
+        const interactiveTarget = e.target.closest('button, input');
+        if (interactiveTarget && interactiveTarget.id !== 'btn-kembali-ke-dashboard-14') {
+          e.preventDefault();
+          e.stopPropagation();
+          showToast("Fitur Premium. Silakan Donasi untuk mengaktifkan.", 'gagal', 2500);
+        }
+      }
+    }, true);
+
+    // Listener untuk Halaman Penempatan
+    document.getElementById('halaman-penempatan').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+      if (halaman.classList.contains('non-premium-readonly')) {
+        const interactiveTarget = e.target.closest('button, input, select');
+        if (interactiveTarget && 
+            interactiveTarget.id !== 'btn-kembali-ke-dashboard-15' &&
+            interactiveTarget.id !== 'penempatan-ta-select') { // Izinkan ganti TA
+          e.preventDefault();
+          e.stopPropagation();
+          showToast("Fitur Premium. Silakan Donasi untuk mengaktifkan.", 'gagal', 2500);
+        }
+      }
+    }, true);
     // --- [AKHIR TAMBAHAN BARU] ---
 
     // --- Event Listeners untuk Guru ---
@@ -1344,15 +1421,20 @@
       }
     });
 
-    document.getElementById('btn-buka-proses-kelulusan').addEventListener('click', (e) => { // <-- Tambahkan 'e'
-        // Cek apakah kartu memiliki class 'card-disabled'
-        if (e.currentTarget.classList.contains('card-disabled')) {
-            // Jika ya (non-premium), alihkan ke halaman donasi
-            handleNavigationConfirm(bukaHalamanDonasi);
-        } else {
-            // Jika tidak (premium aktif), buka halaman proses kelulusan
-            handleNavigationConfirm(bukaHalamanProsesKelulusan);
-        }
+    document.getElementById('btn-buka-proses-kelulusan').addEventListener('click', (e) => {
+        // MODIFIKASI: Selalu buka halaman proses kelulusan.
+        // Logika read-only/premium akan ditangani DI DALAM bukaHalamanProsesKelulusan().
+        // (Kita akan tambahkan logika itu selanjutnya jika halaman ini juga perlu read-only)
+        
+        // Untuk saat ini, kita akan buat agar selalu bisa diklik, 
+        // dan logika di `bukaHalamanProsesKelulusan` akan menangani sisanya.
+        // Jika Anda ingin halaman ini juga read-only, kita perlu memodifikasi `bukaHalamanProsesKelulusan`
+        // seperti yang kita lakukan pada `bukaHalamanKelolaKelulusan`.
+        
+        // Untuk SEKARANG, logika ini akan mengarahkan ke donasi jika non-premium (seperti sebelumnya)
+        // KARENA kita belum menambahkan logic read-only di `bukaHalamanProsesKelulusan`.
+        // Mari kita terapkan logika yang sama:
+        handleNavigationConfirm(bukaHalamanProsesKelulusan);
     });
     document.getElementById('btn-kembali-ke-dashboard-13').addEventListener('click', () => tampilHalaman('halaman-utama'));
     document.getElementById('input-konfirmasi-nama-sekolah').addEventListener('input', validasiKonfirmasiNamaSekolah);
@@ -1764,12 +1846,10 @@
       handleNavigationConfirm(bukaHalamanTahunAjaran);
     });
 
-    document.getElementById('btn-buka-tahun-ajaran').addEventListener('click', (e) => { // <-- Tambah 'e'
-      if (e.currentTarget.classList.contains('card-disabled')) {
-        handleNavigationConfirm(bukaHalamanDonasi);
-      } else {
+    document.getElementById('btn-buka-tahun-ajaran').addEventListener('click', (e) => {
+        // MODIFIKASI: Selalu buka halaman tahun ajaran.
+        // Logika read-only akan ditangani DI DALAM bukaHalamanTahunAjaran().
         handleNavigationConfirm(bukaHalamanTahunAjaran);
-      }
     });
 
     document.getElementById('btn-kembali-ke-dashboard-14').addEventListener('click', () => {
@@ -1837,12 +1917,10 @@
       handleNavigationConfirm(bukaHalamanPenempatan);
     });
 
-    document.getElementById('btn-buka-penempatan').addEventListener('click', (e) => { // <-- Tambah 'e'
-      if (e.currentTarget.classList.contains('card-disabled')) {
-        handleNavigationConfirm(bukaHalamanDonasi);
-      } else {
+    document.getElementById('btn-buka-penempatan').addEventListener('click', (e) => {
+        // MODIFIKASI: Selalu buka halaman penempatan.
+        // Logika read-only akan ditangani DI DALAM bukaHalamanPenempatan().
         handleNavigationConfirm(bukaHalamanPenempatan);
-      }
     });
 
     document.getElementById('btn-kembali-ke-dashboard-15').addEventListener('click', () => {
@@ -8250,6 +8328,48 @@
 
   function bukaHalamanKelolaKelulusan() {
     tampilHalaman('halaman-kelola-kelulusan');
+
+    // --- [TAMBAHAN BARU] ---
+    // 1. Dapatkan halaman dan tentukan status premium
+    const halaman = document.getElementById('halaman-kelola-kelulusan');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+
+    // Hapus info box lama jika ada (untuk mencegah duplikat saat dibuka ulang)
+    const oldInfoBox = document.getElementById('kelulusan-premium-info');
+    if (oldInfoBox) {
+      oldInfoBox.remove();
+    }
+
+    // 2. Terapkan/Hapus kelas read-only
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      
+      // 3. Tampilkan info box non-premium
+      const infoBox = document.createElement('div');
+      infoBox.id = 'kelulusan-premium-info';
+      infoBox.className = 'premium-info-box'; // Style akan ditambahkan di CSS
+      infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat pengaturan, tetapi tidak dapat mempublikasikan. Silakan <a href="#" id="link-donasi-dari-kelulusan">Donasi</a> untuk mengaktifkan fitur ini.';
+      
+      // Sisipkan setelah <div class="page-header">
+      const pageHeader = halaman.querySelector('.page-header');
+      if (pageHeader) {
+        pageHeader.insertAdjacentElement('afterend', infoBox);
+      }
+      
+      // Tambahkan event listener untuk link donasi
+      const linkDonasi = document.getElementById('link-donasi-dari-kelulusan');
+      if (linkDonasi) {
+        linkDonasi.addEventListener('click', (e) => {
+          e.preventDefault();
+          bukaHalamanDonasi(); // Panggil fungsi yang sudah ada
+        });
+      }
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
+
+    // (Sisa fungsi ini tetap sama seperti aslinya)
     setLoading(true, 'Memeriksa status...', false, false);
     hideMessage('kelulusan-message');
     document.getElementById('input-tanggal-pengumuman').value = '';
@@ -8261,6 +8381,12 @@
   function onPublishedStatusLoaded(response) {
     setLoading(false);
     
+    // --- [TAMBAHAN BARU] ---
+    // 1. Cek apakah halaman dalam mode read-only
+    const halaman = document.getElementById('halaman-kelola-kelulusan');
+    const isReadOnly = halaman.classList.contains('non-premium-readonly');
+    // --- [AKHIR TAMBAHAN BARU] ---
+
     const statusContainer = document.getElementById('status-publikasi-container');
     const statusText = document.getElementById('status-publikasi-text');
     const tanggalWrapper = document.getElementById('status-publikasi-tanggal-wrapper');
@@ -8268,7 +8394,13 @@
     const btnPublikasi = document.getElementById('btn-publikasikan-hasil');
     const btnTarik = document.getElementById('btn-tarik-publikasi');
     
-    btnPublikasi.disabled = false;
+    // --- [MODIFIKASI] ---
+    // 2. Jangan aktifkan tombol jika read-only
+    if (!isReadOnly) { 
+      btnPublikasi.disabled = false;
+    }
+    // --- [AKHIR MODIFIKASI] ---
+    
     statusContainer.style.display = 'block';
 
     if (response.status === 'sukses') {
@@ -8283,20 +8415,40 @@
         
         document.getElementById('input-tanggal-pengumuman').value = response.publishDate.slice(0, 16);
         btnPublikasi.innerText = "Update Jadwal Publikasi";
-        btnTarik.disabled = false;
+
+        // --- [MODIFIKASI] ---
+        // 3. Jangan aktifkan tombol jika read-only
+        if (!isReadOnly) {
+          btnTarik.disabled = false;
+        }
+        // --- [AKHIR MODIFIKASI] ---
+
       } else {
         statusContainer.classList.remove('success');
         statusContainer.classList.add('error');
         statusText.innerText = "Belum Dipublikasikan";
         tanggalWrapper.style.display = 'none';
         btnPublikasi.innerText = "Publikasikan Hasil";
-        btnTarik.disabled = true;
+        btnTarik.disabled = true; // Ini sudah disabled, jadi aman
       }
     } else {
       statusContainer.classList.add('error');
       statusText.innerText = "Gagal memuat status.";
       showMessage('kelulusan-message', response.message, true);
     }
+    
+    // --- [TAMBAHAN BARU] ---
+    // 4. Paksa disable semua input/tombol jika read-only,
+    //    override semua logika di atas.
+    if (isReadOnly) {
+      document.getElementById('input-tanggal-pengumuman').disabled = true;
+      btnPublikasi.disabled = true;
+      btnTarik.disabled = true;
+    } else {
+      // Jika BUKAN read-only, pastikan input aktif
+      document.getElementById('input-tanggal-pengumuman').disabled = false;
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
   }
 
   function isValidISODateString(dateString) {
@@ -8650,49 +8802,58 @@
 
   function bukaHalamanGuru() {
       tampilHalaman('halaman-guru');
-
-      // --- [TAMBAHAN BARU] ---
-      // Terapkan kelas read-only jika non-premium
-      const isPremium = (globalDonasiStatus === 'APPROVED');
-      const halaman = document.getElementById('halaman-guru');
       
+      // --- [MODIFIKASI DI SINI] ---
+      const halaman = document.getElementById('halaman-guru');
+      const isPremium = (globalDonasiStatus === 'APPROVED');
+
+      // 1. Hapus info box lama (jika ada)
+      const oldInfoBox = document.getElementById('guru-premium-info');
+      if (oldInfoBox) {
+        oldInfoBox.remove();
+      }
+
+      // 2. Terapkan kelas read-only dan tambahkan info box jika non-premium
       if (isPremium) {
         halaman.classList.remove('non-premium-readonly');
       } else {
         halaman.classList.add('non-premium-readonly');
+        
+        // 3. Buat dan sisipkan info box baru
+        const infoBox = document.createElement('div');
+        infoBox.id = 'guru-premium-info';
+        infoBox.className = 'premium-info-box'; // Style dari CSS
+        infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data guru, tetapi tidak dapat menambah, mengedit, atau menghapus data. Silakan <a href="#" id="link-donasi-dari-guru">Donasi</a> untuk mengaktifkan fitur ini.';
+        
+        const pageHeader = halaman.querySelector('.page-header');
+        if (pageHeader) {
+          pageHeader.insertAdjacentElement('afterend', infoBox);
+        }
+        
+        // 4. Tambahkan listener ke link donasi di dalam box
+        const linkDonasi = document.getElementById('link-donasi-dari-guru');
+        if (linkDonasi) {
+          linkDonasi.addEventListener('click', (e) => {
+            e.preventDefault();
+            bukaHalamanDonasi(); // Panggil fungsi yang sudah ada
+          });
+        }
       }
-      // --- [AKHIR TAMBAHAN BARU] ---
+      // --- [AKHIR MODIFIKASI] ---
       
-      // 1. Panggil data Pengaturan (selalu panggil, datanya kecil)
-      google.script.run
-          .withSuccessHandler(onPengaturanGuruLoaded)
-          .withFailureHandler(onGagal) 
-          .getPengaturanGuru(getToken());
-
-      // 2. Cek cache secara terpisah
+      // (Sisa fungsi ini adalah logika cache Anda yang sudah ada, tetap dipertahankan)
       const isKelasCached = (globalKelasListCache && globalKelasListCache.length > 0);
       const isGuruCached = (globalGuruList && globalGuruList.length > 0);
 
       if (isKelasCached && isGuruCached) {
-          // --- CACHE HIT (ALL) ---
           console.log("Memuat guru & kelas dari cache klien...");
-          // Set loading singkat agar UI sempat di-reset oleh onGuruLoaded
           setLoading(true, 'Memuat data guru...', false, false); 
-          
-          // Panggil handler kelas secara manual (penting for sync button logic)
-          // 'true' menandakan data dari cache
           onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true); 
-          
-          // Panggil handler guru secara manual
           onGuruLoaded({ status: "sukses", guru: globalGuruList });
-          // onGuruLoaded akan memanggil setLoading(false)
-
       } else {
-          // --- CACHE MISS (ANY) ---
           console.log("Memuat data guru/kelas dari server...");
           setLoading(true, 'Memuat data guru...', false, false);
           
-          // Set UI ke status loading (Salinan dari logika 'else' yang lama)
           document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
           document.getElementById('btn-tambah-guru-baru').disabled = true;
           document.getElementById('btn-import-guru').disabled = true;
@@ -8704,28 +8865,27 @@
           if (containerTanggal) containerTanggal.style.display = 'none';
           hideMessage('pengaturan-guru-message');
 
-          // Cek apa yang hilang
           if (!isKelasCached) {
-              // Kelas hilang (Guru mungkin ada, mungkin tidak)
-              // Panggil getKelas. Callback-nya (onKelasLoadedForGuruPage) AKAN memicu getGuru.
               console.log("Cache kelas kosong, memuat kelas (akan memicu guru)...");
               google.script.run
-                  .withSuccessHandler(onKelasLoadedForGuruPage) // Ini akan memicu getGuru()
+                  .withSuccessHandler(onKelasLoadedForGuruPage) 
                   .withFailureHandler(onGagal)
                   .getKelas(getToken());
           } else {
-              // Kelas ada, tapi Guru hilang
-              // Panggil getGuru SAJA.
               console.log("Cache kelas ada, memuat guru saja...");
-              // Panggil callback kelas secara manual dulu (untuk setup)
               onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
-              // Panggil getGuru
               google.script.run
                   .withSuccessHandler(onGuruLoaded)
                   .withFailureHandler(onGagal)
                   .getGuru(getToken());
           }
       }
+
+      // Panggil data Pengaturan (selalu panggil, datanya kecil)
+      google.script.run
+          .withSuccessHandler(onPengaturanGuruLoaded)
+          .withFailureHandler(onGagal) 
+          .getPengaturanGuru(getToken());
   }
 
   /**
@@ -8761,28 +8921,35 @@
   // Di dalam client.html
   function onGuruLoaded(response) {
     setLoading(false);
+    
+    // --- [TAMBAHAN BARU] ---
+    const halaman = document.getElementById('halaman-guru');
+    const isReadOnly = halaman.classList.contains('non-premium-readonly');
+    // --- [AKHIR TAMBAHAN BARU] ---
 
-    document.getElementById('btn-tambah-guru-baru').disabled = false;
-    document.getElementById('btn-import-guru').disabled = false;
-    document.getElementById('btn-cetak-kartu-guru').disabled = false;
-    document.getElementById('btn-sync-guru-kelas').disabled = false; // <-- AKTIFKAN TOMBOL (meski masih tersembunyi)
+    // --- [MODIFIKASI] ---
+    // Aktifkan tombol HANYA jika TIDAK read-only
+    if (!isReadOnly) {
+      document.getElementById('btn-tambah-guru-baru').disabled = false;
+      document.getElementById('btn-import-guru').disabled = false;
+      document.getElementById('btn-cetak-kartu-guru').disabled = false;
+      document.getElementById('btn-sync-guru-kelas').disabled = false;
+    }
+    // --- [AKHIR MODIFIKASI] ---
 
     if (response.status === 'sukses') {
       globalGuruList = response.guru;
       renderGuruTable(globalGuruList);
       
-      // --- TAMBAHKAN BLOK LOGIKA BARU DI BAWAH INI ---
       try {
         const totalKelasCount = globalKelasListCache.length;
         let isDataDirty = false;
         
-        // KONDISI 1: Hanya ada 1 kelas
         if (totalKelasCount === 1) { 
           for (const guru of globalGuruList) {
             const mapelData = guru.mapelKelas || {};
             for (const mapelId in mapelData) {
               const kelasArray = mapelData[mapelId];
-              // KONDISI 2: Cek apakah datanya "kotor" (BUKAN ["*"])
               if (!Array.isArray(kelasArray) || kelasArray.length !== 1 || kelasArray[0] !== "*") {
                 isDataDirty = true;
                 break;
@@ -8792,17 +8959,19 @@
           }
         }
         
-        // Tampilkan tombol HANYA jika kedua kondisi terpenuhi
-        if (isDataDirty) {
+        // --- [MODIFIKASI] ---
+        // Tampilkan tombol HANYA jika dirty DAN tidak read-only
+        if (isDataDirty && !isReadOnly) {
           document.getElementById('btn-sync-guru-kelas').style.display = 'inline-flex';
         } else {
           document.getElementById('btn-sync-guru-kelas').style.display = 'none';
         }
+        // --- [AKHIR MODIFIKASI] ---
+        
       } catch (e) {
         console.error("Gagal memeriksa status sync guru:", e);
         document.getElementById('btn-sync-guru-kelas').style.display = 'none';
       }
-      // --- AKHIR BLOK LOGIKA BARU ---
       
     } else {
       document.getElementById('guru-table-container').innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
@@ -9592,6 +9761,11 @@
     const btnProsesKelulusan = document.getElementById('btn-buka-proses-kelulusan');
     const btnPenempatan = document.getElementById('btn-buka-penempatan');
     const btnTahunAjaran = document.getElementById('btn-buka-tahun-ajaran');
+    const btnCetakKartuSiswa = document.getElementById('btn-cetak-kartu-siswa');
+    
+    // --- [TAMBAHAN BARU] ---
+    const btnPengaturanCetak = document.getElementById('btn-buka-pengaturan-cetak');
+    // --- [AKHIR TAMBAHAN BARU] ---
     
     if (btnGuru) {
       const stamp = btnGuru.querySelector('.premium-stamp');
@@ -9599,12 +9773,8 @@
         btnGuru.classList.remove('card-disabled');
         if (stamp) stamp.style.display = 'none';
       } else {
-        // --- [PERBAIKAN DI SINI] ---
-        // 'add' BUKAN 'remove'. Ini akan mengaktifkan shimmer
-        // dan CSS override akan membuatnya tetap bisa diklik.
         btnGuru.classList.add('card-disabled'); 
         if (stamp) stamp.style.display = 'block';
-        // --- [AKHIR PERBAIKAN] ---
       }
     }
     
@@ -9612,16 +9782,13 @@
       const stamp = btnKelulusan.querySelector('.premium-stamp');
       if (isPremium) {
         btnKelulusan.classList.remove('card-disabled');
-        // btnKelulusan.disabled = false; // <-- HAPUS BARIS INI
         if (stamp) stamp.style.display = 'none';
       } else {
         btnKelulusan.classList.add('card-disabled');
-        // btnKelulusan.disabled = true; // <-- HAPUS BARIS INI
         if (stamp) stamp.style.display = 'block';
       }
     }
 
-    // --- BLOK BARU UNTUK PROSES KELULUSAN ---
     if (btnProsesKelulusan) {
       const stamp = btnProsesKelulusan.querySelector('.premium-stamp');
       if (isPremium) {
@@ -9632,9 +9799,7 @@
         if (stamp) stamp.style.display = 'block';
       }
     }
-    // --- AKHIR BLOK BARU ---
 
-    // --- TAMBAHAN BARU ---
     if (btnPenempatan) {
       const stamp = btnPenempatan.querySelector('.premium-stamp');
       if (isPremium) {
@@ -9657,8 +9822,6 @@
       }
     }
     
-    // --- TAMBAHKAN BLOK BARU INI DI SINI ---
-    const btnCetakKartuSiswa = document.getElementById('btn-cetak-kartu-siswa');
     if (btnCetakKartuSiswa) {
       const stamp = btnCetakKartuSiswa.querySelector('.premium-stamp');
       if (isPremium) {
@@ -9669,7 +9832,19 @@
         if (stamp) stamp.style.display = 'block';
       }
     }
-    // --- AKHIR BLOK TAMBAHAN ---
+
+    // --- [TAMBAHAN BARU] ---
+    if (btnPengaturanCetak) {
+      const stamp = btnPengaturanCetak.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnPengaturanCetak.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnPengaturanCetak.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
 
     if (tabGuru) {
       tabGuru.disabled = !isPremium;
@@ -10354,9 +10529,6 @@
     });
   }
 
-  /**
-   * [BARU] Membuka halaman Proses Kelulusan.
-   */
   function bukaHalamanProsesKelulusan() {
     tampilHalaman('halaman-proses-kelulusan');
     hideMessage('proses-kelulusan-message');
@@ -10371,12 +10543,48 @@
     labelNama.innerText = 'Memuat...';
     hiddenNama.value = '';
 
-    // Panggil server untuk mendapatkan nama sekolah yang benar
+    // --- [TAMBAHAN BARU] ---
+    const halaman = document.getElementById('halaman-proses-kelulusan');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+
+    const oldInfoBox = document.getElementById('proses-kelulusan-premium-info');
+    if (oldInfoBox) {
+      oldInfoBox.remove();
+    }
+
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+      inputKonfirmasi.disabled = false; // Aktifkan input jika premium
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      inputKonfirmasi.disabled = true; // Nonaktifkan input jika non-premium
+      
+      const infoBox = document.createElement('div');
+      infoBox.id = 'proses-kelulusan-premium-info';
+      infoBox.className = 'premium-info-box';
+      infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat halaman ini, tetapi tidak dapat menjalankan proses tutup tahun ajaran. Silakan <a href="#" id="link-donasi-dari-proses-kelulusan">Donasi</a> untuk mengaktifkan fitur ini.';
+      
+      const pageHeader = halaman.querySelector('.page-header');
+      if (pageHeader) {
+        pageHeader.insertAdjacentElement('afterend', infoBox);
+      }
+      
+      const linkDonasi = document.getElementById('link-donasi-dari-proses-kelulusan');
+      if (linkDonasi) {
+        linkDonasi.addEventListener('click', (e) => {
+          e.preventDefault();
+          bukaHalamanDonasi();
+        });
+      }
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
+
+    // Panggil server untuk mendapatkan nama sekolah (logika asli)
     setLoading(true, 'Memuat data sekolah...', false, true);
     google.script.run
       .withSuccessHandler(onNamaSekolahForProsesLoaded)
       .withFailureHandler(onGagal)
-      .getNamaSekolah(getToken()); // Kita perlu fungsi backend baru
+      .getNamaSekolah(getToken());
   }
 
   /**
@@ -10597,28 +10805,55 @@
   // ---      FUNGSI-FUNGSI BARU KELOLA TAHUN AJARAN   ---
   // --- ============================================= ---
 
-  /**
-   * [BARU] Membuka halaman Kelola Tahun Ajaran.
-   * [MODIFIKASI] Ditambahkan logika cache klien.
-   */
-  // Salin dan GANTI fungsi bukaHalamanTahunAjaran() Anda dengan yang ini
   function bukaHalamanTahunAjaran() {
     tampilHalaman('halaman-tahun-ajaran');
+    
+    // --- [TAMBAHAN BARU] ---
+    const halaman = document.getElementById('halaman-tahun-ajaran');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+    
+    const oldInfoBox = document.getElementById('ta-premium-info');
+    if (oldInfoBox) {
+      oldInfoBox.remove();
+    }
+    
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      
+      const infoBox = document.createElement('div');
+      infoBox.id = 'ta-premium-info';
+      infoBox.className = 'premium-info-box';
+      infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data, tetapi tidak dapat menambah, mengedit, atau menghapus tahun ajaran. Silakan <a href="#" id="link-donasi-dari-ta">Donasi</a> untuk mengaktifkan fitur ini.';
+      
+      const pageHeader = halaman.querySelector('.page-header');
+      if (pageHeader) {
+        pageHeader.insertAdjacentElement('afterend', infoBox);
+      }
+      
+      const linkDonasi = document.getElementById('link-donasi-dari-ta');
+      if (linkDonasi) {
+        linkDonasi.addEventListener('click', (e) => {
+          e.preventDefault();
+          bukaHalamanDonasi();
+        });
+      }
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
+
     setLoading(true, 'Memuat data tahun ajaran...', false, false);
     isFormDirty = false;
     hideMessage('ta-message');
     document.getElementById('ta-list-container').innerHTML = "<p>Memuat data tahun ajaran...</p>";
     setFormDisabled('form-ta', true);
 
-    // Cek cache klien
     if (globalTaList && globalTaList.length > 0) {
         console.log("Memuat T.A. dari cache klien...");
-        // Muat dari cache
         setTimeout(() => {
           onTahunAjaranLoaded({ status: "sukses", data: globalTaList });
-        }, 10); // Jeda singkat agar UI "Memuat..." sempat tampil
+        }, 10); 
     } else {
-        // Cache miss, panggil server
         console.log("Memuat T.A. dari server...");
         google.script.run
           .withSuccessHandler(onTahunAjaranLoaded)
@@ -10627,26 +10862,40 @@
     }
   }
 
-  /**
-   * [BARU] Callback setelah data T.A. dimuat.
-   * [MODIFIKASI] Ditambahkan penyimpanan cache.
-   */
-  // Salin dan GANTI fungsi onTahunAjaranLoaded() Anda dengan yang ini
   function onTahunAjaranLoaded(response) {
     setLoading(false);
-    setFormDisabled('form-ta', false);
+    
+    // --- [TAMBAHAN BARU] ---
+    const halaman = document.getElementById('halaman-tahun-ajaran');
+    const isReadOnly = halaman.classList.contains('non-premium-readonly');
+    
+    // Aktifkan form HANYA jika tidak read-only
+    if (!isReadOnly) {
+      setFormDisabled('form-ta', false);
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
 
     if (response.status !== 'sukses') {
       showMessage('ta-message', response.message, true);
       document.getElementById('ta-list-container').innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
-      globalTaList = []; // Pastikan cache kosong jika gagal
+      globalTaList = []; 
       return;
     }
     
-    // Simpan ke cache klien saat berhasil dimuat
     globalTaList = response.data || [];
     
     renderTahunAjaranList(globalTaList);
+    
+    // --- [TAMBAHAN BARU] ---
+    // Jika read-only, nonaktifkan semua input/tombol yang baru di-render
+    if (isReadOnly) {
+      halaman.querySelectorAll('input, button').forEach(el => {
+        if(el.id !== 'btn-kembali-ke-dashboard-14') { // Jangan disable tombol kembali
+           el.disabled = true;
+        }
+      });
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
   }
 
   /**
@@ -10825,24 +11074,47 @@
       }
   }
   
-  // --- ============================================= ---
-  // ---      AKHIR FUNGSI-FUNGSI BARU                 ---
-  // --- ============================================= ---
-
-  // --- ============================================= ---
-  // ---      FUNGSI-FUNGSI BARU KELOLA PENEMPATAN     ---
-  // --- ============================================= ---
-  
-  /**
-   * [BARU] Membuka Halaman Kelola Penempatan
-   */
   function bukaHalamanPenempatan() {
     tampilHalaman('halaman-penempatan');
+    
+    // --- [TAMBAHAN BARU] ---
+    const halaman = document.getElementById('halaman-penempatan');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+    
+    const oldInfoBox = document.getElementById('penempatan-premium-info');
+    if (oldInfoBox) {
+      oldInfoBox.remove();
+    }
+    
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      
+      const infoBox = document.createElement('div');
+      infoBox.id = 'penempatan-premium-info';
+      infoBox.className = 'premium-info-box';
+      infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data, tetapi tidak dapat mengubah penempatan. Silakan <a href="#" id="link-donasi-dari-penempatan">Donasi</a> untuk mengaktifkan fitur ini.';
+      
+      const pageHeader = halaman.querySelector('.page-header');
+      if (pageHeader) {
+        pageHeader.insertAdjacentElement('afterend', infoBox);
+      }
+      
+      const linkDonasi = document.getElementById('link-donasi-dari-penempatan');
+      if (linkDonasi) {
+        linkDonasi.addEventListener('click', (e) => {
+          e.preventDefault();
+          bukaHalamanDonasi();
+        });
+      }
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
+
     isPenempatanSiswaDirty = false;
     isPenempatanMapelDirty = false;
     hideMessage('penempatan-message');
     
-    // Reset UI
     document.getElementById('penempatan-tab-bar').style.display = 'none';
     document.getElementById('tab-penempatan-siswa').style.display = 'none';
     document.getElementById('tab-penempatan-mapel').style.display = 'none';
@@ -10853,7 +11125,6 @@
     
     globalPenempatanData = { siswaData: [], mapelList: [], guruList: [], mapelAssignments: [] };
 
-    // Muat daftar T.A. untuk dropdown
     const taSelect = document.getElementById('penempatan-ta-select');
     taSelect.innerHTML = '<option value="">-- Memuat T.A. --</option>';
     taSelect.disabled = true;
@@ -10861,7 +11132,7 @@
     google.script.run
       .withSuccessHandler(onTahunAjaranListLoadedForPenempatan)
       .withFailureHandler(onGagal)
-      .getTahunAjaranList(getToken()); // Panggil API baru yang ringan
+      .getTahunAjaranList(getToken());
   }
 
   /**
@@ -11793,32 +12064,60 @@
 
   function bukaHalamanPengaturanCetak() {
     tampilHalaman('halaman-pengaturan-cetak');
+    
+    // --- [MODIFIKASI DI SINI] ---
+    const halaman = document.getElementById('halaman-pengaturan-cetak');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+    
+    const oldInfoBox = document.getElementById('pengaturan-cetak-premium-info');
+    if (oldInfoBox) {
+      oldInfoBox.remove();
+    }
+    
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      
+      const infoBox = document.createElement('div');
+      infoBox.id = 'pengaturan-cetak-premium-info';
+      infoBox.className = 'premium-info-box';
+      infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat pengaturan, tetapi tidak dapat mengubahnya. Silakan <a href="#" id="link-donasi-dari-pengaturan-cetak">Donasi</a> untuk mengaktifkan fitur ini.';
+      
+      const pageHeader = halaman.querySelector('.page-header');
+      if (pageHeader) {
+        pageHeader.insertAdjacentElement('afterend', infoBox);
+      }
+      
+      const linkDonasi = document.getElementById('link-donasi-dari-pengaturan-cetak');
+      if (linkDonasi) {
+        linkDonasi.addEventListener('click', (e) => {
+          e.preventDefault();
+          bukaHalamanDonasi();
+        });
+      }
+    }
+    // --- [AKHIR MODIFIKASI] ---
+
     setLoading(true, 'Memuat pengaturan...', false, true);
     hideMessage('pengaturan-cetak-message');
 
-    // Reset form
+    // (Sisa fungsi ini adalah logika reset form, tetap sama)
     document.getElementById('form-pengaturan-cetak').reset();
     document.getElementById('pengaturan-tempat-ttd').value = '';
     document.getElementById('pengaturan-tanggal-mode').value = 'otomatis';
     document.getElementById('pengaturan-tanggal-manual-container').style.display = 'none';
     document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
-    document.getElementById('kop-surat-status').value = 'keep'; // Status default
+    document.getElementById('kop-surat-status').value = 'keep';
     document.getElementById('kop-surat-preview-container').style.display = 'none';
     document.getElementById('kop-surat-preview').src = '';
     document.getElementById('file-upload-zone-kop').style.display = 'flex';
     document.getElementById('file-upload-text-kop').innerText = 'Klik untuk memilih gambar...';
-
-    // --- [MODIFIKASI] Reset field baru ---
     document.getElementById('pengaturan-template-kustom-toggle').checked = false;
-    document.getElementById('pengaturan-template-kustom-toggle').disabled = true; // Kunci saat memuat
+    document.getElementById('pengaturan-template-kustom-toggle').disabled = true; 
     document.getElementById('pengaturan-template-kustom-container').style.display = 'none';
     document.getElementById('pengaturan-template-doc-id').value = '';
     document.getElementById('pengaturan-template-rekap-id').value = '';
-
-    // --- [PERBAIKAN] HAPUS DUA BARIS PENYEBAB ERROR DI BAWAH INI ---
-    // document.getElementById('pengaturan-link-contoh-doc').href = '#';  // <-- BARIS INI DIHAPUS
-    // document.getElementById('pengaturan-link-contoh-rekap').href = '#'; // <-- BARIS INI DIHAPUS
-    // --- [AKHIR PERBAIKAN] ---
 
     const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
     formInputs.forEach(input => {
@@ -11836,12 +12135,23 @@
   function onPengaturanCetakLoaded(response) {
     setLoading(false);
 
+    // --- [TAMBAHAN BARU] ---
+    const halaman = document.getElementById('halaman-pengaturan-cetak');
+    const isReadOnly = halaman.classList.contains('non-premium-readonly');
+    // --- [AKHIR TAMBAHAN BARU] ---
+
     const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
-    formInputs.forEach(input => {
-      if(input.id !== 'btn-simpan-pengaturan-cetak' && input.id !== 'pengaturan-template-kustom-toggle') { 
-          input.disabled = false;
-      }
-    });
+    
+    // --- [MODIFIKASI] ---
+    // Aktifkan form HANYA jika tidak read-only
+    if (!isReadOnly) {
+      formInputs.forEach(input => {
+        if(input.id !== 'btn-simpan-pengaturan-cetak' && input.id !== 'pengaturan-template-kustom-toggle') { 
+            input.disabled = false;
+        }
+      });
+    }
+    // --- [AKHIR MODIFIKASI] ---
     
     document.getElementById('file-upload-kop').value = null;
 
@@ -11872,16 +12182,16 @@
       const docIdInput = document.getElementById('pengaturan-template-doc-id');
       const rekapIdInput = document.getElementById('pengaturan-template-rekap-id');
 
-      // --- [MODIFIKASI] HAPUS 2 baris ini ---
-      // document.getElementById('pengaturan-link-contoh-doc').href = data.exampleLinkDoc || '#';
-      // document.getElementById('pengaturan-link-contoh-rekap').href = data.exampleLinkRekap || '#';
-      // --- [AKHIR MODIFIKASI] ---
-
       docIdInput.value = data.templateDocID || data.defaultTemplateDocID || '';
       rekapIdInput.value = data.templateRekapID || data.defaultTemplateRekapID || '';
 
       if (globalDonasiStatus === "APPROVED") {
-        toggle.disabled = false;
+        // --- [MODIFIKASI] ---
+        // Aktifkan toggle HANYA jika tidak read-only
+        if (!isReadOnly) {
+          toggle.disabled = false;
+        }
+        // --- [AKHIR MODIFIKASI] ---
         
         const isCustomDoc = data.templateDocID && (data.templateDocID !== data.defaultTemplateDocID);
         const isCustomRekap = data.templateRekapID && (data.templateRekapID !== data.defaultTemplateRekapID);
@@ -11905,6 +12215,26 @@
       globalPengaturanCetakCache = null;
       showMessage('pengaturan-cetak-message', 'Gagal memuat pengaturan: ' + response.message, true);
     }
+
+    // --- [TAMBAHAN BARU] ---
+    // Paksa disable semua input/tombol jika read-only
+    if (isReadOnly) {
+      formInputs.forEach(input => {
+        if(input.id !== 'btn-kembali-ke-dashboard-16') {
+           input.disabled = true;
+        }
+      });
+      // Sembunyikan tombol hapus kop surat juga
+      const btnHapusKop = document.getElementById('btn-hapus-kop-surat');
+      if (btnHapusKop) btnHapusKop.style.display = 'none';
+    } else {
+      // Pastikan tombol hapus kop surat terlihat jika premium
+      const btnHapusKop = document.getElementById('btn-hapus-kop-surat');
+      if (btnHapusKop && response.status === 'sukses' && response.data.kopSuratUrl) {
+         btnHapusKop.style.display = 'block';
+      }
+    }
+    // --- [AKHIR TAMBAHAN BARU] ---
   }
 
   function simpanPengaturanCetak() {
