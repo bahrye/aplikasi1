@@ -687,11 +687,21 @@
           <h2>Kelola Data Guru</h2>
           <div class="header-buttons">
             <button id="btn-sync-guru-kelas" class="btn-aksi" style="display: none; background-color: #fd7e14;">
-              <i class="fas fa-sync-alt"></i>Sinkronkan Kelas Guru
+              <span class="btn-content-wrapper"><i class="fas fa-sync-alt"></i>Sinkronkan Kelas Guru</span>
+              <div class="premium-stamp" style="display: none;">Premium</div>
             </button>
-            <button id="btn-cetak-kartu-guru" style="background-color: #fd7e14;"><i class="fas fa-print"></i>Cetak Kartu Login</button>
-            <button id="btn-tambah-guru-baru"><i class="fas fa-plus"></i>Tambah Guru</button>
-            <button id="btn-import-guru"><i class="fas fa-upload"></i>Import Guru</button>
+            <button id="btn-cetak-kartu-guru" style="background-color: #fd7e14;">
+              <span class="btn-content-wrapper"><i class="fas fa-print"></i>Cetak Kartu Login</span>
+              <div class="premium-stamp" style="display: none;">Premium</div>
+            </button>
+            <button id="btn-tambah-guru-baru">
+              <span class="btn-content-wrapper"><i class="fas fa-plus"></i>Tambah Guru</span>
+              <div class="premium-stamp" style="display: none;">Premium</div>
+            </button>
+            <button id="btn-import-guru">
+              <span class="btn-content-wrapper"><i class="fas fa-upload"></i>Import Guru</span>
+              <div class="premium-stamp" style="display: none;">Premium</div>
+            </button>
           </div>
         </div>
 
@@ -715,6 +725,7 @@
                     <input type="checkbox" id="toggle-waktu-input">
                     <span class="slider round"></span>
                 </label>
+                <div class="premium-stamp" style="display: none;">Premium</div>
             </div>
             
             <div id="container-tanggal-input-guru" style="display: none;">
@@ -734,7 +745,10 @@
             <p id="pengaturan-guru-message" class="message" style="display: none;"></p>
             
             <div class="form-actions">
-                <button type="button" id="btn-simpan-pengaturan-guru" disabled><i class="fas fa-save"></i>Simpan Pengaturan</button>
+                <button type="button" id="btn-simpan-pengaturan-guru" disabled>
+                  <span class="btn-content-wrapper"><i class="fas fa-save"></i>Simpan Pengaturan</span>
+                  <div class="premium-stamp" style="display: none;">Premium</div>
+                </button>
             </div>
         </form>
 
