@@ -3,7 +3,7 @@
 const ID_SPREADSHEET_APLIKASI_2 = "1vNp3tvy9Ahy0apVBzcg7BClHsrJG85W3z-kSMjlzWuQ";
 
 // Ganti dengan URL Web App *Aplikasi 2* yang sudah Anda deploy
-const URL_WEB_APP_APLIKASI_2 = "https://script.google.com/macros/s/AKfycbyYzdFCu9dZ0DzMZrUoY_EhEjWekF-ozVQxfKPdxjt_Irxxz9e6X3ZuC_ATcjp7PdDVog/exec";
+// const URL_WEB_APP_APLIKASI_2 = "https://script.google.com/macros/s/AKfycbyYzdFCu9dZ0DzMZrUoY_EhEjWekF-ozVQxfKPdxjt_Irxxz9e6X3ZuC_ATcjp7PdDVog/exec";
 // --- [AKHIR TAMBAHAN] ---
 
 // --- TAMBAHAN BARU ---
@@ -4958,20 +4958,19 @@ function rebuildKelulusanCacheFromDB() {
   return { masterIndex, allHasilWrappers };
 }
 
-
 /**
  * [MODIFIKASI BESAR UNTUK SSO]
  * Mengautentikasi guru ke database Aplikasi 2 menggunakan HASH & SALT.
  * dan MENCATAT One-Time Token (OTT) di spreadsheet Aplikasi 2.
  * [MODIFIKASI V2] Sekarang mengirim payload JSON {email, jenjangPilihan}.
+ * [MODIFIKASI V3] Menggunakan Master Sheet 'Config' untuk URL dinamis.
  */
 function prosesLoginGuru(npsn, email, password) {
   try {
     // 1. Validasi NPSN/Kode Sekolah dan AMBIL DATA BARIS
-    const masterSS_App1 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const masterSS_App1 = SpreadsheetApp.openById(MASTER_SHEET_ID); 
     const sheetSekolah_App1 = masterSS_App1.getSheetByName('Sheet_Sekolah');
     
-    // [MODIFIKASI] Baca data yang relevan (A-H)
     const dataSekolahApp1 = sheetSekolah_App1.getRange("A2:H" + sheetSekolah_App1.getLastRow()).getValues();
     
     let rowDataSekolah = null;
@@ -4994,7 +4993,6 @@ function prosesLoginGuru(npsn, email, password) {
     const idSekolahApp1 = rowDataSekolah[0]; // Kolom A
     const app1DbId = rowDataSekolah[5];      // Kolom F (App 1 DB ID)
     
-    // [MODIFIKASI BARU] Ambil jenjangPilihan dari DB App 1
     if (!app1DbId) {
       return { status: "gagal", message: `Database App 1 (Kolom F) untuk sekolah ${idSekolahApp1} belum diatur.` };
     }
@@ -5002,7 +5000,6 @@ function prosesLoginGuru(npsn, email, password) {
     if (!jenjangPilihan) {
       return { status: "gagal", message: `Jenjang Pilihan (Data_Sekolah!A2) di database sekolah ${idSekolahApp1} belum diatur.` };
     }
-    // --- [AKHIR MODIFIKASI BARU] ---
 
 
     // 2. Buka database Aplikasi 2 (Pusat Guru)
@@ -5045,27 +5042,24 @@ function prosesLoginGuru(npsn, email, password) {
     // 4. Buat One-Time Token (OTT)
     const ott = 'ott-' + Utilities.getUuid();
     
-    // [MODIFIKASI] Buat payload JSON
     const payload = {
       email: foundGuruData.email,
-      jenjangPilihan: jenjangPilihan // <-- Data baru
+      jenjangPilihan: jenjangPilihan 
     };
     const payloadString = JSON.stringify(payload);
-    // --- [AKHIR MODIFIKASI] ---
     
     const timestamp = new Date();
     
-    // 5. Simpan OTT ke SPREADSHEET Aplikasi 2
     const ottSheet = ss_app2.getSheetByName('db_ott_cache');
     if (!ottSheet) {
       throw new Error("Sheet 'db_ott_cache' tidak ditemukan di Aplikasi 2.");
     }
     
+    // 5. Simpan OTT ke SPREADSHEET Aplikasi 2
     const lock = LockService.getScriptLock();
     lock.waitLock(10000); 
     try {
-      // [MODIFIKASI] Simpan string JSON
-      ottSheet.appendRow([ott, payloadString, timestamp]);
+      ottSheet.appendRow([ott, payloadString, timestamp]); // [MODIFIKASI] Simpan string JSON
       
       const data = ottSheet.getDataRange().getValues();
       const now = timestamp.getTime();
@@ -5085,9 +5079,22 @@ function prosesLoginGuru(npsn, email, password) {
       lock.releaseLock();
     }
     
-    // 6. Buat URL Redirect
-    const redirectUrl = URL_WEB_APP_APLIKASI_2 + (URL_WEB_APP_APLIKASI_2.includes('?') ? '&' : '?') + 'ott=' + ott;
-
+    // 6. Baca URL Aplikasi 2 secara dinamis dari Master Sheet 'Config'
+    // (masterSS_App1 sudah dibuka di atas)
+    const configSheet = masterSS_App1.getSheetByName('Config');
+    if (!configSheet) {
+      throw new Error("Sheet 'Config' tidak ditemukan di Master Sheet. Harap buat sheet 'Config' dan isi sel B1 dengan URL /exec Aplikasi 2.");
+    }
+    const URL_APLIKASI_2_DINAMIS = configSheet.getRange('B1').getValue();
+    
+    if (!URL_APLIKASI_2_DINAMIS || !URL_APLIKASI_2_DINAMIS.endsWith('/exec')) {
+      // Jika admin lupa menjalankan 'simpanURLDeployBaru' atau salah isi
+      return { status: "gagal", message: "Error: URL Aplikasi 2 (Nilai) belum diatur oleh Admin. Hubungi Admin." };
+    }
+    
+    // 7. Buat URL Redirect (DINAMIS)
+    const redirectUrl = URL_APLIKASI_2_DINAMIS + (URL_APLIKASI_2_DINAMIS.includes('?') ? '&' : '?') + 'ott=' + ott;
+    
     return {
       status: "sso_redirect",
       redirectUrl: redirectUrl
