@@ -79,12 +79,13 @@ function verifyPassword(inputPassword, storedHash, storedSalt) {
   return newHash === storedHash;
 }
 
+// GANTI FUNGSI INI
 function getSheetRegistrasiPending(masterSS) {
   let sheet = masterSS.getSheetByName(SHEET_REGISTRASI_PENDING);
   if (!sheet) {
     sheet = masterSS.insertSheet(SHEET_REGISTRASI_PENDING);
-    // [PERBAIKAN] Tambah kolom 'PlainPassword' di Kolom I (index 8)
-    sheet.appendRow(['Email', 'NamaSekolah', 'NPSN', 'Jenjang', 'HashedPassword', 'Salt', 'VerificationToken', 'Timestamp', 'PlainPassword']);
+    // [PERBAIKAN] Hapus 'PlainPassword' dari header (sekarang 8 kolom)
+    sheet.appendRow(['Email', 'NamaSekolah', 'NPSN', 'Jenjang', 'HashedPassword', 'Salt', 'VerificationToken', 'Timestamp']);
     sheet.setFrozenRows(1);
   } else {
     // Cek header lama (NPSN)
@@ -93,11 +94,13 @@ function getSheetRegistrasiPending(masterSS) {
        sheet.insertColumnBefore(3);
        sheet.getRange(1, 3).setValue("NPSN");
     }
-    // [PERBAIKAN] Cek header baru (PlainPassword)
+    // [PERBAIKAN] Hapus blok 'check' untuk header 'PlainPassword'
+    /*
     const headerPlain = sheet.getRange(1, 9).getValue();
     if (headerPlain !== "PlainPassword") {
       sheet.getRange(1, 9).setValue("PlainPassword");
     }
+    */
   }
   return sheet;
 }
@@ -365,8 +368,6 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
   }
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
-
 function prosesVerifikasiToken(token) {
   if (!token) {
     return `<h1>Permintaan Tidak Valid</h1>
@@ -408,7 +409,7 @@ function prosesVerifikasiToken(token) {
         
         const dbHashedPassword = row[4]; 
         const dbSalt = row[5];
-        const dbPlainPassword = row[8]; 
+        // const dbPlainPassword = row[8]; // <-- PERBAIKAN: Dihapus, tidak dibaca lagi
         
         const emailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
         
@@ -420,9 +421,10 @@ function prosesVerifikasiToken(token) {
                   <a href="${appUrl}" class="button-login">Menuju Halaman Login</a>`;
         }
 
+        let newSchoolFolderId = null; // [MODIFIKASI] Dipindahkan ke scope luar try-catch
         try {
           let newSchoolFolder, donasiSubFolder;
-          let newSchoolFolderId = null;
+          // let newSchoolFolderId = null; // [MODIFIKASI] Dihapus dari sini
           let donasiSubFolderId = null;
 
           try {
@@ -475,8 +477,8 @@ function prosesVerifikasiToken(token) {
           
           Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
-          // [MODIFIKASI] Tambahkan NIP (kosong) sebagai argumen ke-6
-          registerAdminAsGuruInApp2(email, dbPlainPassword, namaSekolah.toUpperCase(), newSekolahID, 'guru', ''); // <-- UBAH DI SINI
+          // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
+          // registerAdminAsGuruInApp2(email, dbPlainPassword, namaSekolah.toUpperCase(), newSekolahID, 'guru', ''); // <-- DIHAPUS
           
           const appUrl = ScriptApp.getService().getUrl();
           return `<h1>Verifikasi Berhasil!</h1>
@@ -486,7 +488,7 @@ function prosesVerifikasiToken(token) {
           
         } catch (e) {
           Logger.log(`Verifikasi sukses untuk ${email} TAPI GAGAL buat DB/Folder: ${e.message}`);
-          if (newSchoolFolderId) {
+          if (newSchoolFolderId) { // [MODIFIKASI] Gunakan variabel dari scope luar
              try { DriveApp.getFolderById(newSchoolFolderId).setTrashed(true); } catch(err) {}
           }
           return `<h1>Verifikasi Berhasil, Namun...</h1>
@@ -811,8 +813,8 @@ function prosesLogin(email, password) {
           app2DbId = buatDatabaseAplikasi2Baru(namaSekolahUpper); 
           sheetSekolah.getRange(rowNumGlobal, 13).setValue(app2DbId);
           registerSchoolInApp2(sekolahID, namaSekolahUpper);
-          // Daftarkan dengan password yang baru saja digunakan untuk login
-          registerAdminAsGuruInApp2(email, namaSekolahUpper, sekolahID, password, 'guru', ''); // NIP kosong
+          // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
+          // registerAdminAsGuruInApp2(email, namaSekolahUpper, sekolahID, password, 'guru', ''); // <-- DIHAPUS
           clearMasterSheetCache();
           Logger.log(`PERBAIKAN LOGIN: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
         }
@@ -853,8 +855,6 @@ function prosesLogin(email, password) {
     return { status: "gagal", message: "Terjadi error: " + e.message };
   }
 }
-
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
 
 function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
   const lock = LockService.getScriptLock();
@@ -944,7 +944,7 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
     const newSalt = generateSalt();
     const newHash = hashPassword(password, newSalt);
     
-    // Simpan HASH (kolom E), SALT (kolom F), dan PLAIN (kolom I)
+    // Simpan HASH (kolom E), SALT (kolom F), dan KOSONG (kolom I)
     sheetPending.appendRow([
       email,
       namaSekolahUpper,
@@ -954,7 +954,7 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
       newSalt,  // <-- Simpan SALT
       verificationToken,
       now,
-      password  // <-- Simpan PLAIN (untuk App 2)
+      ""  // <-- PERBAIKAN: Kolom I (PlainPassword) sekarang KOSONG
     ]);
     // --- [AKHIR PERUBAHAN LOGIKA PASSWORD] ---
     
@@ -1291,9 +1291,9 @@ function superadminSaveSekolah(token, data) {
         ""      // DonasiAlasanTolak
       ]);
 
-      // [MODIFIKASI] Tambahkan NIP (kosong) sebagai argumen ke-6
+      // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
       registerSchoolInApp2(newSekolahID, nama.toUpperCase());
-      registerAdminAsGuruInApp2(email, password, nama.toUpperCase(), newSekolahID, 'guru', ''); // <-- UBAH DI SINI
+      // registerAdminAsGuruInApp2(email, password, nama.toUpperCase(), newSekolahID, 'guru', ''); // <-- DIHAPUS
 
     } else {
       let rowToUpdate = -1;
@@ -1315,9 +1315,9 @@ function superadminSaveSekolah(token, data) {
         sheetSekolah.getRange(rowToUpdate, 5).setValue(newHash);
         sheetSekolah.getRange(rowToUpdate, 7).setValue(newSalt);
         
-        // [MODIFIKASI] Update password guru admin di App 2 juga (NIP dikirim sebagai null/kosong)
-        const guruNama = `Admin ${nama.toUpperCase()}`;
-        addOrUpdateGuruInApp2(email, password, guruNama, id, 'guru', null); // <-- UBAH DI SINI
+        // [MODIFIKASI] Panggilan untuk update password guru admin di App 2 DIHAPUS
+        // const guruNama = `Admin ${nama.toUpperCase()}`;
+        // addOrUpdateGuruInApp2(email, passwordToSync, guruNama, id, 'guru', null); // <-- DIHAPUS
       }
     }
     clearMasterSheetCache();
@@ -1374,8 +1374,10 @@ function superadminImpersonate(sekolahID, token) {
           
           // Daftarkan dengan password dummy
           const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+          
           registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
-          registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword, 'guru', ''); // NIP kosong
+          // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
+          // registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword, 'guru', ''); // <-- DIHAPUS
           
           clearMasterSheetCache();
           Logger.log(`PERBAIKAN IMPERSONATE: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
