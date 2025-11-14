@@ -222,6 +222,11 @@
             <i class="fas fa-book-reader"></i>
             <span>Input Nilai Rapor</span>
           </button>
+          <button class="dashboard-card" id="btn-buka-kelola-nilai-guru">
+            <i class="fas fa-user-check"></i>
+            <span>Kelola Nilai Guru</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
+          </button>
           <button class="dashboard-card" id="btn-buka-validasi-nilai">
             <i class="fas fa-tasks"></i>
             <span>Validasi Nilai</span>
@@ -1539,6 +1544,86 @@
               <button type="button" id="btn-publikasikan-hasil"><i class="fas fa-paper-plane"></i>Publikasikan Hasil</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div class="container" id="halaman-kelola-nilai-guru" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-17"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Nilai Kiriman Guru</h2>
+        </div>
+
+        <div id="kelola-nilai-guru-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat halaman ini, tetapi tidak dapat menyetujui atau menolak nilai. Silakan <a href="#" id="link-donasi-dari-kelola-nilai">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+
+        <p>Tinjau nilai yang telah dikirim oleh guru dari Aplikasi 2. Anda dapat menyetujui nilai untuk dimasukkan ke database Nilai Ijazah, atau menolaknya untuk direvisi.</p>
+        
+        <p id="kelola-nilai-guru-message" class="message" style="display: none;"></p>
+        
+        <div class="superadmin-table-container" id="pending-scores-container">
+          <p>Memuat data nilai yang dikirim...</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="alasan-tolak-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="alasan-tolak-modal-title">Tolak Kiriman Nilai</h2>
+          <span class="close-button" id="btn-tutup-alasan-tolak-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="alasan-tolak-submission-key" value="">
+          <p id="alasan-tolak-modal-message">Masukkan alasan penolakan/revisi untuk mapel: <strong><span id="alasan-tolak-mapel-nama"></span></strong> (Guru: <span id="alasan-tolak-guru-nama"></span>)</p>
+          <div class="form-group">
+            <label for="alasan-tolak-input">Alasan Penolakan (Wajib)</label>
+            <textarea id="alasan-tolak-input" rows="4" placeholder="Contoh: Nilai siswa atas nama Budi masih 0, mohon diperbaiki."></textarea>
+            <small class="helper-text">Alasan ini akan tampil di dashboard guru yang bersangkutan.</small>
+          </div>
+          <p id="alasan-tolak-modal-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-alasan-tolak-modal"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-kirim-alasan-tolak-modal" style="background-color: var(--danger-color);"><i class="fas fa-paper-plane"></i>Kirim Penolakan</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="preview-nilai-guru-modal" class="modal">
+      <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+          <h2 id="preview-modal-title">Preview Nilai</h2>
+          <span class="close-button" id="btn-tutup-preview-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p id="preview-modal-info">Memuat nilai untuk...</p>
+          
+          <div class="filter-bar" style="margin-top: 0;">
+            <div class="form-group" style="min-width: 150px;">
+              <label for="preview-filter-kelas">Filter Kelas</label>
+              <select id="preview-filter-kelas">
+                <option value="semua">-- Semua Kelas --</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex-grow: 2;">
+              <label for="preview-filter-nama">Cari Nama Siswa</label>
+              <input type="text" id="preview-filter-nama" placeholder="Ketik nama siswa..." autocomplete="off">
+            </div>
+          </div>
+
+          <div class="input-nilai-table-container" id="preview-modal-table-container" style="max-height: 50vh; margin-top: 15px;">
+            <p>Memuat...</p>
+          </div>
+          <p id="preview-modal-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-preview-modal"><i class="fas fa-times"></i>Tutup</button>
+        </div>
       </div>
     </div>
     
