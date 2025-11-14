@@ -92,6 +92,7 @@
   let isSiswaOrderDirty = false;
   let globalKelasListCache = [];
   let globalBobotCache = null;
+  let globalPreviewScores = [];
   // --- TAMBAHKAN INI ---
   let globalDonasiStatus = 'NONE';
   let globalDonasiDetail = {}; // Cache untuk detail (file url, alasan)
@@ -629,7 +630,7 @@
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
       'halaman-guru', 'halaman-donasi',
       'halaman-proses-kelulusan', 'halaman-tahun-ajaran', 'halaman-penempatan',
-      'halaman-pengaturan-cetak'
+      'halaman-pengaturan-cetak', 'halaman-kelola-nilai-guru'
     ];
     
     const authSubPages = [
@@ -670,6 +671,7 @@
     hideMessage('ta-message');
     hideMessage('penempatan-message');
     hideMessage('pengaturan-cetak-message');
+    hideMessage('kelola-nilai-guru-message');
     // --- AKHIR TAMBAHAN ---
 
     const targetElement = document.getElementById(idHalaman);
@@ -905,6 +907,9 @@
         case 'halaman-penempatan':
             bukaHalamanPenempatan();
             break;
+        case 'halaman-kelola-nilai-guru':
+            bukaHalamanKelolaNilaiGuru();
+            break;
         default:
             console.warn("ID halaman tersimpan tidak valid:", pageId, ". Menampilkan dashboard.");
             tampilHalaman('halaman-utama');
@@ -1088,7 +1093,101 @@
       this.classList.toggle('fa-eye-slash');
     });
 
+    document.getElementById('btn-tutup-alasan-tolak-modal').addEventListener('click', tutupAlasanTolakModal);
+    document.getElementById('btn-batal-alasan-tolak-modal').addEventListener('click', tutupAlasanTolakModal);
+    document.getElementById('btn-kirim-alasan-tolak-modal').addEventListener('click', submitRejection);
+    
+    document.getElementById('btn-tutup-preview-modal').addEventListener('click', tutupPreviewModal);
+    document.getElementById('btn-batal-preview-modal').addEventListener('click', tutupPreviewModal);
+
+    document.getElementById('preview-filter-kelas').addEventListener('change', renderPreviewTable);
+    document.getElementById('preview-filter-nama').addEventListener('input', renderPreviewTable);
+    
+    document.getElementById('pending-scores-container').addEventListener('click', (e) => {
+      const approveBtn = e.target.closest('.btn-approve-score');
+      if (approveBtn) {
+        const key = approveBtn.dataset.key;
+        const mapel = approveBtn.dataset.mapel;
+        const callback = function() {
+          setLoading(true, 'Menyetujui dan menyalin nilai...');
+          google.script.run
+            .withSuccessHandler(onScoreApproved)
+            .withFailureHandler(onGagal)
+            .approveTeacherScore(getToken(), key);
+        };
+        showConfirmationModal(
+          "Setujui Nilai",
+          `Anda yakin ingin menyetujui kiriman nilai untuk mapel <strong>${mapel}</strong>? Nilai ini akan menggantikan data nilai ujian yang ada di Aplikasi 1.`,
+          callback,
+          'success'
+        );
+        return;
+      }
+      
+      const rejectBtn = e.target.closest('.btn-reject-score');
+      if (rejectBtn) {
+        const key = rejectBtn.dataset.key;
+        const mapel = rejectBtn.dataset.mapel;
+        const guru = rejectBtn.dataset.guru;
+        showAlasanTolakModal(key, mapel, guru);
+        return;
+      }
+      
+      const previewBtn = e.target.closest('.btn-preview-score');
+      if (previewBtn) {
+        const key = previewBtn.dataset.key;
+        const mapel = previewBtn.dataset.mapel;
+        const guru = previewBtn.dataset.guru;
+        bukaPreviewModal(key, mapel, guru);
+        return;
+      }
+    });
+
     // --- [TAMBAHAN BARU] Event Listener Fase Capture untuk Halaman Guru ---
+
+    document.getElementById('btn-buka-kelola-nilai-guru').addEventListener('click', (e) => {
+        handleNavigationConfirm(bukaHalamanKelolaNilaiGuru);
+    });
+    
+    document.getElementById('btn-kembali-ke-dashboard-17').addEventListener('click', () => {
+      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
+    });
+    
+    document.getElementById('btn-tutup-alasan-tolak-modal').addEventListener('click', tutupAlasanTolakModal);
+    document.getElementById('btn-batal-alasan-tolak-modal').addEventListener('click', tutupAlasanTolakModal);
+    document.getElementById('btn-kirim-alasan-tolak-modal').addEventListener('click', submitRejection);
+    
+    document.getElementById('pending-scores-container').addEventListener('click', (e) => {
+      const approveBtn = e.target.closest('.btn-approve-score');
+      if (approveBtn) {
+        const key = approveBtn.dataset.key;
+        const mapel = approveBtn.dataset.mapel;
+        const callback = function() {
+          setLoading(true, 'Menyetujui dan menyalin nilai...');
+          google.script.run
+            .withSuccessHandler(onScoreApproved)
+            .withFailureHandler(onGagal)
+            .approveTeacherScore(getToken(), key);
+        };
+        showConfirmationModal(
+          "Setujui Nilai",
+          `Anda yakin ingin menyetujui kiriman nilai untuk mapel <strong>${mapel}</strong>? Nilai ini akan menggantikan data nilai ujian yang ada di Aplikasi 1.`,
+          callback,
+          'success'
+        );
+        return;
+      }
+      
+      const rejectBtn = e.target.closest('.btn-reject-score');
+      if (rejectBtn) {
+        const key = rejectBtn.dataset.key;
+        const mapel = rejectBtn.dataset.mapel;
+        const guru = rejectBtn.dataset.guru;
+        showAlasanTolakModal(key, mapel, guru);
+        return;
+      }
+    });
+
     // --- [MODIFIKASI DI SINI: Hapus bukaHalamanDonasi] ---
     document.getElementById('halaman-guru').addEventListener('click', (e) => {
       const halaman = e.currentTarget;
@@ -3335,9 +3434,28 @@
       });
       showMessage('pengaturan-cetak-message', 'Error: ' + errorMsg, true);
     }
+
     // --- AKHIR MODIFIKASI ---
     else if (document.getElementById('superadmin-sekolah-modal').classList.contains('show')) {
       showMessage('modal-sekolah-error', 'Error: ' + errorMsg, true);
+    }
+    else if (document.getElementById('halaman-pengaturan-cetak').style.display !== 'none') {
+      const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
+      formInputs.forEach(input => {
+        if(input.id !== 'btn-simpan-pengaturan-cetak') {
+            input.disabled = false;
+        }
+      });
+      showMessage('pengaturan-cetak-message', 'Error: ' + errorMsg, true);
+    }
+    else if (document.getElementById('halaman-kelola-nilai-guru').style.display !== 'none') {
+      showMessage('kelola-nilai-guru-message', 'Error: ' + errorMsg, true);
+    }
+    else if (document.getElementById('alasan-tolak-modal').classList.contains('show')) {
+      showMessage('alasan-tolak-modal-error', 'Error: ' + errorMsg, true);
+    }
+    else if (document.getElementById('preview-nilai-guru-modal').classList.contains('show')) {
+      showMessage('preview-modal-error', 'Error: ' + errorMsg, true);
     }
     else {
       showInfoModal('Terjadi Error', errorMsg, true);
@@ -9762,10 +9880,8 @@
     const btnPenempatan = document.getElementById('btn-buka-penempatan');
     const btnTahunAjaran = document.getElementById('btn-buka-tahun-ajaran');
     const btnCetakKartuSiswa = document.getElementById('btn-cetak-kartu-siswa');
-    
-    // --- [TAMBAHAN BARU] ---
     const btnPengaturanCetak = document.getElementById('btn-buka-pengaturan-cetak');
-    // --- [AKHIR TAMBAHAN BARU] ---
+    const btnKelolaNilaiGuru = document.getElementById('btn-buka-kelola-nilai-guru');
     
     if (btnGuru) {
       const stamp = btnGuru.querySelector('.premium-stamp');
@@ -9833,7 +9949,6 @@
       }
     }
 
-    // --- [TAMBAHAN BARU] ---
     if (btnPengaturanCetak) {
       const stamp = btnPengaturanCetak.querySelector('.premium-stamp');
       if (isPremium) {
@@ -9844,7 +9959,17 @@
         if (stamp) stamp.style.display = 'block';
       }
     }
-    // --- [AKHIR TAMBAHAN BARU] ---
+    
+    if (btnKelolaNilaiGuru) {
+      const stamp = btnKelolaNilaiGuru.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnKelolaNilaiGuru.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnKelolaNilaiGuru.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
 
     if (tabGuru) {
       tabGuru.disabled = !isPremium;
@@ -12524,6 +12649,301 @@
     
     modal.onOk = null;
     modal.classList.add('show');
+  }
+
+  function bukaHalamanKelolaNilaiGuru() {
+    tampilHalaman('halaman-kelola-nilai-guru');
+    
+    const halaman = document.getElementById('halaman-kelola-nilai-guru');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+    
+    const oldInfoBox = document.getElementById('kelola-nilai-guru-premium-info');
+    if (oldInfoBox) {
+      oldInfoBox.remove();
+    }
+    
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      
+      const infoBox = document.createElement('div');
+      infoBox.id = 'kelola-nilai-guru-premium-info';
+      infoBox.className = 'premium-info-box';
+      infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat, tetapi tidak dapat menyetujui atau menolak kiriman nilai. Silakan <a href="#" id="link-donasi-dari-kelola-nilai">Donasi</a> untuk mengaktifkan fitur ini.';
+      
+      const pageHeader = halaman.querySelector('.page-header');
+      if (pageHeader) {
+        pageHeader.insertAdjacentElement('afterend', infoBox);
+      }
+      
+      const linkDonasi = document.getElementById('link-donasi-dari-kelola-nilai');
+      if (linkDonasi) {
+        linkDonasi.addEventListener('click', (e) => {
+          e.preventDefault();
+          bukaHalamanDonasi();
+        });
+      }
+    }
+    
+    setLoading(true, 'Memuat kiriman nilai guru...', false, false);
+    hideMessage('kelola-nilai-guru-message');
+    document.getElementById('pending-scores-container').innerHTML = '<p>Memuat data...</p>';
+    
+    google.script.run
+      .withSuccessHandler(onPendingScoresLoaded)
+      .withFailureHandler(onGagal)
+      .getPendingTeacherScores(getToken());
+  }
+
+  function onPendingScoresLoaded(response) {
+    setLoading(false);
+    const container = document.getElementById('pending-scores-container');
+    
+    if (response.status !== 'sukses') {
+      container.innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
+      return;
+    }
+    
+    const scores = response.pendingScores;
+    if (scores.length === 0) {
+      container.innerHTML = '<p>Tidak ada kiriman nilai baru yang menunggu persetujuan.</p>';
+      return;
+    }
+    
+    let html = '';
+    const isReadOnly = document.getElementById('halaman-kelola-nilai-guru').classList.contains('non-premium-readonly');
+    
+    scores.forEach(score => {
+      const kirimDate = new Date(score.timestamp_kirim);
+      const kirimDateStr = kirimDate.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+      
+      html += `
+        <div class="pending-score-card">
+          <h4>${score.nama_mapel}</h4>
+          <div class="pending-score-details">
+            <p style="margin:0;"><strong>Guru</strong>: ${score.nama_guru}</p>
+            <p style="margin:0;"><strong>T.A.</strong>: ${score.deskripsi_ta}</p>
+            <p style="margin:0;"><strong>Dikirim</strong>: <span>${kirimDateStr}</span></p>
+          </div>
+          <div class="pending-score-card-actions">
+            <button class="btn-aksi btn-reject-score" 
+                    data-key="${score.key}" 
+                    data-mapel="${score.nama_mapel}" 
+                    data-guru="${score.nama_guru}"
+                    ${isReadOnly ? 'disabled' : ''}>
+              <span class="btn-content-wrapper"><i class="fas fa-times"></i> Tolak/Revisi</span>
+              <div class="premium-stamp" style="display: none;">Premium</div>
+            </button>
+            
+            <button class="btn-aksi btn-preview-score" 
+                    data-key="${score.key}" 
+                    data-mapel="${score.nama_mapel}" 
+                    data-guru="${score.nama_guru}">
+              <i class="fas fa-eye"></i> Preview
+            </button>
+
+            <button class="btn-aksi btn-approve-score" 
+                    data-key="${score.key}" 
+                    data-mapel="${score.nama_mapel}"
+                    ${isReadOnly ? 'disabled' : ''}>
+              <span class="btn-content-wrapper"><i class="fas fa-check"></i> Setujui Nilai</span>
+              <div class="premium-stamp" style="display: none;">Premium</div>
+            </button>
+          </div>
+        </div>
+      `;
+    });
+    
+    container.innerHTML = html;
+  }
+
+  function showAlasanTolakModal(submissionKey, namaMapel, namaGuru) {
+    const modal = document.getElementById('alasan-tolak-modal');
+    hideMessage('alasan-tolak-modal-error');
+    
+    document.getElementById('alasan-tolak-submission-key').value = submissionKey;
+    document.getElementById('alasan-tolak-mapel-nama').innerText = namaMapel;
+    document.getElementById('alasan-tolak-guru-nama').innerText = namaGuru;
+    document.getElementById('alasan-tolak-input').value = '';
+    
+    modal.classList.add('show');
+    document.getElementById('alasan-tolak-input').focus();
+  }
+
+  function tutupAlasanTolakModal() {
+    const modal = document.getElementById('alasan-tolak-modal');
+    modal.classList.remove('show');
+    document.getElementById('alasan-tolak-submission-key').value = '';
+    hideMessage('alasan-tolak-modal-error');
+  }
+
+  function submitRejection() {
+    const modal = document.getElementById('alasan-tolak-modal');
+    const reason = document.getElementById('alasan-tolak-input').value.trim();
+    const submissionKey = document.getElementById('alasan-tolak-submission-key').value;
+    
+    if (reason === "") {
+      showMessage('alasan-tolak-modal-error', 'Alasan penolakan tidak boleh kosong.', true);
+      document.getElementById('alasan-tolak-input').focus();
+      return;
+    }
+    
+    const btn = document.getElementById('btn-kirim-alasan-tolak-modal');
+    setButtonLoading(btn, 'Mengirim...');
+    
+    google.script.run
+      .withSuccessHandler(onScoreRejected)
+      .withFailureHandler(onScoreRejectFailed)
+      .rejectTeacherScore(getToken(), submissionKey, reason);
+  }
+
+  function onScoreRejected(response) {
+    const btn = document.getElementById('btn-kirim-alasan-tolak-modal');
+    resetButtonLoading(btn);
+    
+    if (response.status === 'sukses') {
+      tutupAlasanTolakModal();
+      showToast(response.message, 'sukses');
+      bukaHalamanKelolaNilaiGuru(); // Refresh list
+    } else {
+      onScoreRejectFailed({ message: response.message });
+    }
+  }
+
+  function onScoreRejectFailed(error) {
+    const btn = document.getElementById('btn-kirim-alasan-tolak-modal');
+    resetButtonLoading(btn);
+    showMessage('alasan-tolak-modal-error', error.message, true);
+  }
+
+  function onScoreApproved(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      showToast(response.message, 'sukses');
+      setIjazahDirty(true); // <--- BARIS PENTING
+      bukaHalamanKelolaNilaiGuru(); // Refresh list
+    } else {
+      onGagal(response);
+    }
+  }
+
+  function bukaPreviewModal(submissionKey, namaMapel, namaGuru) {
+    const modal = document.getElementById('preview-nilai-guru-modal');
+    hideMessage('preview-modal-error');
+    
+    globalPreviewScores = [];
+    document.getElementById('preview-filter-kelas').innerHTML = '<option value="semua">-- Semua Kelas --</option>';
+    document.getElementById('preview-filter-nama').value = '';
+
+    document.getElementById('preview-modal-title').innerText = `Preview: ${namaMapel}`;
+    document.getElementById('preview-modal-info').innerHTML = `Menampilkan nilai kiriman dari <strong>${namaGuru}</strong>.`;
+    document.getElementById('preview-modal-table-container').innerHTML = '<p>Memuat nilai...</p>';
+    
+    modal.classList.add('show');
+    
+    google.script.run
+      .withSuccessHandler(onPreviewScoresLoaded)
+      .withFailureHandler(onPreviewScoresFailed)
+      .getTeacherSubmittedScores(getToken(), submissionKey);
+  }
+
+  function tutupPreviewModal() {
+    document.getElementById('preview-nilai-guru-modal').classList.remove('show');
+    hideMessage('preview-modal-error');
+  }
+
+  function onPreviewScoresLoaded(response) {
+    const container = document.getElementById('preview-modal-table-container');
+    
+    if (response.status !== 'sukses') {
+      container.innerHTML = '';
+      showMessage('preview-modal-error', response.message, true);
+      return;
+    }
+    
+    globalPreviewScores = response.scores;
+    
+    const selectKelas = document.getElementById('preview-filter-kelas');
+    const kelasList = (response.allKelas || []).sort(compareKelas);
+    
+    let optionsHtml = '<option value="semua">-- Semua Kelas --</option>';
+    kelasList.forEach(kelas => {
+      optionsHtml += `<option value="${kelas}">${kelas}</option>`;
+    });
+    selectKelas.innerHTML = optionsHtml;
+    
+    renderPreviewTable();
+  }
+
+  function onPreviewScoresFailed(error) {
+    showMessage('preview-modal-error', error.message, true);
+  }
+
+  function renderPreviewTable() {
+    const container = document.getElementById('preview-modal-table-container');
+    const scores = globalPreviewScores;
+    
+    if (scores.length === 0) {
+      container.innerHTML = '<p>Tidak ada data siswa ditemukan untuk kiriman ini.</p>';
+      return;
+    }
+    
+    const mapelInfo = (scores.length > 0) 
+      ? { 
+          isUS: scores.some(s => s.nilai_ujian !== "-"), 
+          isUP: scores.some(s => s.nilai_praktek !== "-") 
+        } 
+      : { isUS: true, isUP: true };
+    
+    // Ambil data dari response (sudah disortir server), tapi cek mapelInfo
+    const mapelInfoFromServer = globalPreviewScores.mapelInfo;
+    if (mapelInfoFromServer) {
+        mapelInfo.isUS = mapelInfoFromServer.isUS;
+        mapelInfo.isUP = mapelInfoFromServer.isUP;
+    }
+
+    const filterKelas = document.getElementById('preview-filter-kelas').value;
+    const filterNama = document.getElementById('preview-filter-nama').value.toLowerCase();
+    
+    const filteredScores = scores.filter(score => {
+      const kelasMatch = (filterKelas === 'semua' || score.kelas === filterKelas);
+      const namaMatch = (filterNama === '' || score.nama.toLowerCase().includes(filterNama));
+      return kelasMatch && namaMatch;
+    });
+
+    if (filteredScores.length === 0) {
+      container.innerHTML = '<p>Tidak ada siswa yang cocok dengan filter.</p>';
+      return;
+    }
+    
+    let tableHtml = '<table class="preview-scores-table">';
+    tableHtml += '<thead><tr><th>Nama Siswa</th><th>Kelas</th><th>No. Ujian</th>';
+    
+    if (mapelInfo.isUS) {
+      tableHtml += '<th class="col-nilai">Nilai Ujian</th>';
+    }
+    if (mapelInfo.isUP) {
+      tableHtml += '<th class="col-nilai">Nilai Praktek</th>';
+    }
+    tableHtml += '</tr></thead><tbody>';
+    
+    filteredScores.forEach(score => {
+      tableHtml += '<tr>';
+      tableHtml += `<td>${score.nama}</td>`;
+      tableHtml += `<td>${score.kelas}</td>`;
+      tableHtml += `<td class="col-no-ujian">${score.no_ujian}</td>`;
+      if (mapelInfo.isUS) {
+        tableHtml += `<td class="col-nilai">${score.nilai_ujian}</td>`;
+      }
+      if (mapelInfo.isUP) {
+        tableHtml += `<td class="col-nilai">${score.nilai_praktek}</td>`;
+      }
+      tableHtml += '</tr>';
+    });
+    
+    tableHtml += '</tbody></table>';
+    container.innerHTML = tableHtml;
   }
 
 </script>
