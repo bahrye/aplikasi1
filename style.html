@@ -5673,4 +5673,232 @@
       opacity: 0.9;
     }
   }
+
+  /* --- GAYA UNTUK HALAMAN KELOLA NILAI GURU --- */
+
+  /* Kartu Dashboard */
+  #btn-buka-kelola-nilai-guru { color: #20c997; } /* Teal */
+  #btn-buka-kelola-nilai-guru:hover {
+    background-color: #20c997 !important;
+    color: white !important;
+  }
+
+  /* Premium Gating Override */
+  #btn-buka-kelola-nilai-guru.card-disabled {
+    background-color: var(--bg-white) !important;
+    color: #20c997 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+  #btn-buka-kelola-nilai-guru.card-disabled i,
+  #btn-buka-kelola-nilai-guru.card-disabled span {
+    color: #20c997 !important;
+    z-index: 2;
+    position: relative;
+  }
+  #btn-buka-kelola-nilai-guru.card-disabled:hover {
+    background-color: #20c997 !important;
+    color: white !important;
+    transform: translateY(-5px) !important;
+  }
+  #btn-buka-kelola-nilai-guru.card-disabled:hover i,
+  #btn-buka-kelola-nilai-guru.card-disabled:hover span {
+    color: white !important;
+  }
+  #btn-buka-kelola-nilai-guru.card-disabled::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    --shimmer-color: rgba(32, 201, 151, 0.8); /* Kilau Teal */
+    background: linear-gradient( 100deg, rgba(255, 255, 255, 0) 30%, var(--shimmer-color) 50%, rgba(255, 255, 255, 0) 70% );
+    transform: translateX(-150%);
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+    z-index: 1;
+    display: block;
+    border-radius: 12px;
+  }
+
+  /* Gating Halaman */
+  #halaman-kelola-nilai-guru.non-premium-readonly .pending-score-card-actions button {
+      position: relative;
+      overflow: hidden;
+  }
+  #halaman-kelola-nilai-guru.non-premium-readonly .pending-score-card-actions button::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      --shimmer-color: rgba(255, 255, 255, 0.8); 
+      background: linear-gradient( 100deg, rgba(255, 255, 255, 0) 30%, var(--shimmer-color) 50%, rgba(255, 255, 255, 0) 70% );
+      transform: translateX(-150%);
+      animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+      z-index: 1;
+      display: block;
+      border-radius: 8px;
+  }
+  #halaman-kelola-nilai-guru.non-premium-readonly .pending-score-card-actions button > * {
+      position: relative;
+      z-index: 2;
+      pointer-events: none;
+  }
+  #halaman-kelola-nilai-guru.non-premium-readonly .pending-score-card-actions button {
+      opacity: 1 !important;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+  }
+
+  /* Daftar Kartu Nilai Pending */
+  #pending-scores-container {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .pending-score-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-left: 5px solid var(--primary-color);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  .pending-score-card h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 18px;
+    color: var(--primary-color);
+    line-height: 1.4;
+  }
+  .pending-score-details {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-dark);
+  }
+  .pending-score-details strong {
+    color: var(--text-dark);
+    font-weight: 700;
+    min-width: 100px;
+    display: inline-block;
+  }
+  .pending-score-details span {
+    color: var(--text-light);
+    font-weight: 500;
+  }
+  .pending-score-card-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+  }
+  .pending-score-card-actions button {
+    width: 100%;
+    flex-grow: 1;
+    padding: 10px;
+    font-size: 14px;
+  }
+  .btn-approve-score {
+    background-color: var(--success-color);
+  }
+  .btn-approve-score:hover {
+    background-color: #157347;
+  }
+  .btn-reject-score {
+    background-color: var(--danger-color);
+  }
+  .btn-reject-score:hover {
+    background-color: #b02a37;
+  }
+
+  /* Modal Alasan Tolak */
+  #alasan-tolak-modal .modal-content {
+    max-width: 480px;
+  }
+  #alasan-tolak-modal-message {
+    font-size: 16px;
+    line-height: 1.5;
+    margin-top: 0;
+  }
+  #alasan-tolak-modal-message strong {
+    color: var(--primary-color);
+  }
+  #alasan-tolak-modal-message span {
+    color: var(--text-light);
+    font-weight: 500;
+  }
+  #alasan-tolak-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+  }
+  #btn-kirim-alasan-tolak-modal {
+    width: auto;
+    margin-left: 10px;
+  }
+  #btn-batal-alasan-tolak-modal {
+    width: auto;
+    background-color: var(--secondary-color);
+  }
+  #btn-batal-alasan-tolak-modal:hover {
+    background-color: #5a6268;
+  }
+
+  /* --- GAYA UNTUK PREVIEW MODAL NILAI GURU --- */
+  .pending-score-card-actions button.btn-preview-score {
+    background-color: var(--secondary-color);
+    flex-grow: 0.5; /* Sedikit lebih kecil */
+  }
+  .pending-score-card-actions button.btn-preview-score:hover {
+    background-color: #5a6268;
+  }
+
+  #preview-modal-info {
+    font-size: 15px;
+    line-height: 1.5;
+    margin-top: 0;
+    margin-bottom: 15px;
+  }
+  #preview-modal-info strong {
+    color: var(--primary-color);
+  }
+  #preview-modal-info span {
+    color: var(--text-light);
+    font-weight: 500;
+  }
+
+  /* Tabel di dalam modal */
+  #preview-modal-table-container {
+    margin-top: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+  }
+
+  .preview-scores-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .preview-scores-table th,
+  .preview-scores-table td {
+    border: 1px solid var(--border-color);
+    padding: 10px 12px;
+    font-size: 14px;
+    text-align: left;
+  }
+  .preview-scores-table th {
+    background-color: var(--bg-light);
+    font-weight: 700;
+    position: sticky; /* Buat header sticky di dalam modal */
+    top: 0;
+  }
+  .preview-scores-table tr:nth-child(even) {
+    background-color: var(--bg-light);
+  }
+
+  /* Kolom nilai rata tengah */
+  .preview-scores-table .col-no-ujian,
+  .preview-scores-table .col-nilai {
+    text-align: center;
+    width: 100px;
+  }
 </style>
