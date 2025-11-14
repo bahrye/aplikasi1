@@ -4358,6 +4358,11 @@
   function onSiswaLoaded(response) {
       setLoading(false);
       
+      // --- PERBAIKAN DI SINI ---
+      // Tambahkan baris ini untuk mengaktifkan kembali tombol "Cetak Kartu Siswa"
+      document.getElementById('btn-cetak-kartu-siswa').disabled = false;
+      // --- AKHIR PERBAIKAN ---
+
       document.getElementById('btn-tambah-siswa-baru').disabled = false;
       document.getElementById('btn-import-siswa').disabled = false;
       document.getElementById('btn-hapus-semua-siswa').disabled = false;
