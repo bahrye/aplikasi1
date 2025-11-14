@@ -5136,5 +5136,541 @@
   #halaman-guru.non-premium-readonly .form-group-toggle::before {
      border-radius: 12px; /* Sesuaikan dengan radius aslinya */
   }
+
+  /* --- =================================================== --- */
+  /* --- GAYA BARU: Read-Only Premium (Kelola Kelulusan)     --- */
+  /* --- =================================================== --- */
+
+  /* 1. Kotak Info Premium di Halaman */
+  .premium-info-box {
+    background-color: #fff8e1; /* Kuning muda */
+    border: 1px solid #ffe6b0; /* Border kuning */
+    color: #664d03; /* Teks kuning tua */
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin: 20px 0 10px 0; /* Jarak dari header */
+    font-size: 15px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .premium-info-box i {
+    color: #fd7e14; /* Oranye */
+    margin-right: 8px;
+  }
+  .premium-info-box a {
+    color: var(--primary-color); /* Biru */
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .premium-info-box a:hover {
+    text-decoration: underline;
+  }
+
+  /* 2. Wrapper untuk shimmer dan stamp pada tombol */
+  #halaman-kelola-kelulusan.non-premium-readonly .form-actions button {
+    position: relative;
+    overflow: hidden; /* Penting untuk memotong shimmer dan stamp */
+  }
+
+  /* 3. Gaya "disabled" untuk input (mempertahankan warna asli) */
+  #halaman-kelola-kelulusan.non-premium-readonly input[type="datetime-local"] {
+    cursor: not-allowed;
+    opacity: 0.85; /* Sedikit pudar */
+    pointer-events: none; /* Cegah fokus */
+    /* Warna background/border/text sengaja dibiarkan default agar tidak abu-abu */
+  }
+
+  /* 4. Tampilkan Premium Stamp pada tombol
+    (Style ini sudah ada, kita hanya perlu memastikan shimmer-nya) */
+  #halaman-kelola-kelulusan.non-premium-readonly .form-actions button .premium-stamp {
+    position: absolute;
+    top: 10px;
+    right: -30px;
+    background-color: #fd7e14; /* Oranye */
+    color: white;
+    padding: 5px 30px;
+    font-size: 12px;
+    font-weight: 700;
+    transform: rotate(45deg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    z-index: 3; /* Di atas shimmer dan konten */
+    display: block; /* Selalu tampilkan dalam mode ini */
+  }
+
+  /* 5. Tambahkan Shimmer Effect (::before) PUTIH */
+  #halaman-kelola-kelulusan.non-premium-readonly .form-actions button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    
+    /* Kilau PUTIH (lebih kontras) */
+    --shimmer-color: rgba(255, 255, 255, 0.8); 
+    
+    background: linear-gradient(
+      100deg, 
+      rgba(255, 255, 255, 0) 30%, 
+      var(--shimmer-color) 50%, 
+      rgba(255, 255, 255, 0) 70%
+    );
+    
+    transform: translateX(-150%);
+    /* Gunakan animasi shimmer-premium-stronger yang sudah ada */
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+    z-index: 1; /* Di bawah konten */
+    display: block;
+    
+    border-radius: 8px; /* Sesuaikan dengan border-radius tombol */
+  }
+
+  /* 6. Pastikan konten (ikon/teks) berada di atas shimmer */
+  /* (Ini penting agar teks tombol tetap terlihat) */
+  #halaman-kelola-kelulusan.non-premium-readonly .form-actions button > i,
+  #halaman-kelola-kelulusan.non-premium-readonly .form-actions button > span {
+    position: relative;
+    z-index: 2;
+    pointer-events: none; /* Cegah klik pada ikon/teks */
+  }
+
+  /* 7. PAKSA tombol untuk tetap bisa diklik (agar bisa ke halaman donasi) */
+  /* dan PAKSA warna aslinya (override :disabled) */
+
+  /* Tombol Publikasikan (Biru) */
+  #halaman-kelola-kelulusan.non-premium-readonly #btn-publikasikan-hasil {
+    background-color: var(--primary-color) !important; /* Paksa warna biru */
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important; /* Pastikan bisa diklik */
+    /* Hapus bayangan 'disabled' jika ada */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Tombol Tarik (Merah) */
+  #halaman-kelola-kelulusan.non-premium-readonly #btn-tarik-publikasi {
+    background-color: var(--danger-color) !important; /* Paksa warna merah */
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important; /* Pastikan bisa diklik */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+
+  /* 8. Efek hover ringan agar terlihat interaktif */
+  #halaman-kelola-kelulusan.non-premium-readonly #btn-publikasikan-hasil:hover {
+    background-color: var(--primary-dark) !important;
+    transform: translateY(-2px);
+  }
+  #halaman-kelola-kelulusan.non-premium-readonly #btn-tarik-publikasi:hover {
+    background-color: #b02a37 !important;
+    transform: translateY(-2px);
+  }
+
+  /* --- =================================================== --- */
+  /* --- GAYA BARU: Read-Only Premium (Halaman Lainnya)      --- */
+  /* --- =================================================== --- */
+
+  /* 1. Wrapper untuk shimmer dan stamp pada tombol */
+  #halaman-proses-kelulusan.non-premium-readonly .form-actions button,
+  #halaman-tahun-ajaran.non-premium-readonly .form-actions button,
+  #halaman-tahun-ajaran.non-premium-readonly .btn-aksi-kelas,
+  #halaman-penempatan.non-premium-readonly .form-actions button,
+  #halaman-penempatan.non-premium-readonly .header-buttons button,
+  #halaman-penempatan.non-premium-readonly .btn-remove-mapel-app2,
+  #halaman-pengaturan-cetak.non-premium-readonly .form-actions button, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat /* <-- TAMBAHKAN INI */ {
+    position: relative;
+    overflow: hidden; /* Penting untuk memotong shimmer dan stamp */
+  }
+
+  /* 2. Gaya "disabled" untuk input (mempertahankan warna) */
+  #halaman-proses-kelulusan.non-premium-readonly input,
+  #halaman-tahun-ajaran.non-premium-readonly input,
+  #halaman-tahun-ajaran.non-premium-readonly input[type="text"]:disabled,
+  #halaman-penempatan.non-premium-readonly input,
+  #halaman-penempatan.non-premium-readonly select,
+  #halaman-penempatan.non-premium-readonly .enroll-checkbox,
+  #halaman-pengaturan-cetak.non-premium-readonly input, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly select, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly .file-upload-zone /* <-- TAMBAHKAN INI */ {
+    cursor: not-allowed;
+    opacity: 0.85; /* Sedikit pudar */
+    pointer-events: none; /* Cegah fokus */
+  }
+  /* Khusus untuk input T.A. yang terkunci (isUsed) */
+  #halaman-tahun-ajaran.non-premium-readonly .ta-input-row input:disabled {
+    background-color: var(--bg-light);
+    cursor: not-allowed;
+    border-style: dashed;
+  }
+
+  /* 3. Tampilkan Premium Stamp pada elemen yang dibungkus */
+  #halaman-proses-kelulusan.non-premium-readonly .form-actions button .premium-stamp,
+  #halaman-tahun-ajaran.non-premium-readonly .form-actions button .premium-stamp,
+  #halaman-tahun-ajaran.non-premium-readonly .btn-aksi-kelas .premium-stamp,
+  #halaman-penempatan.non-premium-readonly .form-actions button .premium-stamp,
+  #halaman-penempatan.non-premium-readonly .header-buttons button .premium-stamp,
+  #halaman-penempatan.non-premium-readonly .btn-remove-mapel-app2 .premium-stamp,
+  #halaman-pengaturan-cetak.non-premium-readonly .form-actions button .premium-stamp, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat .premium-stamp /* <-- TAMBAHKAN INI */ {
+    position: absolute;
+    top: 10px;
+    right: -30px;
+    background-color: #fd7e14; /* Oranye */
+    color: white;
+    padding: 5px 30px;
+    font-size: 12px;
+    font-weight: 700;
+    transform: rotate(45deg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    z-index: 3;
+    display: block;
+  }
+
+  /* [TAMBAHAN BARU] Aturan untuk toggle switch di Pengaturan Cetak */
+  #halaman-pengaturan-cetak.non-premium-readonly .form-group-toggle .premium-stamp {
+      position: absolute;
+      top: 10px; right: -30px;
+      background-color: #fd7e14; color: white;
+      padding: 5px 30px; font-size: 12px; font-weight: 700;
+      transform: rotate(45deg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      z-index: 3; display: block;
+  }
+  #halaman-pengaturan-cetak.non-premium-readonly .form-group-toggle {
+      position: relative;
+      overflow: hidden;
+      cursor: not-allowed;
+      pointer-events: none;
+      opacity: 0.85;
+  }
+
+  /* 4. Tambahkan Shimmer Effect (::before) PUTIH */
+  #halaman-proses-kelulusan.non-premium-readonly .form-actions button::before,
+  #halaman-tahun-ajaran.non-premium-readonly .form-actions button::before,
+  #halaman-tahun-ajaran.non-premium-readonly .btn-aksi-kelas::before,
+  #halaman-penempatan.non-premium-readonly .form-actions button::before,
+  #halaman-penempatan.non-premium-readonly .header-buttons button::before,
+  #halaman-penempatan.non-premium-readonly .btn-remove-mapel-app2::before,
+  #halaman-pengaturan-cetak.non-premium-readonly .form-actions button::before, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat::before, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly .form-group-toggle::before /* <-- TAMBAHKAN INI */ {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    --shimmer-color: rgba(255, 255, 255, 0.8); 
+    background: linear-gradient(
+      100deg, 
+      rgba(255, 255, 255, 0) 30%, 
+      var(--shimmer-color) 50%, 
+      rgba(255, 255, 255, 0) 70%
+    );
+    transform: translateX(-150%);
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+    z-index: 1;
+    display: block;
+    border-radius: 8px; /* Radius tombol default */
+  }
+  /* Radius khusus untuk tombol Aksi TA */
+  #halaman-tahun-ajaran.non-premium-readonly .btn-aksi-kelas.btn-remove-ta-row::before {
+    border-radius: 5px;
+  }
+  #halaman-penempatan.non-premium-readonly .btn-remove-mapel-app2::before {
+    border-radius: 5px;
+  }
+  /* [TAMBAHAN BARU] Radius untuk tombol hapus kop & toggle */
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat::before {
+      border-radius: 5px;
+  }
+  #halaman-pengaturan-cetak.non-premium-readonly .form-group-toggle::before {
+      border-radius: 12px;
+  }
+
+  /* 5. Pastikan konten (ikon/teks) berada di atas shimmer */
+  #halaman-proses-kelulusan.non-premium-readonly .form-actions button > *,
+  #halaman-tahun-ajaran.non-premium-readonly .form-actions button > *,
+  #halaman-tahun-ajaran.non-premium-readonly .btn-aksi-kelas > *,
+  #halaman-penempatan.non-premium-readonly .form-actions button > *,
+  #halaman-penempatan.non-premium-readonly .header-buttons button > *,
+  #halaman-penempatan.non-premium-readonly .btn-remove-mapel-app2 > *,
+  #halaman-pengaturan-cetak.non-premium-readonly .form-actions button > *, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat > *, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly .form-group-toggle > label, /* <-- TAMBAHKAN INI */
+  #halaman-pengaturan-cetak.non-premium-readonly .form-group-toggle > .switch /* <-- TAMBAHKAN INI */ {
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+  }
+  /* Wrapper untuk tombol-tombol di halaman guru (dari sebelumnya) */
+  #halaman-guru.non-premium-readonly button .btn-content-wrapper {
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* 6. PAKSA tombol untuk tetap bisa diklik (agar bisa ditangkap JS) */
+  /* dan PAKSA warna aslinya (override :disabled) */
+
+  /* Halaman Proses Kelulusan */
+  #halaman-proses-kelulusan.non-premium-readonly #btn-proses-kelulusan {
+    background-color: var(--danger-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-proses-kelulusan.non-premium-readonly #btn-proses-kelulusan:hover {
+    background-color: #b02a37 !important;
+    transform: translateY(-2px);
+  }
+
+  /* Halaman Tahun Ajaran */
+  #halaman-tahun-ajaran.non-premium-readonly #btn-simpan-ta {
+    background-color: var(--success-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-tahun-ajaran.non-premium-readonly #btn-simpan-ta:hover {
+    background-color: #157347 !important;
+    transform: translateY(-2px);
+  }
+  #halaman-tahun-ajaran.non-premium-readonly .btn-add-ta-row {
+    background-color: var(--success-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-tahun-ajaran.non-premium-readonly .btn-remove-ta-row {
+    background-color: var(--danger-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+
+  /* Halaman Penempatan */
+  #halaman-penempatan.non-premium-readonly #btn-simpan-penempatan-siswa,
+  #halaman-penempatan.non-premium-readonly #btn-simpan-penempatan-mapel,
+  #halaman-penempatan.non-premium-readonly #btn-buka-modal-mapel-app2 {
+    background-color: var(--success-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-penempatan.non-premium-readonly #btn-simpan-penempatan-siswa:hover,
+  #halaman-penempatan.non-premium-readonly #btn-simpan-penempatan-mapel:hover,
+  #halaman-penempatan.non-premium-readonly #btn-buka-modal-mapel-app2:hover {
+    background-color: #157347 !important;
+    transform: translateY(-2px);
+  }
+  #halaman-penempatan.non-premium-readonly #btn-import-penempatan,
+  #halaman-penempatan.non-premium-readonly #btn-penempatan-siswa-tandai {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-penempatan.non-premium-readonly #btn-penempatan-siswa-batal {
+    background-color: var(--secondary-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-penempatan.non-premium-readonly .btn-remove-mapel-app2 {
+    background-color: var(--danger-color) !important;
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  /* [TAMBAHAN BARU] Aturan untuk Halaman Pengaturan Cetak */
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-simpan-pengaturan-cetak {
+    background-color: var(--success-color) !important; /* Warna Simpan (hijau) */
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-simpan-pengaturan-cetak:hover {
+    background-color: #157347 !important;
+    transform: translateY(-2px);
+  }
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat {
+    background-color: var(--danger-color) !important; /* Warna Hapus (merah) */
+    color: white !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  #halaman-pengaturan-cetak.non-premium-readonly #btn-hapus-kop-surat:hover {
+    background-color: #b02a37 !important;
+    transform: translateY(-2px);
+  }
   
+  /* --- =================================================== --- */
+  /* --- GAYA BARU: Read-Only Premium (Pengaturan Cetak Card) --- */
+  /* --- =================================================== --- */
+
+  /* 1. Override: Kembalikan warna asli untuk kartu Pengaturan Cetak */
+  #btn-buka-pengaturan-cetak.card-disabled,
+  #btn-buka-pengaturan-cetak:disabled {
+    background-color: var(--bg-white) !important;
+    color: #0dcaf0 !important; /* Warna biru muda asli */
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+
+  /* 2. Kembalikan warna ikon/teks non-hover */
+  #btn-buka-pengaturan-cetak.card-disabled i,
+  #btn-buka-pengaturan-cetak:disabled i,
+  #btn-buka-pengaturan-cetak.card-disabled span,
+  #btn-buka-pengaturan-cetak:disabled span {
+    color: #0dcaf0 !important; /* Warna biru muda asli */
+    position: relative; /* [PENTING] Agar di atas shimmer */
+    z-index: 2;
+  }
+
+  /* 3. Atur efek hover (menyala) */
+  #btn-buka-pengaturan-cetak.card-disabled:hover,
+  #btn-buka-pengaturan-cetak:disabled:hover {
+    background-color: #0dcaf0 !important; /* Warna solid biru muda */
+    color: white !important;
+    transform: translateY(-5px) !important; /* Efek menyembul */
+  }
+
+  /* 4. Atur ikon/teks saat hover */
+  #btn-buka-pengaturan-cetak.card-disabled:hover i,
+  #btn-buka-pengaturan-cetak:disabled:hover i,
+  #btn-buka-pengaturan-cetak.card-disabled:hover span,
+  #btn-buka-pengaturan-cetak:disabled:hover span {
+    color: white !important; /* Ikon & teks menjadi putih */
+  }
+
+  /* 5. Atur Shimmer (::before) saat 'card-disabled' */
+  #btn-buka-pengaturan-cetak.card-disabled::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    
+    /* Kilau Biru Muda (sesuai warna ikon) */
+    --shimmer-color: rgba(13, 202, 240, 0.7); 
+    
+    background: linear-gradient(
+      100deg, 
+      rgba(255, 255, 255, 0) 30%, 
+      var(--shimmer-color) 50%, 
+      rgba(255, 255, 255, 0) 70%
+    );
+    
+    transform: translateX(-150%);
+    /* Menggunakan animasi shimmer-premium-stronger yang sudah ada */
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out; 
+    z-index: 1; /* Di bawah teks/ikon */
+    display: block;
+    border-radius: 12px;
+  }
+
+  /* --- =================================================== --- */
+  /* --- GAYA BARU: Stamp Bintang (Kartu Donasi)             --- */
+  /* --- =================================================== --- */
+
+  /* 1. Definisikan animasi multi-warna untuk bintang */
+  @keyframes multi-color-star-shimmer {
+    0%, 100% { color: #dc3545; /* Merah */ }
+    20%      { color: #0d6efd; /* Biru */ }
+    40%      { color: #198754; /* Hijau */ }
+    60%      { color: #ffc107; /* Kuning */ }
+    80%      { color: #fd7e14; /* Oranye (Brown/Coklat terlalu gelap) */ }
+  }
+
+  /* 2. Style untuk stamp bintang (selalu terlihat) */
+  .premium-stamp.star-stamp {
+    /* Hapus properti banner (background, shadow, width, height, transform) */
+    background-color: transparent;
+    box-shadow: none;
+    width: auto;
+    height: auto;
+    padding: 0;
+    transform: none; /* <-- Hapus rotasi */
+    
+    /* Posisi BARU: Langsung di sudut kanan atas */
+    position: absolute;
+    top: 8px;   /* Jarak dari atas */
+    right: 10px;  /* Jarak dari kanan */
+    z-index: 2;
+    
+    /* Tidak perlu flex lagi */
+    display: block; 
+  }
+
+  /* 3. Style untuk ikon bintang di dalam stamp */
+  .premium-stamp.star-stamp .fa-star {
+    /* Hapus counter-rotasi dan margin */
+    transform: none; 
+    margin-top: 0; 
+    
+    /* --- [MODIFIKASI DI SINI] --- */
+    /* Terapkan DUA animasi: 1. Warna, 2. Goyang/Getar */
+    animation: 
+      multi-color-star-shimmer 5s infinite linear,
+      star-jiggle 4s infinite ease-in-out; 
+    /* --- [AKHIR MODIFIKASI] --- */
+    
+    /* Ukuran bintang (dibuat lebih besar) */
+    font-size: 24px; 
+    
+    /* Bayangan agar lebih terlihat di atas background apapun */
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4); 
+    
+    /* Warna awal (tetap) */
+    color: white; 
+  }
+
+  /* 4. Pastikan ikon & span di kartu donasi berada di bawah stamp */
+  #btn-buka-donasi i,
+  #btn-buka-donasi span {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* --- [TAMBAHAN BARU] Animasi Getar/Goyang Bintang --- */
+  @keyframes star-jiggle {
+    0%, 70% {
+      transform: rotate(0deg) scale(1);
+      opacity: 0.9;
+    }
+    75% {
+      transform: rotate(-15deg) scale(1.2);
+      opacity: 1;
+    }
+    80% {
+      transform: rotate(15deg) scale(1.2);
+    }
+    85% {
+      transform: rotate(-10deg) scale(1.1);
+    }
+    90% {
+      transform: rotate(10deg) scale(1.1);
+    }
+    95%, 100% {
+      transform: rotate(0deg) scale(1);
+      opacity: 0.9;
+    }
+  }
 </style>
