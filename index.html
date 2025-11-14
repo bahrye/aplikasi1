@@ -199,10 +199,15 @@
           <button class="dashboard-card" id="btn-buka-pengaturan-cetak">
             <i class="fas fa-print"></i>
             <span>Pengaturan Cetak</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
           </button>
           <button class="dashboard-card" id="btn-buka-donasi">
             <i class="fas fa-hand-holding-heart"></i>
             <span>Donasi Premium</span>
+            
+            <div class="premium-stamp star-stamp">
+              <i class="fas fa-star"></i>
+            </div>
           </button>
         </div>
 
@@ -705,6 +710,10 @@
           </div>
         </div>
 
+        <div id="guru-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data guru, tetapi tidak dapat menambah, mengedit, atau menghapus data. Silakan <a href="#" id="link-donasi-dari-guru">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+
         <p>Tambahkan guru dan tentukan mata pelajaran yang mereka ampu agar mereka dapat login dan menginput nilai.</p>
 
         <hr class="dashboard-divider">
@@ -753,6 +762,7 @@
         </form>
 
       </div>
+
     </div>
     
     <div class="container" id="halaman-mapel" style="display: none;">
@@ -1608,6 +1618,10 @@
           <h2>Proses Kelulusan (Tutup Tahun Ajaran)</h2>
         </div>
 
+        <div id="proses-kelulusan-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat halaman ini, tetapi tidak dapat menjalankan proses tutup tahun ajaran. Silakan <a href="#" id="link-donasi-dari-proses-kelulusan">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+
         <div class="message error" style="display: block; text-align: left; font-size: 16px; line-height: 1.6;">
           <h4 style="margin-top: 0; font-size: 18px;"><i class="fas fa-exclamation-triangle"></i> PERINGATAN BESAR!</h4>
           <p style="margin: 0;">Tindakan ini akan <strong>MENGHAPUS PERMANEN</strong> seluruh data berikut:</p>
@@ -1655,6 +1669,11 @@
         <div class="page-header">
           <h2>Pengaturan Cetak Laporan</h2>
         </div>
+
+        <div id="pengaturan-cetak-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat pengaturan, tetapi tidak dapat mengubahnya. Silakan <a href="#" id="link-donasi-dari-pengaturan-cetak">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+        
         <p>Pengaturan ini akan diterapkan pada dokumen PDF yang di-download dari <strong>Aplikasi 2 (Nilai Ujian)</strong>.</p>
 
         <form id="form-pengaturan-cetak" onsubmit="return false;">
@@ -1876,6 +1895,10 @@
           <h2>Kelola Tahun Ajaran</h2>
         </div>
 
+        <div id="ta-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data, tetapi tidak dapat menambah, mengedit, atau menghapus tahun ajaran. Silakan <a href="#" id="link-donasi-dari-ta">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+
         <p>Kelola Tahun Ajaran yang akan digunakan di <strong>Aplikasi Nilai Ujian (Aplikasi 2)</strong>. ID T.A. harus unik.</p>
         <p class="message error" style="display: block; text-align: left;">
           <i class="fas fa-exclamation-triangle"></i> <strong>PENTING:</strong><br>
@@ -1905,6 +1928,11 @@
         <div class="page-header">
           <h2>Kelola Penempatan (Siswa & Mapel)</h2>
         </div>
+
+        <div id="penempatan-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data, tetapi tidak dapat mengubah penempatan siswa atau mapel. Silakan <a href="#" id="link-donasi-dari-penempatan">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+
         <p>Halaman ini mengelola data penempatan di <strong>Aplikasi 2 (Nilai Ujian)</strong>. Pilih Tahun Ajaran untuk memulai.</p>
         <p id="penempatan-message" class="message" style="display: none;"></p>
         
