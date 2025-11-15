@@ -1540,15 +1540,12 @@
     document.getElementById('btn-proses-kelulusan').addEventListener('click', jalankanProsesKelulusan);
 
     document.getElementById('btn-cetak-kartu-siswa').addEventListener('click', (e) => {
-      // Cek apakah tombol memiliki class 'card-disabled'
-      if (e.currentTarget.classList.contains('card-disabled')) {
-        e.preventDefault(); // Hentikan aksi default tombol
-        // Alihkan ke halaman donasi
-        handleNavigationConfirm(bukaHalamanDonasi);
-      } else {
-        // Premium aktif, jalankan fungsi cetak
+      // Hanya jalankan jika tombol TIDAK dalam mode disabled (premium aktif)
+      if (!e.currentTarget.classList.contains('card-disabled')) {
         konfirmasiCetakKartuSiswa();
       }
+      // Jika .card-disabled (non-premium), tidak terjadi apa-apa,
+      // sesuai permintaan "tidak bisa diklik" dan "tidak mengarah ke donasi".
     });
 
     // --- [BARU] Listener untuk Pengaturan Cetak ---
@@ -2380,7 +2377,35 @@
     document.getElementById('btn-kembali-ke-dashboard-10').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
     });
-    document.getElementById('validasi-filter-kelas').addEventListener('change', renderValidasiTable);
+    // ===== MODIFIKASI DI BAWAH INI =====
+    // Listener filter sekarang memanggil fungsi render yang baru
+    document.getElementById('validasi-filter-kelas').addEventListener('change', renderValidasiTableBySiswa);
+
+    // TAMBAHKAN LISTENER TAB BARU
+    document.getElementById('validasi-tab-bar').addEventListener('click', (e) => {
+      if (e.target.classList.contains('tab-link')) {
+        const tabName = e.target.dataset.tab;
+        activateValidasiTab(tabName);
+      }
+    });
+    // ===== AKHIR MODIFIKASI =====
+
+    // ===== TAMBAHKAN BLOK EVENT LISTENER BARU DI BAWAH INI =====
+    // [BARU] Listener untuk klik pada sel tabel "Validasi per Mapel"
+    document.getElementById('validasi-mapel-table-container').addEventListener('click', (e) => {
+      const targetCell = e.target.closest('td');
+      
+      // Pastikan yang diklik adalah sel data (bukan header atau sel mapel pertama)
+      if (!targetCell || targetCell.cellIndex === 0) return;
+
+      const mapelId = targetCell.dataset.mapelId;
+      const componentId = targetCell.dataset.componentId;
+      
+      if (mapelId && componentId) {
+        showMissingStudentsTooltip(targetCell, mapelId, componentId);
+      }
+    });
+    // ===== AKHIR BLOK BARU =====
 
     document.getElementById('btn-import-siswa').addEventListener('click', bukaModalImportSiswa);
     document.getElementById('btn-tambah-siswa-baru').addEventListener('click', () => { showModalSiswa('add', {}); });
@@ -7147,20 +7172,28 @@
     if (showWeightedUjian) {
       btn.innerText = 'Lihat Nilai Asli';
       btn.classList.remove('toggled');
-      header.innerText = 'Nilai Ujian (Setelah Diberi Bobot)';
+      document.querySelector('#tab-ujian-content .table-content-header').innerText = 'Nilai Ujian (Setelah Diberi Bobot)';
     } else {
       btn.innerText = 'Lihat Nilai Bobot';
       btn.classList.add('toggled');
       header.innerText = 'Nilai Ujian (Asli/Sebelum Bobot)';
     }
     
-    // --- PERUBAHAN DI SINI ---
     setIjazahExportButtonsDisabled(true);
     setTimeout(() => {
       renderNilaiIjazahTabel('ujian');
-      setIjazahExportButtonsDisabled(false);
+      
+      // ===== MODIFIKASI DI BAWAH INI =====
+      // Cek apakah tombol hitung ulang SEDANG loading
+      const btnRecalc = document.getElementById('btn-recalculate-ijazah');
+      if (!btnRecalc || !btnRecalc.classList.contains('loading')) {
+        // Hanya aktifkan jika TIDAK sedang kalkulasi ulang
+        setIjazahExportButtonsDisabled(false);
+      }
+      // Jika sedang loading, biarkan tombol tetap nonaktif
+      // ===== AKHIR MODIFIKASI =====
+      
     }, 10);
-    // --- AKHIR PERUBAHAN ---
   }
 
   // Salin dan GANTI fungsi toggleRaporView() Anda
@@ -7179,13 +7212,21 @@
       header.innerText = 'Nilai Rapor (Asli/Sebelum Bobot)';
     }
     
-    // --- PERUBAHAN DI SINI ---
     setIjazahExportButtonsDisabled(true);
     setTimeout(() => {
       renderNilaiIjazahTabel('rapor');
-      setIjazahExportButtonsDisabled(false);
+      
+      // ===== MODIFIKASI DI BAWAH INI =====
+      // Cek apakah tombol hitung ulang SEDANG loading
+      const btnRecalc = document.getElementById('btn-recalculate-ijazah');
+      if (!btnRecalc || !btnRecalc.classList.contains('loading')) {
+        // Hanya aktifkan jika TIDAK sedang kalkulasi ulang
+        setIjazahExportButtonsDisabled(false);
+      }
+      // Jika sedang loading, biarkan tombol tetap nonaktif
+      // ===== AKHIR MODIFIKASI =====
+      
     }, 10);
-    // --- AKHIR PERUBAHAN ---
   }
 
   function setMapelOrderDirty(isDirty) {
@@ -7632,38 +7673,96 @@
     }
   }
 
-  let globalValidationData = {
+  let globalValidationDataSiswa = {
     siswaList: [],
     requiredSemesters: [],
     validationData: {}
   };
 
+  // TAMBAHKAN GLOBAL BARU
+  let globalValidationDataMapel = {
+    mapelList: [],
+    siswaList: [],
+    requiredSemesters: [],
+    validationData: {}
+  };
+
+  // ===== MODIFIKASI DI BAWAH INI (NAMA FUNGSI DIUBAH) =====
   function bukaHalamanValidasi() {
     tampilHalaman('halaman-validasi-nilai');
     hideMessage('validasi-message');
-    document.getElementById('validasi-nilai-table-container').innerHTML = '<p>Memeriksa kelengkapan...</p>';
+    
+    // Reset kedua kontainer
+    document.getElementById('validasi-nilai-table-container').innerHTML = '<p>Memeriksa kelengkapan per siswa...</p>';
+    document.getElementById('validasi-mapel-table-container').innerHTML = '<p>Memeriksa kelengkapan per mapel...</p>';
+    
+    // Reset filter
     document.getElementById('validasi-filter-kelas').innerHTML = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
-    globalValidationData = { siswaList: [], validationData: {} };
-    setLoading(true, 'Memvalidasi...', false, false);
-    google.script.run.withSuccessHandler(onValidasiDataLoaded).withFailureHandler(onGagal).getValidationData(getToken());
+    
+    // Reset data global
+    globalValidationDataSiswa = { siswaList: [], requiredSemesters: [], validationData: {} };
+    globalValidationDataMapel = { mapelList: [], siswaList: [], requiredSemesters: [], validationData: {} };
+
+    // Aktifkan tab default
+    activateValidasiTab('siswa');
+    
+    setLoading(true, 'Memvalidasi data...', false, false);
+
+    // Panggil fungsi data siswa (fungsi lama yang di-rename)
+    google.script.run
+      .withSuccessHandler(onValidasiSiswaDataLoaded) // <-- Handler baru
+      .withFailureHandler(onGagal) // <-- Handler onGagal biasa
+      .getValidationDataBySiswa(getToken()); // <-- Fungsi server baru
+
+    // Panggil fungsi data mapel (fungsi baru)
+    google.script.run
+      .withSuccessHandler(onValidasiMapelDataLoaded) // <-- Handler baru
+      .withFailureHandler(onGagal) // <-- Handler onGagal biasa
+      .getValidationDataByMapel(getToken()); // <-- Fungsi server baru
   }
 
-  function onValidasiDataLoaded(response) {
-    setLoading(false);
+  // NAMA FUNGSI DIUBAH (DARI onValidasiDataLoaded)
+  function onValidasiSiswaDataLoaded(response) {
+    // Hanya matikan loading jika KEDUA panggilan selesai
+    // (Panggilan kedua akan mematikan spinner)
+    
     const container = document.getElementById('validasi-nilai-table-container');
     
     if (response.status !== 'sukses') {
-      container.innerHTML = `<p class="message error" style="display:block;">Gagal memuat data validasi: ${response.message}</p>`;
-      globalValidationData = { siswaList: [], requiredSemesters: [], validationData: {} };
+      container.innerHTML = `<p class="message error" style="display:block;">Gagal memuat data validasi siswa: ${response.message}</p>`;
+      globalValidationDataSiswa = { siswaList: [], requiredSemesters: [], validationData: {} };
+      setLoading(false); // Matikan paksa jika error
       return;
     }
 
-    globalValidationData = response.data;
-    populateValidasiFilter(globalValidationData.siswaList);
-    renderValidasiTable();
+    globalValidationDataSiswa = response.data;
+    populateValidasiSiswaFilter(globalValidationDataSiswa.siswaList);
+    renderValidasiTableBySiswa();
+    
+    // Cek apakah panggilan lain sudah selesai (ditandai dgn dimuatnya mapelList)
+    if (globalValidationDataMapel.mapelList.length > 0 || globalValidationDataMapel.siswaList.length > 0) {
+        setLoading(false);
+    }
   }
 
-  function populateValidasiFilter(siswaList) {
+  // TAMBAHKAN FUNGSI BARU INI
+  function onValidasiMapelDataLoaded(response) {
+    setLoading(false); // Panggilan kedua selalu mematikan loading
+    const container = document.getElementById('validasi-mapel-table-container');
+
+    if (response.status !== 'sukses') {
+      container.innerHTML = `<p class="message error" style="display:block;">Gagal memuat data validasi mapel: ${response.message}</p>`;
+      globalValidationDataMapel = { mapelList: [], siswaList: [], requiredSemesters: [], validationData: {} };
+      return;
+    }
+
+    globalValidationDataMapel = response.data;
+    // Saat ini, renderValidasiTableByMapel masih placeholder
+    renderValidasiTableByMapel();
+  }
+
+  // NAMA FUNGSI DIUBAH (DARI populateValidasiFilter)
+  function populateValidasiSiswaFilter(siswaList) {
     const selectKelas = document.getElementById('validasi-filter-kelas');
     const selectedValue = selectKelas.value;
   
@@ -7679,15 +7778,46 @@
     selectKelas.value = selectedValue || (kelasList.length === 1 ? kelasList[0] : 'semua');
   }
 
-  /**
-   * VERSI REFACTOR (Cepat)
-   * Merender tabel validasi menggunakan DocumentFragment.
-   */
-  function renderValidasiTable() {
+  // TAMBAHKAN FUNGSI BARU INI
+  function activateValidasiTab(tabName) {
+    const page = document.getElementById('halaman-validasi-nilai');
+    
+    const tabClasses = ['tab-siswa-active', 'tab-mapel-active'];
+    let newActiveClass = '';
+
+    page.querySelectorAll('.tab-link').forEach(link => {
+      link.classList.remove('active');
+    });
+
+    page.querySelectorAll('.tab-content').forEach(content => {
+      content.classList.remove('active');
+    });
+
+    page.querySelector(`.tab-link[data-tab="${tabName}"]`).classList.add('active');
+    page.querySelector(`#tab-validasi-${tabName}-content`).classList.add('active');
+    
+    // Tampilkan/Sembunyikan filter bar
+    const filterBar = document.querySelector('#halaman-validasi-nilai .filter-bar');
+    if (tabName === 'siswa') {
+      newActiveClass = 'tab-siswa-active';
+      filterBar.style.display = 'flex';
+    } else if (tabName === 'mapel') {
+      newActiveClass = 'tab-mapel-active';
+      filterBar.style.display = 'none'; // Sembunyikan filter untuk tab mapel
+    }
+    
+    page.classList.remove(...tabClasses);
+    if (newActiveClass) {
+      page.classList.add(newActiveClass);
+    }
+  }
+
+  // NAMA FUNGSI DIUBAH (DARI renderValidasiTable)
+  function renderValidasiTableBySiswa() {
       const container = document.getElementById('validasi-nilai-table-container');
       container.innerHTML = ""; // 1. Kosongkan
 
-      const { siswaList, validationData, requiredSemesters } = globalValidationData;
+      const { siswaList, validationData, requiredSemesters } = globalValidationDataSiswa; // <-- Ganti global var
       const selectedKelas = document.getElementById('validasi-filter-kelas').value;
 
       // 2. Logika Pengecekan Data Kosong
@@ -7792,7 +7922,216 @@
       container.appendChild(table);
   }
 
-  // GANTI FUNGSI INI di client.html (sekitar baris 7278)
+  /**
+   * [BARU - DIAKTIFKAN v2] Merender tabel validasi per mapel (Agregat).
+   */
+  function renderValidasiTableByMapel() {
+    const container = document.getElementById('validasi-mapel-table-container');
+    container.innerHTML = ""; // 1. Kosongkan
+
+    // Ambil data dari global baru
+    const { mapelList, siswaList, validationData, requiredSemesters } = globalValidationDataMapel;
+    
+    // 2. Cek data kosong
+    if (!mapelList || mapelList.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data mapel wajib (US/UP).</p>';
+        return;
+    }
+    const totalSiswa = (siswaList && siswaList.length > 0) ? siswaList.length : 0;
+    if (totalSiswa === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
+        return;
+    }
+
+    // 3. Ikon (Definisi ulang)
+    const okIcon = '<span class="validasi-icon validasi-ok"><i class="fas fa-check-circle"></i></span>';
+    const noIcon = '<span class="validasi-icon validasi-no"><i class="fas fa-times-circle"></i></span>';
+    const dashIcon = '<span class="validasi-icon validasi-na">-</span>'; // Untuk N/A
+
+    // 4. Buat Tabel
+    const table = document.createElement('table');
+    table.className = 'input-nilai-table'; // Pakai style tabel yang sudah ada
+
+    // 5. Buat Header (Kolom adalah Tipe Nilai, sama seperti tab per-siswa)
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    
+    let headerHTML = '<th>Mata Pelajaran</th>';
+    
+    const globalNeedsUM = mapelList.some(m => m.isUS);
+    const globalNeedsUP = mapelList.some(m => m.isUP);
+    const jenjangPilihan = jenjangPilihanCache;
+    const labelUjian = (jenjangPilihan === 'MI' || jenjangPilihan === 'MTS' || jenjangPilihan === 'MA') ? 'UM' : 'US';
+    const namaUjianLengkap = (labelUjian === 'UM') ? 'Ujian Madrasah' : 'Ujian Sekolah';
+
+    // Buat array header komponen untuk iterasi di body
+    const componentHeaders = [];
+
+    if (globalNeedsUM) {
+      headerHTML += `<th class="col-validasi-header col-validasi-ujian clickable-mapel-header" data-mapel-nama="${namaUjianLengkap}" title="Klik untuk lihat nama mapel">${labelUjian}</th>`;
+      componentHeaders.push({ id: 'UM', isRequiredField: 'isUS' });
+    }
+    if (globalNeedsUP) {
+      headerHTML += `<th class="col-validasi-header col-validasi-ujian clickable-mapel-header" data-mapel-nama="Ujian Praktek" title="Klik untuk lihat nama mapel">UP</th>`;
+      componentHeaders.push({ id: 'UP', isRequiredField: 'isUP' });
+    }
+    requiredSemesters.forEach(semester => {
+      const shortCodeP = `${semester.shortCode}.P`;
+      const fullNameP = `${semester.nama} (Pengetahuan)`;
+      const shortCodeK = `${semester.shortCode}.K`;
+      const fullNameK = `${semester.nama} (Keterampilan)`;
+      headerHTML += `<th class="col-validasi-header col-validasi-rapor clickable-mapel-header" data-mapel-nama="${fullNameP}" title="Klik untuk lihat nama mapel">${shortCodeP}</th>`;
+      headerHTML += `<th class="col-validasi-header col-validasi-rapor clickable-mapel-header" data-mapel-nama="${fullNameK}" title="Klik untuk lihat nama mapel">${shortCodeK}</th>`;
+      componentHeaders.push({ id: `${semester.id}_P`, isRequiredField: true }); // Rapor P selalu wajib
+      componentHeaders.push({ id: `${semester.id}_K`, isRequiredField: true }); // Rapor K selalu wajib
+    });
+    headerRow.innerHTML = headerHTML;
+
+    // 6. Buat Body (Baris adalah Mapel)
+    const tbody = table.createTBody();
+    const fragment = document.createDocumentFragment();
+
+    mapelList.forEach(mapel => {
+      const tr = document.createElement('tr');
+      
+      // Kolom 1: Nama Mapel (Sticky)
+      let rowHTML = `
+        <td>
+          <span
+            class="clickable-mapel-header" 
+            data-mapel-nama="${mapel.nama}" 
+            title="Klik untuk lihat nama mapel"
+          >
+            <strong>${mapel.id}</strong>
+          </span>
+        </td>`;
+      
+      const agg = validationData[mapel.id];
+      if (!agg) {
+          tr.innerHTML = rowHTML + `<td colspan="100" style="text-align:center;">Error data</td>`;
+          fragment.appendChild(tr);
+          return; // Lanjut ke mapel berikutnya
+      }
+
+      // Helper untuk membuat sel
+      const createCell = (count, isRequired, componentId) => {
+        if (!isRequired) return `<td>${dashIcon}</td>`;
+        
+        const isComplete = (count === totalSiswa);
+        const text = isComplete ? `${count}` : `${count}/${totalSiswa}`;
+        const icon = isComplete ? okIcon : noIcon;
+        
+        // [MODIFIKASI] Tambahkan data-mapel-id dan data-component-id
+        return `<td class="clickable-validasi-mapel" 
+                    data-mapel-id="${mapel.id}" 
+                    data-component-id="${componentId}" 
+                    style="text-align: center;">
+                      ${icon} <span style="margin-left: 5px;">${text}</span>
+                </td>`;
+      };
+      
+      // Loop menggunakan componentHeaders array
+      componentHeaders.forEach(comp => {
+        let count = 0;
+        let isRequired = comp.isRequiredField === true; // true untuk Rapor
+        
+        if (comp.id === 'UM' || comp.id === 'UP') {
+          isRequired = mapel[comp.isRequiredField]; // Cek isUS atau isUP
+          if (agg.ujian[comp.id] !== undefined) {
+            count = agg.ujian[comp.id];
+          }
+        } else {
+          // Ini adalah Rapor (misal: K4_S1_P)
+          if (agg.rapor[comp.id] !== undefined) {
+            count = agg.rapor[comp.id];
+          }
+        }
+        
+        rowHTML += createCell(count, isRequired, comp.id);
+      });
+      
+      tr.innerHTML = rowHTML;
+      fragment.appendChild(tr);
+    }); // Akhir loop mapel
+
+    // 7. Selesaikan tabel
+    tbody.appendChild(fragment);
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    container.appendChild(table);
+  }
+
+  // ===== TAMBAHKAN FUNGSI BARU DI BAWAH INI =====
+  /**
+   * [BARU] Menampilkan modal tooltip dengan daftar siswa yang belum lengkap.
+   */
+  function showMissingStudentsTooltip(targetCell, mapelId, componentId) {
+    const { siswaList, validationData, requiredSemesters } = globalValidationDataSiswa;
+    
+    // 1. Cari nama mapel dan nama komponen
+    const mapel = globalValidationDataMapel.mapelList.find(m => m.id === mapelId);
+    const mapelName = mapel ? mapel.nama : mapelId;
+    let componentName = componentId;
+    
+    if (componentId === 'UM') {
+      const labelUjian = (jenjangPilihanCache === 'MI' || jenjangPilihanCache === 'MTS' || jenjangPilihanCache === 'MA') ? 'Ujian Madrasah' : 'Ujian Sekolah';
+      componentName = labelUjian;
+    } else if (componentId === 'UP') {
+      componentName = 'Ujian Praktek';
+    } else {
+      const sem = requiredSemesters.find(s => componentId.startsWith(s.id));
+      if (sem) {
+        componentName = componentId.endsWith("_P") ? `${sem.nama} (Pengetahuan)` : `${sem.nama} (Keterampilan)`;
+      }
+    }
+
+    // 2. Filter siswa
+    const missingStudents = [];
+    const completeStudents = [];
+
+    siswaList.forEach(siswa => {
+      const validasiSiswa = validationData[siswa.id];
+      if (!validasiSiswa) return;
+      
+      let isComplete = false;
+      if (componentId === 'UM') isComplete = validasiSiswa.ujian.UM;
+      else if (componentId === 'UP') isComplete = validasiSiswa.ujian.UP;
+      else if (validasiSiswa.rapor[componentId] !== undefined) isComplete = validasiSiswa.rapor[componentId];
+      
+      if (isComplete) {
+        completeStudents.push(siswa.nama);
+      } else {
+        missingStudents.push(siswa.nama);
+      }
+    });
+
+    // 3. Buat judul dan pesan
+    let title = '';
+    let message = '';
+    
+    if (missingStudents.length > 0) {
+      title = `Siswa Belum Lengkap: ${mapelName} (${componentName})`;
+      message = `<p>Ditemukan <strong>${missingStudents.length} siswa</strong> yang belum memiliki nilai untuk komponen ini:</p>`;
+      message += '<ul style="max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 10px 10px 10px 30px; border-radius: 4px;">';
+      missingStudents.sort().forEach(nama => {
+        message += `<li>${nama}</li>`;
+      });
+      message += '</ul>';
+    } else {
+      title = `Data Lengkap: ${mapelName} (${componentName})`;
+      message = `<p>Semua <strong>${completeStudents.length} siswa</strong> telah memiliki nilai untuk komponen ini.</p>`;
+    }
+    
+    // 4. Tampilkan modal info
+    const modal = document.getElementById('info-modal');
+    document.getElementById('info-modal-title').innerText = title;
+    document.getElementById('info-modal-body').innerHTML = message;
+    document.getElementById('info-modal-body').classList.remove('error');
+    
+    modal.onOk = null;
+    modal.classList.add('show');
+  }
+  // ===== AKHIR FUNGSI BARU =====
 
   function forceLogoutInstan() {
     setLoading(false); 
@@ -9945,13 +10284,14 @@
     }
     
     if (btnCetakKartuSiswa) {
+      // Kita tidak perlu mencari stamp, karena sudah dihapus dari HTML
       const stamp = btnCetakKartuSiswa.querySelector('.premium-stamp');
       if (isPremium) {
         btnCetakKartuSiswa.classList.remove('card-disabled');
-        if (stamp) stamp.style.display = 'none';
+        if (stamp) stamp.style.display = 'none'; // Jaga jika ada
       } else {
         btnCetakKartuSiswa.classList.add('card-disabled');
-        if (stamp) stamp.style.display = 'block';
+        if (stamp) stamp.style.display = 'block'; // Jaga jika ada
       }
     }
 
