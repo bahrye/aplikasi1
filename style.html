@@ -4744,6 +4744,97 @@
     }
   }
 
+  /* --- GAYA BARU UNTUK TAB VALIDASI --- */
+  #halaman-validasi-nilai .tab-link[data-tab="siswa"].active {
+    background-color: var(--success-color);
+    color: white;
+  }
+  #halaman-validasi-nilai.tab-siswa-active #tab-validasi-siswa-content .input-nilai-table thead th {
+    background-color: var(--success-color);
+    color: white;
+    border-color: #157347;
+  }
+  #halaman-validasi-nilai.tab-siswa-active #tab-validasi-siswa-content .input-nilai-table th:first-child {
+    background-color: var(--success-color);
+  }
+
+  #halaman-validasi-nilai .tab-link[data-tab="mapel"].active {
+    background-color: var(--primary-color); /* Warna beda biar jelas */
+    color: white;
+  }
+  #halaman-validasi-nilai.tab-mapel-active #tab-validasi-mapel-content .input-nilai-table thead th {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-dark);
+  }
+  #halaman-validasi-nilai.tab-mapel-active #tab-validasi-mapel-content .input-nilai-table th:first-child {
+    background-color: var(--primary-color);
+  }
+  
+  /* ===== TAMBAHKAN BLOK BARU DI BAWAH INI ===== */
+  
+  /* Styling Sticky untuk tabel "Validasi per Mapel" */
+  #tab-validasi-mapel-content .input-nilai-table-container {
+    overflow-x: auto; /* Memastikan scroll horizontal */
+  }
+  
+  /* Header atas (Nama Siswa) */
+  #tab-validasi-mapel-content .input-nilai-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 11;
+  }
+  
+  /* Kolom Kiri (Nama Mapel) */
+  #tab-validasi-mapel-content .input-nilai-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background-color: var(--bg-white); /* Warna solid agar tidak transparan */
+    border-right: 2px solid var(--border-color);
+  }
+  
+  /* Sudut Kiri Atas (Nama Mapel) */
+  #tab-validasi-mapel-content .input-nilai-table th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 12; /* Di atas segalanya */
+    border-right: 2px solid var(--border-color);
+  }
+
+  /* Perbaikan warna striping untuk kolom sticky */
+  #tab-validasi-mapel-content .input-nilai-table tr:nth-child(even) td:first-child {
+     background-color: var(--bg-light); 
+  }
+  /* ===== AKHIR BLOK BARU ===== */
+
+  /* [MODIFIKASI] Menyesuaikan lebar kolom Mapel di tab "Validasi per Mapel" */
+  #tab-validasi-mapel-content .input-nilai-table th:first-child,
+  #tab-validasi-mapel-content .input-nilai-table td:first-child {
+    width: auto; /* Biarkan menyusut */
+    min-width: auto; /* Hapus min-width 150px */
+    max-width: none; /* Hapus max-width 300px */
+    white-space: normal; /* Izinkan teks (termasuk header) untuk wrap */
+  }
+
+  /* Terapkan white-space: nowrap HANYA ke isi sel (kode mapel) */
+  #tab-validasi-mapel-content .input-nilai-table td:first-child {
+      white-space: nowrap;
+  }
+  /* ===== AKHIR BLOK BARU ===== */
+
+  /* ===== TAMBAHKAN BLOK BARU DI BAWAH INI ===== */
+  /* [BARU] Menambahkan kursor pointer ke sel data di tab "Validasi per Mapel" */
+  #tab-validasi-mapel-content .input-nilai-table td:not(:first-child) {
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  #tab-validasi-mapel-content .input-nilai-table td:not(:first-child):hover {
+    background-color: #e9ecef; /* Efek hover ringan */
+  }
+  /* ===== AKHIR BLOK BARU ===== */
+
   /* --- GAYA BARU UNTUK TABEL PENEMPATAN --- */
   .penempatan-siswa-table {
     /* (Class 'siswa-table' sekarang menangani border dan width) */
@@ -4967,9 +5058,13 @@
     text-overflow: ellipsis;
   }
 
-  /* --- [FINAL] Style Premium untuk Tombol Cetak Kartu Siswa --- */
-      
-  /* 1. Atur Tampilan Tombol saat .card-disabled */
+  /* --- =================================================== --- */
+  /* --- GAYA BARU: Premium untuk Tombol Cetak Kartu Siswa   --- */
+  /* --- (Tanpa Stamp, tapi dengan Shimmer dan Warna)        --- */
+  /* --- =================================================== --- */
+        
+  /* 1. Atur Tampilan Tombol saat .card-disabled (NON-PREMIUM) */
+  /* Ini MENIMPA style .card-disabled abu-abu */
   #btn-cetak-kartu-siswa.card-disabled {
     /* Paksa warna kembali ke biru (menimpa style:disabled abu-abu jika ada) */
     background-color: var(--primary-color) !important;
@@ -4980,19 +5075,24 @@
     box-shadow: none !important;
     transform: none !important;
     
-    /* Tetap bisa diklik (untuk ke halaman donasi) */
-    cursor: pointer; 
+    /* ===== MODIFIKASI ===== */
+    /* Ubah cursor menjadi 'not-allowed' sesuai permintaan */
+    cursor: not-allowed !important; 
+    /* ===== AKHIR MODIFIKASI ===== */
   }
 
-  /* 2. Pastikan Ikon & Teks tetap putih */
+  /* 2. Pastikan Ikon & Teks tetap putih (NON-PREMIUM) */
   #btn-cetak-kartu-siswa.card-disabled i,
   #btn-cetak-kartu-siswa.card-disabled span {
     color: white !important;
     position: relative; /* Agar di atas shimmer */
     z-index: 2;
+    /* ===== MODIFIKASI ===== */
+    pointer-events: none; /* Pastikan ikon/teks juga tidak bisa diklik */
+    /* ===== AKHIR MODIFIKASI ===== */
   }
 
-  /* 3. Atur Shimmer (::before) saat 'card-disabled' */
+  /* 3. Atur Shimmer (::before) saat 'card-disabled' (NON-PREMIUM) */
   #btn-cetak-kartu-siswa.card-disabled::before {
     content: '';
     position: absolute;
@@ -5018,23 +5118,21 @@
     border-radius: 8px; /* Sesuaikan dengan border-radius tombol */
   }
 
-  /* 4. Atur Stamp (.premium-stamp) saat 'card-disabled' */
-  #btn-cetak-kartu-siswa.card-disabled .premium-stamp {
-    display: block !important;
-    z-index: 3; /* Di atas segalanya */
+  /* 4. [DIHAPUS] Blok :hover yang menyebabkan efek menyembul telah dihapus */
+  /* ===== MODIFIKASI ===== */
+  /* #btn-cetak-kartu-siswa.card-disabled:hover { ... } */
+  /* ===== AKHIR MODIFIKASI ===== */
+  
+  /* 5. Atasi flicker abu-abu saat memuat (PREMIUM) */
+  /* (Blok ini tetap ada dan sudah benar) */
+  #btn-cetak-kartu-siswa:disabled:not(.card-disabled) {
+    background-color: var(--primary-color) !important; /* Paksa tetap biru */
+    opacity: 0.65; /* Beri efek 'disabled' ringan */
+    cursor: not-allowed;
   }
-
-  /* 5. HAPUS semua efek hover (no pop, no color change) */
-  #btn-cetak-kartu-siswa.card-disabled:hover {
-    background-color: var(--primary-color) !important; /* TETAP BIRU */
-    color: white !important; /* TETAP PUTIH */
-    transform: none !important; /* JANGAN MENYEMBUL */
-    box-shadow: none !important; /* JANGAN ADA SHADOW */
-  }
-
-  /* 6. (Opsional) Jaga agar shimmer tetap berubah saat hover */
-  #btn-cetak-kartu-siswa.card-disabled:hover::before {
-      --shimmer-color: rgba(255, 255, 255, 0.95); /* Kilau lebih terang saat hover */
+  #btn-cetak-kartu-siswa:disabled:not(.card-disabled) i,
+  #btn-cetak-kartu-siswa:disabled:not(.card-disabled) span {
+    color: white !important;
   }
   /* --- Akhir Style Premium --- */
 
