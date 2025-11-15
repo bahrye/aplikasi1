@@ -984,6 +984,14 @@ function prosesLogout(token) {
   }
 }
 
+/**
+ * [MODIFIKASI SESUAI ANALISIS]
+ * Memvalidasi sesi, kini "ringan" dan membaca 'donasiStatus' dari cache sesi.
+ * Tidak lagi membuka Master Sheet pada setiap panggilan.
+ *
+ * FUNGSI INI MASIH MEMBUKA MASTER SHEET HANYA JIKA MENDETEKSI SESI LAMA/KORUP
+ * (misal: !sessionData.app2DbId) UNTUK MELAKUKAN PERBAIKAN OTOMATIS.
+ */
 function validateAndRefreshSession(token) {
   if (!token) {
     throw new Error("Sesi tidak ditemukan. Silakan login ulang.");
@@ -993,95 +1001,118 @@ function validateAndRefreshSession(token) {
   if (!sessionJson) {
     throw new Error("Sesi kedaluwarsa atau tidak valid. Silakan login ulang.");
   }
+  
   const sessionData = JSON.parse(sessionJson);
   const now = new Date().getTime();
 
+  // 1. Cek Waktu (Cepat, dari cache)
   const threeHours = 3 * 60 * 60 * 1000;
   if (now - sessionData.lastActivity > threeHours) {
     cache.remove('SESSION_' + token);
     throw new Error("Sesi Anda telah berakhir (3 jam tidak aktif). Silakan login ulang.");
   }
   
-  // Variabel untuk menyimpan data yang mungkin perlu diambil
-  let needsDBSave = false;
-  let sheetSekolah = null;
-  let dataSekolah = null;
-  let targetRowData = null;
-  let targetRowIndex = -1; // 0-based index
-
-  // Refresh status donasi dari DB jika admin
-  if (sessionData.role === 'admin' && !sessionData.isImpersonating) {
-    try {
-      const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-      sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-      dataSekolah = sheetSekolah.getDataRange().getValues(); // Baca sekali
-      
-      for (let i = 1; i < dataSekolah.length; i++) { // Mulai dari 1 (skip header)
-        if (dataSekolah[i][0] === sessionData.sekolahID) {
-          targetRowData = dataSekolah[i];
-          targetRowIndex = i - 1; // 0-based index dari data (tanpa header)
-          sessionData.donasiStatus = targetRowData[8] || "NONE"; // Kolom I
-          break;
-        }
-      }
-    } catch (e) {
-      Logger.log("Gagal refresh donasi status untuk " + sessionData.sekolahID + ": " + e.message);
-      // Jangan gagalkan sesi, lanjutkan dengan status donasi yang lama
-    }
-  }
-  
-  // Validasi ID Database (HANYA JIKA BELUM ADA DI SESI)
+  // 2. BLOK VALIDASI/PERBAIKAN SINKRON (Hanya untuk Admin)
   if (sessionData.role === 'admin') {
-    if (!sessionData.spreadsheetID || !sessionData.app2DbId) {
-      Logger.log(`Sesi lama terdeteksi untuk ${sessionData.sekolahID}. Mengambil ID database...`);
-      needsDBSave = true; // Tandai bahwa kita perlu menyimpan sesi baru
+    
+    // Cek apakah sesi ini "lama" (dibuat sebelum donasiStatus atau app2DbId ada)
+    const isSesiLama = (!sessionData.spreadsheetID || !sessionData.app2DbId || typeof sessionData.donasiStatus === 'undefined');
+    
+    if (isSesiLama) {
+      Logger.log(`Sesi lama/tidak lengkap terdeteksi untuk ${sessionData.sekolahID}. Memvalidasi ulang dari Master Sheet...`);
       
-      if (!sheetSekolah || !dataSekolah || !targetRowData) {
-        // Jika belum dibuka oleh 'donasiStatus', buka sekarang
-        try {
-          if (!masterSS) masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-          if (!sheetSekolah) sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
-          if (!dataSekolah) dataSekolah = sheetSekolah.getDataRange().getValues();
-          
-          for (let i = 1; i < dataSekolah.length; i++) {
-            if (dataSekolah[i][0] === sessionData.sekolahID) {
-              targetRowData = dataSekolah[i];
-              targetRowIndex = i - 1; 
-              break;
-            }
+      const lock = LockService.getScriptLock(); // Kunci untuk mencegah race condition saat memperbaiki
+      lock.waitLock(30000); 
+      
+      try {
+        // Buka Master Sheet SEKALI
+        const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+        const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+        const dataSekolah = sheetSekolah.getDataRange().getValues();
+        
+        let targetRowData = null;
+        let targetRowIndex = -1; // 1-based row index
+
+        for (let i = 1; i < dataSekolah.length; i++) {
+          if (dataSekolah[i][0] === sessionData.sekolahID) {
+            targetRowData = dataSekolah[i];
+            targetRowIndex = i + 1; // 1-based index (misal, baris 5 di sheet)
+            break;
           }
-        } catch (e) {
-           throw new Error(`Gagal mengambil data sesi: ${e.message}`);
         }
-      }
-      
-      if (!targetRowData) {
-        throw new Error("Data sekolah tidak ditemukan lagi di Master Sheet.");
-      }
-
-      sessionData.spreadsheetID = targetRowData[5]; // Kolom F
-      sessionData.app2DbId = targetRowData[12]; // Kolom M
-
-      if (!sessionData.spreadsheetID) {
-         throw new Error("Database sekolah (Kolom F) belum diatur oleh Superadmin.");
-      }
-      
-      // Jika App 2 DB ID (Kolom M) masih kosong, perbaiki sekarang
-      if (!sessionData.app2DbId) {
-        Logger.log(`PERBAIKAN SESI: Kolom M kosong untuk ${sessionData.sekolahID}. Memulai pembuatan DB App 2...`);
-        // Panggil fungsi perbaikan. getApp2DatabaseId sudah memiliki lock internal.
-        try {
-          // getApp2DatabaseId akan memvalidasi token (lagi, tapi cepat), menemukan, membuat, dan menyimpan
-          const newApp2DbId = getApp2DatabaseId(token); 
-          sessionData.app2DbId = newApp2DbId;
-        } catch (e) {
-           throw new Error(`Gagal memperbaiki tautan database App 2: ${e.message}`);
+        
+        if (!targetRowData) {
+          throw new Error("Data sekolah tidak ditemukan lagi di Master Sheet.");
         }
+
+        // 2a. Perbarui Sesi dengan data yang hilang
+        sessionData.spreadsheetID = targetRowData[5]; // Kolom F
+        sessionData.app2DbId = targetRowData[12]; // Kolom M
+        sessionData.donasiStatus = targetRowData[8] || "NONE"; // Kolom I
+        
+        if (!sessionData.spreadsheetID) {
+           throw new Error("Database sekolah (Kolom F) belum diatur oleh Superadmin.");
+        }
+        
+        // 2b. Perbaiki App 2 DB ID jika masih kosong
+        if (!sessionData.app2DbId) {
+          Logger.log(`PERBAIKAN SESI: Kolom M kosong untuk ${sessionData.sekolahID}. Memulai pembuatan DB App 2...`);
+          
+          const namaSekolah = targetRowData[1]; // Kolom B
+          const emailAdmin = targetRowData[3]; // Kolom D
+          
+          if (!namaSekolah || !emailAdmin) {
+            throw new Error(`Data sekolah (Nama/Email) tidak lengkap untuk ${sessionData.sekolahID}. Perbaikan otomatis gagal.`);
+          }
+          
+          // --- Logika dari getApp2DatabaseId (inline) ---
+          
+          // Panggil fungsi internal (yang ada di file Kode.gs.html App 1)
+          // [MODIFIKASI] Pastikan Anda meneruskan folder drive jika fungsi Anda membutuhkannya
+          // Kita asumsikan 'buatDatabaseAplikasi2Baru' telah dimodifikasi untuk
+          // mengambil folder dari 'targetRowData' jika perlu, atau cukup membuat di root.
+          // Berdasarkan file Anda, 'buatDatabaseAplikasi2Baru' *memerlukan* objek folder.
+          
+          let schoolDriveFolder;
+          const mainFolderId = targetRowData[13]; // Kolom N
+          if (mainFolderId) {
+            schoolDriveFolder = DriveApp.getFolderById(mainFolderId);
+          } else {
+            // Fallback jika Kolom N kosong (sekolah lama)
+            Logger.log(`FolderID (Kolom N) kosong untuk ${sessionData.sekolahID}. DB App 2 akan dibuat di folder Target_Folder_ID.`);
+            schoolDriveFolder = DriveApp.getFolderById(TARGET_FOLDER_ID); 
+          }
+
+          const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase(), schoolDriveFolder);
+          
+          // Tulis ID baru ke Kolom M
+          sheetSekolah.getRange(targetRowIndex, 13).setValue(newSSID_App2);
+          
+          // Buat password dummy (karena kita tidak punya plain text di sini)
+          const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+          
+          // Daftarkan ke Global App 2
+          registerSchoolInApp2(sessionData.sekolahID, namaSekolah.toUpperCase());
+          // (Panggilan 'registerAdminAsGuruInApp2' sudah dihapus dari file Anda, jadi kita tidak memanggilnya)
+          
+          Logger.log(`PERBAIKAN SESI: Sukses. DB App 2 Dibuat: ${newSSID_App2}.`);
+          
+          // Bersihkan cache master
+          clearMasterSheetCache();
+          
+          // Perbarui sesi
+          sessionData.app2DbId = newSSID_App2;
+        }
+
+      } catch (e) {
+         throw new Error(`Gagal memperbaiki data sesi: ${e.message}`);
+      } finally {
+        lock.releaseLock();
       }
     }
   }
 
-  // Simpan sesi kembali dengan timestamp baru (dan mungkin ID baru)
+  // 3. Simpan sesi kembali dengan timestamp baru
   sessionData.lastActivity = now;
   cache.put('SESSION_' + token, JSON.stringify(sessionData), 21600);
   
@@ -1422,114 +1453,6 @@ function superadminImpersonate(sekolahID, token) {
     return { status: "gagal", message: "Terjadi error: " + e.message };
   }
 }
-
-/**
- * [ADMIN] Memeriksa apakah data Ijazah 'dirty' dengan membandingkan
- * data saat ini dengan data yang terakhir disimpan di cache.
- */
-/*
-function getIjazahDirtyState() {
-  try {
-    const { spreadsheetID } = validateAdminSession();
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-
-    // 1. Dapatkan Sheet Cache
-    const sheetCache = ss.getSheetByName(SHEET_CACHE_IJAZAH);
-    if (!sheetCache) {
-      Logger.log("getIjazahDirtyState: Cache_Rekap_Ijazah tidak ditemukan. Menandai sebagai dirty.");
-      return { status: "sukses", isDirty: true };
-    }
-    const metaValues = sheetCache.getRange(1, 1, 1, 5).getValues()[0];
-    const headerValues = sheetCache.getRange(2, 1, 1, 7).getValues()[0];
-    
-    // 2. Periksa Integritas Cache
-    if (metaValues[0] !== 'Meta' || headerValues[0] !== 'SiswaID' || !metaValues[1]) {
-      Logger.log("getIjazahDirtyState: Cache rusak atau belum pernah dihitung. Menandai sebagai dirty.");
-      return { status: "sukses", isDirty: true };
-    }
-    
-    // 3. Bandingkan Pengaturan (Bobot, KKM, Semester)
-    const cachedBobotRapor = metaValues[2];
-    const cachedBobotUjian = metaValues[3];
-    const cachedKKM = metaValues[4];
-    
-    const settingsResponse = getBobotData(); // Ini juga mengambil KKM
-    const semesterResponse = getSemesterList(); // Ini mengambil Jml Semester
-    
-    const currentSettings = {
-      bobotRapor: settingsResponse.bobotRapor,
-      bobotUjian: settingsResponse.bobotUjian,
-      kkm: settingsResponse.kkm,
-      jmlSemester: semesterResponse.semesterList.length
-    };
-    
-    // Ambil Jml Semester dari cache (ini belum kita simpan sebelumnya, jadi kita tambahkan)
-    const cachedJmlSemester = sheetCache.getRange('H1').getValue(); // Simpan di H1
-    
-    if (cachedBobotRapor != currentSettings.bobotRapor ||
-        cachedBobotUjian != currentSettings.bobotUjian ||
-        cachedKKM != currentSettings.kkm ||
-        (cachedJmlSemester && cachedJmlSemester != currentSettings.jmlSemester)) {
-      Logger.log("getIjazahDirtyState: Pengaturan (Bobot/KKM/Semester) berbeda. Menandai sebagai dirty.");
-      return { status: "sukses", isDirty: true };
-    }
-
-    // 4. Bandingkan Data Nilai
-    // Baca cache
-    const lastRow = sheetCache.getLastRow();
-    const cachedDataMap = new Map();
-    if (lastRow > 2) {
-      const cachedValues = sheetCache.getRange(3, 1, lastRow - 2, 4).getValues(); // Hanya perlu SiswaID, MapelID, UjianAsli, RaporAsli
-      cachedValues.forEach(row => {
-        const key = `${row[0]}_${row[1]}`;
-        cachedDataMap.set(key, { ujian: row[2], rapor: row[3] });
-      });
-    }
-
-    // Hitung data saat ini
-    const siswaData = getSiswa();
-    const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
-    const mapelListFull = getMapelDataInternal(ss);
-    const semesterIds = semesterResponse.semesterList.map(s => s.id);
-
-    const { nilaiRekapMap: currentUjianMap } = getRekapUjianInternal(ss, siswaList, mapelListFull);
-    const { nilaiRekapMap: currentRaporMap } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds);
-
-    // Lakukan perbandingan
-    // Cek jika ada siswa/mapel baru atau yg dihapus (perbedaan jumlah)
-    const mapelListIjazah = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
-    if (cachedDataMap.size !== (siswaList.length * mapelListIjazah.length)) {
-       Logger.log("getIjazahDirtyState: Jumlah siswa atau mapel berubah. Menandai sebagai dirty.");
-       return { status: "sukses", isDirty: true };
-    }
-
-    for (const siswa of siswaList) {
-      for (const mapel of mapelListIjazah) {
-        const key = `${siswa.id}_${mapel.id}`;
-        
-        const currentNilaiUjian = currentUjianMap.get(key) || 0;
-        const currentNilaiRapor = currentRaporMap.get(key) || 0;
-        
-        const cachedNilai = cachedDataMap.get(key);
-
-        if (!cachedNilai || cachedNilai.ujian != currentNilaiUjian || cachedNilai.rapor != currentNilaiRapor) {
-          Logger.log(`getIjazahDirtyState: Perbedaan nilai ditemukan untuk ${key}. Menandai sebagai dirty.`);
-          return { status: "sukses", isDirty: true };
-        }
-      }
-    }
-
-    // 5. Jika semua lolos, data bersih
-    Logger.log("getIjazahDirtyState: Tidak ada perbedaan ditemukan. Data bersih.");
-    return { status: "sukses", isDirty: false };
-
-  } catch (e) {
-    Logger.log("Gagal getIjazahDirtyState: " + e.message);
-    // Jika gagal membandingkan, anggap saja dirty demi keamanan
-    return { status: "sukses", isDirty: true };
-  }
-}
-*/
 
 function superadminReturn(token) {
   try {
