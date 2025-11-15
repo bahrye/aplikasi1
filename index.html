@@ -640,7 +640,6 @@
             <button class="btn-aksi" id="btn-cetak-kartu-siswa" style="position: relative; overflow: hidden; background-color: var(--primary-color);">
               <i class="fas fa-id-card"></i>
               <span>Cetak Kartu Siswa</span>
-              <div class="premium-stamp" style="display: none; top: -5px; right: -35px;">Premium</div>
             </button>
             <button id="btn-tambah-siswa-baru"><i class="fas fa-plus"></i>Tambah Siswa</button>
             <button id="btn-import-siswa"><i class="fas fa-upload"></i>Import Siswa</button>
@@ -1429,8 +1428,27 @@
             </select>
           </div>
         </div>
-        <div class="input-nilai-table-container" id="validasi-nilai-table-container">
-          <p>Memuat data...</p>
+        
+        <div class="tab-bar" id="validasi-tab-bar">
+          <button class="tab-link active" data-tab="siswa">Validasi per Siswa</button>
+          <button class="tab-link" data-tab="mapel">Validasi per Mapel</button>
+        </div>
+        
+        <div class="tab-content-wrapper">
+        
+          <div id="tab-validasi-siswa-content" class="tab-content active">
+            <div class="input-nilai-table-container" id="validasi-nilai-table-container">
+              <p>Memuat data...</p>
+            </div>
+          </div>
+          
+          <div id="tab-validasi-mapel-content" class="tab-content">
+            <p class="table-content-header">Validasi Kelengkapan per Mata Pelajaran</p>
+            <div class="input-nilai-table-container" id="validasi-mapel-table-container">
+              <p>Memuat data...</p>
+            </div>
+          </div>
+          
         </div>
         
         </div>
