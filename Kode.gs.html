@@ -2561,29 +2561,113 @@ function _cascadeKelasRename_App1(ss_app1, renameMap, sekolahID, spreadsheetID) 
   }
 }
 
+// GANTI FUNGSI LAMA ANDA DENGAN YANG INI
 function getSiswaTemplateUrl(token) {
+  let tempSpreadsheetId = null; // Untuk memastikan cleanup
   try {
-    validateAdminSession(token);
-    const url = "https://docs.google.com/spreadsheets/d/" + TEMPLATE_SISWA_FILE_ID + "/export?format=xlsx";
+    // 1. Validasi sesi dan dapatkan ID spreadsheet pengguna
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+
+    // 2. Ambil daftar kelas pengguna saat ini
+    const sheetKelas = getKelasSheet(ss); // Menggunakan helper yang sudah ada
+    const kelasList = sheetKelas.getRange("A2:A" + sheetKelas.getLastRow()).getValues()
+      .map(row => row[0])
+      .filter(nama => (nama !== null && nama !== undefined && nama !== "")); // Filter baris kosong
+
+    // 3. Buat spreadsheet temporer baru
+    const tempSS = SpreadsheetApp.create("TEMP_Template_Siswa_" + sessionData.sekolahID);
+    tempSpreadsheetId = tempSS.getId();
+    
+    // 4. Buka file template statis (yang lama)
+    const staticTemplateSS = SpreadsheetApp.openById(TEMPLATE_SISWA_FILE_ID);
+    const mainSheet = staticTemplateSS.getSheets()[0]; // Ambil sheet template utama
+    
+    // 5. Salin sheet template utama ke spreadsheet temporer
+    // Ini akan menjadi sheet ke-2 (setelah 'Sheet1')
+    const sheetTemplate = mainSheet.copyTo(tempSS).setName("Template Import Siswa");
+    
+    // ===== MODIFIKASI DIMULAI DI SINI =====
+    // 6. Buat sheet referensi kelas yang baru
+    // Sisipkan secara eksplisit di posisi 3 (setelah 'Sheet1' dan 'Template Import Siswa')
+    const sheetKelasRef = tempSS.insertSheet("Daftar Kelas", 3);
+    // ===== AKHIR MODIFIKASI =====
+
+    sheetKelasRef.appendRow(["Nama Kelas (Salin-tempel dari sini)"]);
+    sheetKelasRef.getRange("A1").setFontWeight("bold");
+    
+    if (kelasList.length > 0) {
+      const dataToSave = kelasList.map(nama => [nama]);
+      sheetKelasRef.getRange(2, 1, dataToSave.length, 1).setValues(dataToSave);
+    } else {
+      sheetKelasRef.getRange(2, 1).setValue("(Belum ada data kelas di 'Kelola Kelas')");
+    }
+    sheetKelasRef.autoResizeColumn(1);
+
+    // 7. Tambahkan Data Validation ke sheet template
+    if (kelasList.length > 0) {
+      // 7a. Tentukan range sumber data (e.g., 'Daftar Kelas'!$A$2:$A$10)
+      const validationSourceRangeA1 = `'Daftar Kelas'!$A$2:$A$${kelasList.length + 1}`;
+      
+      // 7b. Buat objek Range dari string A1
+      const validationRange = tempSS.getRange(validationSourceRangeA1);
+      
+      // 7c. Buat aturan validasi
+      const validationRule = SpreadsheetApp.newDataValidation()
+          .requireValueInRange(validationRange, true) // true = show dropdown
+          .setAllowInvalid(false) // false = tolak inputan selain dari daftar
+          .setHelpText("Pilih kelas dari daftar yang valid.")
+          .build();
+          
+      // 7d. Terapkan aturan ke kolom "Kelas" (Kolom G) di sheet template
+      // Terapkan ke 1000 baris (G2:G1001) agar ada banyak ruang
+      const targetValidationRange = sheetTemplate.getRange("G2:G1001");
+      targetValidationRange.setDataValidation(validationRule);
+      
+      Logger.log(`Data validation ditambahkan ke kolom G, sumber: ${validationSourceRangeA1}`);
+    }
+
+    // 8. Hapus "Sheet1" default dari spreadsheet temporer
+    const defaultSheet = tempSS.getSheetByName("Sheet1");
+    if (defaultSheet) {
+      tempSS.deleteSheet(defaultSheet);
+    }
+
+    // 9. Ekspor spreadsheet temporer sebagai file .xlsx
+    SpreadsheetApp.flush(); // Pastikan semua perubahan disimpan
+    
+    const url = "https://docs.google.com/spreadsheets/d/" + tempSpreadsheetId + "/export?format=xlsx";
     const oauthToken = ScriptApp.getOAuthToken();
     const response = UrlFetchApp.fetch(url, {
       headers: {
         'Authorization': 'Bearer ' + oauthToken
       }
     });
+    
     const blob = response.getBlob().setName("template_import_siswa.xlsx");
     const base64Data = Utilities.base64Encode(blob.getBytes());
+    
     return {
       status: "sukses",
       base64: base64Data,
       mimeType: MimeType.MICROSOFT_EXCEL,
       fileName: "template_import_siswa.xlsx"
     };
+    
   } catch (e) {
     if (e.message.includes("Export_TRANSIENT") || e.message.includes("failed")) {
-      return { status: "gagal", message: "Gagal mengekspor template. Pastikan file template dapat diakses." };
+      return { status: "gagal", message: "Gagal mengekspor template. Pastikan file template (ID: " + TEMPLATE_SISWA_FILE_ID + ") dapat diakses." };
     }
     return { status: "gagal", message: "Gagal membuat template: " + e.message };
+  } finally {
+    // 10. Hapus file temporer
+    if (tempSpreadsheetId) {
+      try {
+        DriveApp.getFileById(tempSpreadsheetId).setTrashed(true);
+      } catch (e) {
+        Logger.log("Gagal menghapus file temp template siswa: " + e.message);
+      }
+    }
   }
 }
 
@@ -4376,7 +4460,7 @@ function clearAllCaches(token) {
   }
 }
 
-function getValidationData(token) {
+function getValidationDataBySiswa(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
@@ -4447,6 +4531,112 @@ function getValidationData(token) {
       validationResults[siswa.id] = resultSiswa;
     });
     return { status: "sukses", data: { siswaList: siswaList.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas })), requiredSemesters: semesterListWithCodes, validationData: validationResults } };
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * [BARU - DIAKTIFKAN v2] Mengambil data validasi yang diagregasi per mapel.
+ * Menghitung jumlah siswa yang lengkap per komponen nilai.
+ */
+function getValidationDataByMapel(token) {
+  try {
+    // 1. Validasi sesi dan dapatkan data
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+
+    // 2. Ambil semua data sumber (Siswa, Mapel, Semester)
+    const siswaList = _getSiswaInternal(spreadsheetID, sessionData.sekolahID); // (id, nama, nisn, kelas)
+    const totalSiswaCount = siswaList.length;
+    
+    const mapelListFull = _getMapelInternal(ss, sessionData.sekolahID);
+    const requiredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
+    const mapelInfoMap = new Map(requiredMapelList.map(m => [m.id, { isUS: m.isUS, isUP: m.isUP }]));
+
+    const semesterListData = getSemesterList(token);
+    if (semesterListData.status !== 'sukses') throw new Error("Gagal mengambil daftar semester.");
+    const requiredSemesterList = semesterListData.semesterList;
+    const requiredSemesterIdSet = new Set(requiredSemesterList.map(s => s.id));
+
+    // 3. Buat Peta Nilai yang Sudah Terisi (Sama seperti di 'per Siswa')
+    const nilaiRaporSheet = getNilaiRaporSheet(ss);
+    const raporDataValues = nilaiRaporSheet.getDataRange().getValues();
+    raporDataValues.shift();
+    const raporMap = new Map(); // Map<siswaId, Map<mapelId, Map<semId, {P, K}>>>
+    raporDataValues.forEach(row => {
+      if (requiredSemesterIdSet.has(row[2]) && mapelInfoMap.has(row[1])) {
+        if (!raporMap.has(row[0])) raporMap.set(row[0], new Map());
+        if (!raporMap.get(row[0]).has(row[1])) raporMap.get(row[0]).set(row[1], new Map());
+        raporMap.get(row[0]).get(row[1]).set(row[2], { P: (row[3] != null && row[3] !== ""), K: (row[4] != null && row[4] !== "") });
+      }
+    });
+    
+    const nilaiUjianSheet = getNilaiUjianSheet(ss);
+    const ujianDataValues = nilaiUjianSheet.getDataRange().getValues();
+    ujianDataValues.shift();
+    const ujianMap = new Map(); // Map<siswaId, Map<mapelId, {UM, UP}>>
+    ujianDataValues.forEach(row => {
+      if (mapelInfoMap.has(row[1])) {
+        if (!ujianMap.has(row[0])) ujianMap.set(row[0], new Map());
+        ujianMap.get(row[0]).set(row[1], { UM: (row[2] != null && row[2] !== ""), UP: (row[3] != null && row[3] !== "") });
+      }
+    });
+
+    // 4. Bangun Peta Agregasi Validasi (Mapel -> Hitungan)
+    const validationAggregates = {}; // Ini adalah objek besar: { mapelId: { totalSiswa: X, us: Y, up: Z, ... } }
+
+    requiredMapelList.forEach(mapel => {
+      const mapelInfo = mapelInfoMap.get(mapel.id);
+      
+      // Inisialisasi hitungan
+      let agg = {
+        totalSiswa: totalSiswaCount,
+        ujian: {},
+        rapor: {}
+      };
+      // Inisialisasi hitungan ujian
+      if (mapelInfo.isUS) agg.ujian.UM = 0;
+      if (mapelInfo.isUP) agg.ujian.UP = 0;
+      // Inisialisasi hitungan rapor
+      requiredSemesterList.forEach(sem => {
+        agg.rapor[sem.id + "_P"] = 0;
+        agg.rapor[sem.id + "_K"] = 0;
+      });
+
+      // Loop per siswa untuk menghitung
+      siswaList.forEach(siswa => {
+        // Cek Ujian
+        const uData = ujianMap.get(siswa.id)?.get(mapel.id) || { UM: false, UP: false };
+        if (mapelInfo.isUS && uData.UM) agg.ujian.UM++;
+        if (mapelInfo.isUP && uData.UP) agg.ujian.UP++;
+
+        // Cek Rapor
+        requiredSemesterList.forEach(sem => {
+          const semId = sem.id;
+          const rData = raporMap.get(siswa.id)?.get(mapel.id)?.get(semId) || { P: false, K: false };
+          if (rData.P) agg.rapor[semId + "_P"]++;
+          if (rData.K) agg.rapor[semId + "_K"]++;
+        });
+      });
+      
+      validationAggregates[mapel.id] = agg;
+    });
+
+    // 5. Kembalikan semua data yang dibutuhkan klien
+    return { 
+      status: "sukses", 
+      data: { 
+        mapelList: requiredMapelList, 
+        siswaList: siswaList, // Kirim daftar siswa (untuk totalSiswa)
+        requiredSemesters: requiredSemesterList.map(sem => { // Kirim juga shortCode
+            const parts = sem.id.split('_');
+            return { ...sem, shortCode: (parts.length === 2) ? `${parts[0].replace('K', '')}.${parts[1].replace('S', '')}` : '' };
+        }),
+        validationData: validationAggregates // Data validasi yang sudah diagregasi
+      } 
+    };
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
@@ -5250,11 +5440,10 @@ function getGuruTemplateData(token) {
   let tempSpreadsheetId = null;
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const ss = SpreadsheetApp.openById(spreadsheetID);
     
-    // --- PERBAIKAN DI SINI ---
-    const mapelList = _getMapelInternal(ss, sessionData.sekolahID);
-    // --- AKHIR PERBAIKAN ---
+    // [MODIFIKASI] Panggilan ke _getMapelInternal() dihapus.
+    // const ss = SpreadsheetApp.openById(spreadsheetID);
+    // const mapelList = _getMapelInternal(ss, sessionData.sekolahID);
     
     const namaSekolah = sessionData.namaSekolah;
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
@@ -5266,34 +5455,30 @@ function getGuruTemplateData(token) {
     const sheetTemplate = tempSS.getSheetByName('Sheet1');
     sheetTemplate.setName('Template Guru');
     
-    const sheetMapel = tempSS.insertSheet('Daftar Mapel');
-    
-    sheetMapel.appendRow(['KODE MAPEL', 'NAMA MATA PELAJARAN']);
-    if (mapelList.length > 0) {
-      const mapelData = mapelList.map(m => [m.id, m.nama]);
-      sheetMapel.getRange(2, 1, mapelData.length, 2).setValues(mapelData);
-      sheetMapel.autoResizeColumns(1, 2);
-    }
-    sheetMapel.setFrozenRows(1);
-    
-    // [MODIFIKASI] Tambahkan NIP (Opsional)
-    sheetTemplate.appendRow(['NamaGuru', 'NIP (Opsional)', 'Email', 'Password', 'MapelIDs']);
+    // [MODIFIKASI] Sheet 'Daftar Mapel' tidak lagi dibuat.
+    // const sheetMapel = tempSS.insertSheet('Daftar Mapel');
+    // ... (blok sheetMapel dihapus) ...
+
+    // [MODIFIKASI] Header dikurangi menjadi 4 kolom
+    sheetTemplate.appendRow(['NamaGuru', 'NIP (Opsional)', 'Email', 'Password']);
+    // [MODIFIKASI] Contoh data disesuaikan menjadi 4 kolom
     sheetTemplate.appendRow([
       'Budi Santoso, S.Pd.', 
       '198001012005011001', // Contoh NIP
       'budi.santoso@email.com', 
-      'PasswordMin8Karakter', 
-      'PAI,MTK,BIN'
+      'PasswordMin8Karakter'
     ]);
-    sheetTemplate.getRange('A1:E1').setFontWeight('bold'); // <-- UBAH KE E1
+    sheetTemplate.getRange('A1:D1').setFontWeight('bold'); // <-- UBAH KE D1
     
-    const helpText = "Kolom A, C, dan D wajib diisi. Kolom B (NIP) opsional. Kolom E (MapelIDs) diisi dengan KODE MAPEL dari sheet 'Daftar Mapel'. Pisahkan beberapa kode mapel dengan koma (,) tanpa spasi.";
+    // [MODIFIKASI] Teks bantuan diperbarui
+    const helpText = "Kolom A, C, dan D wajib diisi. Kolom B (NIP) opsional.";
     sheetTemplate.getRange('A3').setValue(helpText).setFontStyle('italic').setFontColor('#666');
-    sheetTemplate.getRange('A3:E3').merge(); // <-- UBAH KE E3
+    sheetTemplate.getRange('A3:D3').merge(); // <-- UBAH KE D3
     
-    sheetTemplate.getRange('B:B').setNumberFormat('@'); // [TAMBAHAN] Format NIP sebagai Teks
-    sheetTemplate.getRange('E:E').setNumberFormat('@'); // <-- UBAH KE E:E
-    sheetTemplate.autoResizeColumns(1, 5); // <-- UBAH KE 5
+    sheetTemplate.getRange('B:B').setNumberFormat('@'); // Format NIP sebagai Teks
+    // [MODIFIKASI] Kolom E (Mapel) dihapus
+    // sheetTemplate.getRange('E:E').setNumberFormat('@');
+    sheetTemplate.autoResizeColumns(1, 4); // <-- UBAH KE 4
     
     SpreadsheetApp.flush(); 
 
@@ -5332,9 +5517,9 @@ function prosesImportExcelGuru(token, fileData) {
       existingEmailSet.add(String(dataGuru[i][0]).trim().toLowerCase());
     }
 
-    const mapelList = _getMapelInternal(ss, sessionData.sekolahID); 
-    
-    const validMapelIdSet = new Set(mapelList.map(m => m.id));
+    // [MODIFIKASI] Logika mapel dihapus
+    // const mapelList = _getMapelInternal(ss, sessionData.sekolahID); 
+    // const validMapelIdSet = new Set(mapelList.map(m => m.id));
 
     const { base64, mimeType, fileName } = fileData;
     const decodedData = Utilities.base64Decode(base64.split(',')[1]);
@@ -5371,7 +5556,9 @@ function prosesImportExcelGuru(token, fileData) {
       const nip = (row[1] ? String(row[1]) : '').trim(); 
       const email = (row[2] ? String(row[2]) : '').trim().toLowerCase(); 
       const password = (row[3] ? String(row[3]) : ''); 
-      const mapelIdsStr = (row[4] ? String(row[4]) : '').trim(); 
+      
+      // [MODIFIKASI] Pembacaan 'mapelIdsStr' (row[4]) dihapus.
+      // const mapelIdsStr = (row[4] ? String(row[4]) : '').trim(); 
 
       if (!nama || !email || !password) {
         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Nama, Email, atau Password kosong." });
@@ -5388,29 +5575,13 @@ function prosesImportExcelGuru(token, fileData) {
          continue;
       }
 
-      // ... (validasi mapel) ...
-      const mapelIds = mapelIdsStr.split(',').map(id => id.trim()).filter(id => id);
-      let mapelValid = true;
-      let mapelInvalid = '';
+      // [MODIFIKASI] Validasi Mapel dihapus
+      // const mapelIds = mapelIdsStr.split(',').map(id => id.trim()).filter(id => id);
+      // ... (blok validasi mapel dihapus) ...
       
-      for (const id of mapelIds) {
-        if (!validMapelIdSet.has(id)) {
-          mapelValid = false;
-          mapelInvalid = id;
-          break;
-        }
-      }
-
-      if (!mapelValid) {
-        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: `Kode Mapel '${mapelInvalid}' tidak valid.` });
-        continue;
-      }
-      
+      // [MODIFIKASI] mapelKelasData sekarang selalu kosong
       const mapelKelasData = {};
-      mapelIds.forEach(id => {
-        mapelKelasData[id] = ["*"];
-      });
-      const mapelKelasJSON = JSON.stringify(mapelKelasData);
+      const mapelKelasJSON = JSON.stringify(mapelKelasData); // Ini akan menjadi '{}'
 
       // --- [MODIFIKASI DI SINI] ---
       // Buat Hash dan Salt untuk sheet LOKAL
@@ -5418,7 +5589,7 @@ function prosesImportExcelGuru(token, fileData) {
       const newHash = hashPassword(password, newSalt);
       const formattedNip = (nip !== "") ? "'" + nip : ""; 
       
-      // Simpan HASH dan SALT (bukan plain text)
+      // [MODIFIKASI] mapelKelasJSON sekarang '{}'
       rowsToAppend.push([email, nama, formattedNip, newHash, newSalt, mapelKelasJSON]);
       existingEmailSet.add(email);
       // --- [AKHIR MODIFIKASI] ---
