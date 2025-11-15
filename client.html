@@ -8018,7 +8018,7 @@
         if (!isRequired) return `<td>${dashIcon}</td>`;
         
         const isComplete = (count === totalSiswa);
-        const text = isComplete ? `${count}` : `${count}/${totalSiswa}`;
+        const text = `${count}/${totalSiswa}`;
         const icon = isComplete ? okIcon : noIcon;
         
         // [MODIFIKASI] Tambahkan data-mapel-id dan data-component-id
@@ -8061,14 +8061,14 @@
     container.appendChild(table);
   }
 
-  // ===== TAMBAHKAN FUNGSI BARU DI BAWAH INI =====
   /**
    * [BARU] Menampilkan modal tooltip dengan daftar siswa yang belum lengkap.
    */
   function showMissingStudentsTooltip(targetCell, mapelId, componentId) {
-    const { siswaList, validationData, requiredSemesters } = globalValidationDataSiswa;
+    // 1. Ambil data mentah (raw maps) dari cache
+    const { siswaList, rawUjianMap, rawRaporMap, requiredSemesters } = globalValidationDataSiswa;
     
-    // 1. Cari nama mapel dan nama komponen
+    // 2. Cari nama mapel dan nama komponen (Logika ini tidak berubah)
     const mapel = globalValidationDataMapel.mapelList.find(m => m.id === mapelId);
     const mapelName = mapel ? mapel.nama : mapelId;
     let componentName = componentId;
@@ -8085,18 +8085,33 @@
       }
     }
 
-    // 2. Filter siswa
+    // 3. Filter siswa (Logika ini DIPERBARUI)
     const missingStudents = [];
     const completeStudents = [];
 
     siswaList.forEach(siswa => {
-      const validasiSiswa = validationData[siswa.id];
-      if (!validasiSiswa) return;
-      
+      const siswaId = siswa.id;
       let isComplete = false;
-      if (componentId === 'UM') isComplete = validasiSiswa.ujian.UM;
-      else if (componentId === 'UP') isComplete = validasiSiswa.ujian.UP;
-      else if (validasiSiswa.rapor[componentId] !== undefined) isComplete = validasiSiswa.rapor[componentId];
+
+      // --- Logika Baru: Periksa data mentah ---
+      if (componentId === 'UM') {
+        // Cek rawUjianMap[siswaId][mapelId] -> .UM
+        isComplete = rawUjianMap?.[siswaId]?.[mapelId]?.UM || false;
+      } else if (componentId === 'UP') {
+        // Cek rawUjianMap[siswaId][mapelId] -> .UP
+        isComplete = rawUjianMap?.[siswaId]?.[mapelId]?.UP || false;
+      } else {
+        // Ini adalah rapor, cth: "K4_S1_P"
+        const semId = componentId.substring(0, 5); // "K4_S1"
+        const tipe = componentId.substring(6); // "P" or "K"
+
+        if (tipe === 'P') {
+          isComplete = rawRaporMap?.[siswaId]?.[mapelId]?.[semId]?.P || false;
+        } else if (tipe === 'K') {
+          isComplete = rawRaporMap?.[siswaId]?.[mapelId]?.[semId]?.K || false;
+        }
+      }
+      // --- Akhir Logika Baru ---
       
       if (isComplete) {
         completeStudents.push(siswa.nama);
@@ -8105,11 +8120,12 @@
       }
     });
 
-    // 3. Buat judul dan pesan
+    // 4. Buat judul dan pesan (Logika ini sudah benar sesuai permintaan Anda)
     let title = '';
     let message = '';
     
     if (missingStudents.length > 0) {
+      // KASUS: BELUM LENGKAP
       title = `Siswa Belum Lengkap: ${mapelName} (${componentName})`;
       message = `<p>Ditemukan <strong>${missingStudents.length} siswa</strong> yang belum memiliki nilai untuk komponen ini:</p>`;
       message += '<ul style="max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 10px 10px 10px 30px; border-radius: 4px;">';
@@ -8118,11 +8134,12 @@
       });
       message += '</ul>';
     } else {
+      // KASUS: SUDAH LENGKAP
       title = `Data Lengkap: ${mapelName} (${componentName})`;
       message = `<p>Semua <strong>${completeStudents.length} siswa</strong> telah memiliki nilai untuk komponen ini.</p>`;
     }
     
-    // 4. Tampilkan modal info
+    // 5. Tampilkan modal info (Logika ini tidak berubah)
     const modal = document.getElementById('info-modal');
     document.getElementById('info-modal-title').innerText = title;
     document.getElementById('info-modal-body').innerHTML = message;
@@ -8131,7 +8148,6 @@
     modal.onOk = null;
     modal.classList.add('show');
   }
-  // ===== AKHIR FUNGSI BARU =====
 
   function forceLogoutInstan() {
     setLoading(false); 
