@@ -4530,7 +4530,42 @@ function getValidationDataBySiswa(token) {
       if (!globalNeedsUP) delete resultSiswa.ujian.UP;
       validationResults[siswa.id] = resultSiswa;
     });
-    return { status: "sukses", data: { siswaList: siswaList.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas })), requiredSemesters: semesterListWithCodes, validationData: validationResults } };
+
+    // --- ▼▼▼ PERUBAHAN DIMULAI DI SINI ▼▼▼ ---
+    
+    // 1. Konversi Map mentah ke Objek agar bisa di-JSON-kan
+    const ujianMapObj = {};
+    ujianMap.forEach((mapelMap, siswaId) => {
+      ujianMapObj[siswaId] = {};
+      mapelMap.forEach((data, mapelId) => {
+        ujianMapObj[siswaId][mapelId] = data;
+      });
+    });
+
+    const raporMapObj = {};
+    raporMap.forEach((mapelMap, siswaId) => {
+      raporMapObj[siswaId] = {};
+      mapelMap.forEach((semMap, mapelId) => {
+        raporMapObj[siswaId][mapelId] = {};
+        semMap.forEach((data, semId) => {
+          raporMapObj[siswaId][mapelId][semId] = data;
+        });
+      });
+    });
+
+    // 2. Tambahkan objek mentah ke respons data
+    return { 
+      status: "sukses", 
+      data: { 
+        siswaList: siswaList.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas })), 
+        requiredSemesters: semesterListWithCodes, 
+        validationData: validationResults,
+        rawUjianMap: ujianMapObj, // <-- DATA MENTAH DITAMBAHKAN
+        rawRaporMap: raporMapObj  // <-- DATA MENTAH DITAMBAHKAN
+      } 
+    };
+    // --- ▲▲▲ PERUBAHAN SELESAI ▲▲▲ ---
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
