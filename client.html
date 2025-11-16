@@ -12939,14 +12939,14 @@
     let exampleLink = '#';
 
     // 1. Ambil data link dari cache
-    if (globalDataSekolahCache && globalDataSekolahCache.data) {
+    if (globalPengaturanCetakCache && globalPengaturanCetakCache.data) {
       if (type === 'doc') {
-        exampleLink = globalDataSekolahCache.data.exampleLinkDoc || '#';
+        exampleLink = globalPengaturanCetakCache.data.exampleLinkDoc || '#';
       } else {
-        exampleLink = globalDataSekolahCache.data.exampleLinkRekap || '#';
+        exampleLink = globalPengaturanCetakCache.data.exampleLinkRekap || '#';
       }
     } else {
-      showToast("Gagal memuat link contoh, cache tidak ditemukan.", 'gagal');
+      showToast("Gagal memuat link contoh, cache pengaturan cetak tidak ditemukan.", 'gagal');
     }
 
     // 2. Tentukan konten modal
