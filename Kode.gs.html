@@ -5254,17 +5254,22 @@ function prosesLoginGuru(npsn, email, password) {
     }
     
     // 6. Baca URL Aplikasi 2 secara dinamis dari Master Sheet 'Config'
-    // (masterSS_App1 sudah dibuka di atas)
     const configSheet = masterSS_App1.getSheetByName('Config');
     if (!configSheet) {
-      throw new Error("Sheet 'Config' tidak ditemukan di Master Sheet. Harap buat sheet 'Config' dan isi sel B1 dengan URL /exec Aplikasi 2.");
+      throw new Error("Sheet 'Config' tidak ditemukan di Master Sheet.");
     }
     const URL_APLIKASI_2_DINAMIS = configSheet.getRange('B1').getValue();
     
-    if (!URL_APLIKASI_2_DINAMIS || !URL_APLIKASI_2_DINAMIS.endsWith('/exec')) {
-      // Jika admin lupa menjalankan 'simpanURLDeployBaru' atau salah isi
-      return { status: "gagal", message: "Error: URL Aplikasi 2 (Nilai) belum diatur oleh Admin. Hubungi Admin." };
+    // --- TAMBAHAN VALIDASI ---
+    if (!URL_APLIKASI_2_DINAMIS || URL_APLIKASI_2_DINAMIS === "") {
+      return { status: "gagal", message: "Error Konfigurasi: URL Aplikasi 2 belum diatur di Master Sheet (Sheet Config, Sel B1). Hubungi Admin." };
     }
+    
+    if (!URL_APLIKASI_2_DINAMIS.endsWith('/exec')) {
+       // Opsional: peringatan jika format URL aneh, tapi jangan gagalkan jika cuma beda sedikit
+       Logger.log("Peringatan: URL Aplikasi 2 mungkin salah format: " + URL_APLIKASI_2_DINAMIS);
+    }
+    // --- AKHIR TAMBAHAN ---
     
     // 7. Buat URL Redirect (DINAMIS)
     const redirectUrl = URL_APLIKASI_2_DINAMIS + (URL_APLIKASI_2_DINAMIS.includes('?') ? '&' : '?') + 'ott=' + ott;
