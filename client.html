@@ -3241,24 +3241,63 @@
       // Logika 'else if (response.role === 'guru')' yang lama Dihapus
 
     } else if (response.status === "sso_redirect") {
-      // --- [PERBAIKAN LOGIKA UNTUK GURU] ---
-      
-      // 1. Tampilkan toast, tapi dengan durasi lebih singkat.
-      // Jangan menunggu toast selesai untuk mengalihkan.
-      showToast("Login Guru berhasil. Mengalihkan...", 'sukses', 2000);
-      
-      // 2. Lakukan pengalihan SEGERA.
-      // Ini memiliki peluang sukses jauh lebih tinggi karena
-      // lebih dekat dengan rantai tindakan asli (klik -> panggil server -> respons -> alihkan).
-      window.top.location.href = response.redirectUrl;
+      const targetUrl = response.redirectUrl;
 
-      // 3. Hapus setTimeout
-      /*
-      setTimeout(() => {
-        window.top.location.href = response.redirectUrl;
-      }, 1000); 
-      */
-      // --- [AKHIR PERBAIKAN] ---
+      // Validasi URL
+      if (!targetUrl || targetUrl === "undefined") {
+          showToast("Gagal: URL tujuan tidak ditemukan. Hubungi Admin.", 'gagal');
+          return;
+      }
+
+      showToast("Login berhasil. Mengalihkan...", 'sukses', 3000);
+
+      // --- PERBAIKAN UTAMA DI SINI ---
+      
+      // 1. Siapkan fungsi pembatal timer
+      // Ini akan dipanggil jika browser berhasil mulai memuat halaman baru
+      const cancelFallback = () => {
+          if (window.redirectTimer) {
+              clearTimeout(window.redirectTimer);
+              console.log("Redirect berhasil dimulai, timer fallback dibatalkan.");
+          }
+      };
+
+      // 2. Pasang pendengar event (listener)
+      // 'beforeunload' memicu saat halaman mulai ditinggalkan
+      window.addEventListener('beforeunload', cancelFallback);
+      window.addEventListener('pagehide', cancelFallback);
+
+      // 3. Lakukan pengalihan SEGERA
+      window.top.location.href = targetUrl;
+
+      // 4. Timer Fallback (Diperpanjang ke 10 detik)
+      // Hanya jalan jika dalam 10 detik halaman masih belum 'unload' (macet/koneksi putus)
+      window.redirectTimer = setTimeout(() => {
+         const loginBtn = document.getElementById('btn-login-guru');
+         const errorP = document.getElementById('login-guru-error');
+         
+         // Pastikan elemen masih ada di DOM
+         if (loginBtn) {
+             // Ubah tombol menjadi tombol manual
+             loginBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> KLIK DI SINI';
+             loginBtn.style.backgroundColor = '#198754'; // Hijau
+             loginBtn.disabled = false; 
+             loginBtn.type = 'button';  
+             
+             // Hapus event listener lama (jika ada) dan pasang baru
+             loginBtn.onclick = function(e) {
+                 e.preventDefault();
+                 window.open(targetUrl, "_top");
+             };
+             
+             if (errorP) {
+                 errorP.innerHTML = `Jika tidak dialihkan otomatis, silakan klik tombol di atas.`;
+                 errorP.style.display = 'block';
+                 errorP.className = 'message'; 
+                 errorP.style.color = '#0d6efd';
+             }
+         }
+      }, 10000); // Ubah ke 10000 ms (10 detik)
 
     } else {
       // Logika 'gagal' tetap sama
