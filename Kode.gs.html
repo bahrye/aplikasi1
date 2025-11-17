@@ -6089,13 +6089,15 @@ function submitDonasi(token, fileData, formDataJSON) {
     
     let rowToUpdate = -1;
     let oldFileId = null;
-    let donasiFolderId = null; // <-- [BARU] Variabel untuk ID folder
+    let donasiFolderId = null;
+    let emailAdminSekolah = null; // Variabel untuk email admin
 
     for (let i = 1; i < dataSekolah.length; i++) {
       if (dataSekolah[i][0] === sessionData.sekolahID) {
         rowToUpdate = i + 1;
+        emailAdminSekolah = dataSekolah[i][3]; // Kolom D (Email Admin)
         oldFileId = dataSekolah[i][9]; // Kolom J (FileID lama)
-        donasiFolderId = dataSekolah[i][14]; // <-- [BARU] Kolom O (DonasiFolderID)
+        donasiFolderId = dataSekolah[i][14]; // Kolom O (DonasiFolderID)
         break;
       }
     }
@@ -6104,36 +6106,31 @@ function submitDonasi(token, fileData, formDataJSON) {
       throw new Error("Gagal menemukan data sekolah Anda.");
     }
     
-    // --- [MODIFIKASI] Tentukan folder tujuan ---
+    // Tentukan folder tujuan
     let uploadFolder;
     if (donasiFolderId) {
       try {
         uploadFolder = DriveApp.getFolderById(donasiFolderId);
       } catch (e) {
-        Logger.log(`Peringatan: Folder donasi (Kolom O) ID ${donasiFolderId} tidak ditemukan. Fallback ke global.`);
-        uploadFolder = DriveApp.getFolderById(DONASI_FOLDER_ID); // Fallback
+        uploadFolder = DriveApp.getFolderById(DONASI_FOLDER_ID); 
       }
     } else {
-      Logger.log(`Peringatan: Kolom O (DonasiFolderID) kosong. Fallback ke global.`);
-      uploadFolder = DriveApp.getFolderById(DONASI_FOLDER_ID); // Fallback untuk sekolah lama
+      uploadFolder = DriveApp.getFolderById(DONASI_FOLDER_ID); 
     }
-    // --- [AKHIR MODIFIKASI] ---
 
-    // 2. Hapus file lama jika ada (logika ini tetap sama)
+    // 2. Hapus file lama jika ada
     if (oldFileId) {
       try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
     }
     
-    // 3. Upload file bukti ke folder yang benar
+    // 3. Upload file bukti
     const { base64, mimeType, fileName } = fileData;
     const decodedData = Utilities.base64Decode(base64.split(',')[1]);
     const blob = Utilities.newBlob(decodedData, mimeType, `[${sessionData.namaSekolah}] - ${fileName}`);
-    
-    // [MODIFIKASI] Menggunakan 'uploadFolder'
     const newFile = uploadFolder.createFile(blob);
     const newFileId = newFile.getId();
     
-    // 4. Tulis data baru ke Sheet_Sekolah (logika ini tetap sama)
+    // 4. Tulis data baru ke Sheet_Sekolah
     sheetSekolah.getRange(rowToUpdate, 9, 1, 4).setValues([[
       "PENDING",      // Kolom I (Status)
       newFileId,      // Kolom J (FileID)
@@ -6142,6 +6139,57 @@ function submitDonasi(token, fileData, formDataJSON) {
     ]]);
     
     clearMasterSheetCache();
+
+    // --- LOGIKA EMAIL OTOMATIS (BARU) ---
+    
+    // Parse data donasi untuk ditampilkan di email
+    let detailDonasi = "Data tidak terbaca";
+    try {
+      const dataObj = JSON.parse(formDataJSON);
+      const jumlahRp = Number(dataObj.jumlah || 0).toLocaleString('id-ID');
+      detailDonasi = `
+        <ul>
+          <li><strong>Metode:</strong> ${dataObj.metode}</li>
+          <li><strong>Nama Pengirim:</strong> ${dataObj.namaRekening}</li>
+          <li><strong>Jumlah:</strong> Rp ${jumlahRp}</li>
+        </ul>
+      `;
+    } catch (e) {}
+
+    // A. Email ke Admin Sekolah (Pemberitahuan Peninjauan)
+    const subjectSekolah = "Donasi Sedang Ditinjau - Aplikasi Nilai Ijazah";
+    const bodySekolah = `
+      <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+        <h3>Halo, Admin ${sessionData.namaSekolah}</h3>
+        <p>Terima kasih telah melakukan donasi untuk fitur premium.</p>
+        <p>Status donasi Anda saat ini: <strong style="color: #fd7e14;">SEDANG DITINJAU</strong>.</p>
+        <p>Admin kami sedang melakukan verifikasi bukti transfer Anda. Mohon menunggu, kami akan memberitahu Anda segera setelah diverifikasi.</p>
+        <hr>
+        <p style="font-size: 12px; color: #777;">Ini adalah pesan otomatis, mohon tidak membalas email ini.</p>
+      </div>
+    `;
+    if (emailAdminSekolah) {
+      _sendEmailSafe(emailAdminSekolah, subjectSekolah, bodySekolah);
+    }
+
+    // B. Email ke Superadmin (Notifikasi Ada Donasi Baru)
+    const superadminEmail = _getSuperadminEmail(masterSS);
+    if (superadminEmail) {
+      const subjectSA = `[BARU] Donasi dari ${sessionData.namaSekolah}`;
+      const bodySA = `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+          <h3>Notifikasi Donasi Baru</h3>
+          <p>Sebuah sekolah telah mengirimkan bukti donasi dan menunggu verifikasi.</p>
+          <p><strong>Sekolah:</strong> ${sessionData.namaSekolah}</p>
+          <p><strong>Detail Donasi:</strong></p>
+          ${detailDonasi}
+          <br>
+          <p>Silakan login ke panel Superadmin untuk memverifikasi (Setujui/Tolak).</p>
+        </div>
+      `;
+      _sendEmailSafe(superadminEmail, subjectSA, bodySA);
+    }
+    // --- AKHIR LOGIKA EMAIL ---
     
     return { status: "sukses", donasiStatus: "PENDING" };
     
@@ -6244,9 +6292,6 @@ function getDonasiList(token) {
   }
 }
 
-/**
- * [SUPERADMIN] Memverifikasi (Setujui/Tolak) donasi.
- */
 function verifikasiDonasi(token, sekolahID, isApproved, alasan) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -6261,9 +6306,14 @@ function verifikasiDonasi(token, sekolahID, isApproved, alasan) {
     const dataSekolah = sheetSekolah.getDataRange().getValues();
     
     let rowToUpdate = -1;
+    let targetEmail = null; // Variabel untuk email sekolah
+    let namaSekolah = "Sekolah"; // Variabel nama sekolah
+
     for (let i = 1; i < dataSekolah.length; i++) {
       if (dataSekolah[i][0] === sekolahID) {
         rowToUpdate = i + 1;
+        namaSekolah = dataSekolah[i][1]; // Kolom B
+        targetEmail = dataSekolah[i][3]; // Kolom D (Email Admin Sekolah)
         break;
       }
     }
@@ -6272,17 +6322,58 @@ function verifikasiDonasi(token, sekolahID, isApproved, alasan) {
       throw new Error("Gagal menemukan data sekolah.");
     }
     
+    // Update Spreadsheet
     if (isApproved) {
       sheetSekolah.getRange(rowToUpdate, 9).setValue("APPROVED"); // Kolom I
-      sheetSekolah.getRange(rowToUpdate, 12).setValue("");      // Kolom L
+      sheetSekolah.getRange(rowToUpdate, 12).setValue("");        // Kolom L
     } else {
       sheetSekolah.getRange(rowToUpdate, 9).setValue("REJECTED"); // Kolom I
-      sheetSekolah.getRange(rowToUpdate, 12).setValue(alasan); // Kolom L
+      sheetSekolah.getRange(rowToUpdate, 12).setValue(alasan);    // Kolom L
     }
     
     clearMasterSheetCache();
+
+    // --- LOGIKA EMAIL OTOMATIS (BARU) ---
+    if (targetEmail) {
+      if (isApproved) {
+        // KASUS: DISETUJUI
+        const subject = "Donasi Disetujui - Fitur Premium Aktif";
+        const body = `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #28a745; border-radius: 5px;">
+            <h3 style="color: #28a745;">Selamat! Donasi Disetujui</h3>
+            <p>Halo Admin ${namaSekolah},</p>
+            <p>Terima kasih atas dukungan Anda. Donasi Anda telah diverifikasi dan disetujui oleh Admin.</p>
+            <p><strong>Semua fitur premium kini telah aktif.</strong></p>
+            <p>Silakan <strong>Reload / Refresh</strong> halaman aplikasi Anda untuk mengakses fitur full version (seperti Login Guru, Kelola Kelulusan, dll).</p>
+            <br>
+            <a href="${ScriptApp.getService().getUrl()}" style="background-color: #28a745; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">Buka Aplikasi</a>
+          </div>
+        `;
+        _sendEmailSafe(targetEmail, subject, body);
+
+      } else {
+        // KASUS: DITOLAK
+        const subject = "Donasi Ditolak - Aplikasi Nilai Ijazah";
+        const body = `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #dc3545; border-radius: 5px;">
+            <h3 style="color: #dc3545;">Mohon Maaf, Donasi Ditolak</h3>
+            <p>Halo Admin ${namaSekolah},</p>
+            <p>Pengajuan donasi Anda belum dapat kami setujui saat ini.</p>
+            <p><strong>Alasan Penolakan:</strong></p>
+            <blockquote style="background: #f8d7da; padding: 10px; border-left: 5px solid #dc3545;">
+              ${alasan}
+            </blockquote>
+            <p>Silakan perbaiki data atau bukti transfer Anda, lalu kirim ulang melalui menu Donasi di aplikasi.</p>
+            <br>
+            <a href="${ScriptApp.getService().getUrl()}" style="background-color: #6c757d; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">Buka Aplikasi</a>
+          </div>
+        `;
+        _sendEmailSafe(targetEmail, subject, body);
+      }
+    }
+    // --- AKHIR LOGIKA EMAIL ---
     
-    return { status: "sukses", message: "Verifikasi berhasil disimpan." };
+    return { status: "sukses", message: "Verifikasi berhasil disimpan dan email notifikasi telah dikirim." };
 
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -8560,4 +8651,35 @@ function compareKelas_GS(a, b) {
   }
   
   return valA.original.localeCompare(b.original);
+}
+
+/**
+ * Helper untuk mengirim email HTML dengan penanganan error sederhana.
+ */
+function _sendEmailSafe(to, subject, htmlBody) {
+  try {
+    MailApp.sendEmail({
+      to: to,
+      subject: subject,
+      htmlBody: htmlBody,
+      name: "Admin Aplikasi Ijazah"
+    });
+    Logger.log(`Email terkirim ke ${to} dengan subjek: ${subject}`);
+  } catch (e) {
+    Logger.log(`Gagal mengirim email ke ${to}: ${e.message}`);
+  }
+}
+
+/**
+ * Helper untuk mendapatkan email Superadmin dari sheet.
+ */
+function _getSuperadminEmail(masterSS) {
+  try {
+    const sheet = getSheetSuperadmin(masterSS);
+    // Asumsi Superadmin utama ada di baris ke-2, kolom A
+    const email = sheet.getRange(2, 1).getValue();
+    return email ? email : null;
+  } catch (e) {
+    return null;
+  }
 }
