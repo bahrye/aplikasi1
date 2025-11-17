@@ -5205,26 +5205,50 @@ function prosesLoginGuru(npsn, email, password) {
       throw new Error("Sheet 'db_ott_cache' tidak ditemukan di Aplikasi 2.");
     }
     
-    // 5. Simpan OTT ke SPREADSHEET Aplikasi 2
+    // 5. Simpan OTT ke SPREADSHEET Aplikasi 2 (OPTIMASI BATCH)
     const lock = LockService.getScriptLock();
     lock.waitLock(10000); 
     try {
-      ottSheet.appendRow([ott, payloadString, timestamp]); // [MODIFIKASI] Simpan string JSON
+      // Ambil semua data sekaligus
+      const range = ottSheet.getDataRange();
+      let data = [];
+      if (ottSheet.getLastRow() > 0) {
+        data = range.getValues();
+      }
       
-      const data = ottSheet.getDataRange().getValues();
       const now = timestamp.getTime();
-      const expiryLimit = 5 * 60 * 1000; // 5 menit
-      const rowsToDelete = [];
+      const expiryLimit = 5 * 60 * 1000; // 5 menit (Token expired setelah 5 menit)
       
-      for (let i = data.length - 1; i >= 1; i--) { 
-        if (data[i][2] instanceof Date && (now - data[i][2].getTime() > expiryLimit)) {
-          rowsToDelete.push(i + 1);
+      // Siapkan array untuk data baru yang bersih
+      const validData = [];
+      
+      // Pastikan header ada
+      if (data.length > 0) {
+        validData.push(data[0]); // Simpan header asli
+      } else {
+        validData.push(["Token", "EmailPayload", "Timestamp"]); // Header default jika kosong
+      }
+
+      // Filter data lama: Hanya simpan yang BELUM expired
+      for (let i = 1; i < data.length; i++) {
+        const rowTime = data[i][2];
+        // Cek apakah tanggal valid dan belum lewat batas waktu
+        if (rowTime instanceof Date && (now - rowTime.getTime() <= expiryLimit)) {
+          validData.push(data[i]);
         }
       }
-      rowsToDelete.forEach(rowNum => ottSheet.deleteRow(rowNum));
+      
+      // Tambahkan token baru ke daftar valid
+      validData.push([ott, payloadString, timestamp]);
+      
+      // Tulis ulang sheet sekaligus (Hapus semua -> Tulis yang bersih)
+      // Ini hanya 2 operasi (Clear + SetValues) vs puluhan operasi deleteRow
+      ottSheet.clearContents();
+      ottSheet.getRange(1, 1, validData.length, 3).setValues(validData);
       
     } catch(e) {
-      throw e;
+      // Jika gagal menulis, lempar error agar klien tahu login gagal
+      throw new Error("Gagal menyimpan token login: " + e.message);
     } finally {
       lock.releaseLock();
     }
