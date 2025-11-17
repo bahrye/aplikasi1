@@ -8271,7 +8271,7 @@ function approveTeacherScore(token, submissionKey) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); 
   
-  let app1DbId, app2DbId, sekolahID, spreadsheetID;
+  let app1DbId, app2DbId, sekolahID, spreadsheetID, namaSekolah; // Tambah namaSekolah
 
   try {
     const session = validateAdminSession(token);
@@ -8279,6 +8279,7 @@ function approveTeacherScore(token, submissionKey) {
     app2DbId = session.app2DbId;
     sekolahID = session.sekolahID;
     spreadsheetID = session.spreadsheetID;
+    namaSekolah = session.sessionData.namaSekolah; // Ambil nama sekolah
     
     const ss_app1 = SpreadsheetApp.openById(app1DbId);
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
@@ -8414,8 +8415,12 @@ function approveTeacherScore(token, submissionKey) {
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("APPROVED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue("");
     
-    clearNilaiUjianCache(sekolahID, spreadsheetID); // <--- Kirim spreadsheetID
+    clearNilaiUjianCache(sekolahID, spreadsheetID);
     CacheService.getScriptCache().put('IJAZAH_IS_DIRTY_' + sekolahID, 'true');
+
+    // --- [BARU] Kirim Email Notifikasi ---
+    kirimNotifikasiKeGuru(email_guru, nama_mapel_app2, "APPROVED", "", namaSekolah);
+    // --- [AKHIR BARU] ---
 
     return { status: "sukses", message: `Berhasil disetujui. ${copyCount} data nilai siswa disalin ke Nilai_Ujian.` };
 
@@ -8432,19 +8437,25 @@ function rejectTeacherScore(token, submissionKey, reason) {
   lock.waitLock(15000); 
   
   try {
-    const { app2DbId } = validateAdminSession(token);
+    const { app2DbId, sessionData } = validateAdminSession(token);
+    const namaSekolah = sessionData.namaSekolah; // Ambil nama sekolah
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
 
     const statusSheetApp2 = ss_app2.getSheetByName('db_status_kirim');
     const statusDataApp2 = statusSheetApp2.getDataRange().getValues();
     
     let statusRowIndex = -1;
+    let email_guru = "";       // [BARU] Variabel untuk email
+    let nama_mapel_app2 = "";  // [BARU] Variabel untuk mapel
+
     for (let i = 1; i < statusDataApp2.length; i++) {
       if (statusDataApp2[i][0] === submissionKey) {
         if (statusDataApp2[i][6] !== "PENDING") {
           throw new Error("Status nilai ini bukan 'PENDING'. Mungkin sudah diproses.");
         }
         statusRowIndex = i + 1;
+        email_guru = statusDataApp2[i][2];       // [BARU] Ambil email dari kolom C
+        nama_mapel_app2 = statusDataApp2[i][3];  // [BARU] Ambil mapel dari kolom D
         break;
       }
     }
@@ -8460,7 +8471,11 @@ function rejectTeacherScore(token, submissionKey, reason) {
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("REJECTED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue(reason);
     
-    return { status: "sukses", message: "Nilai berhasil ditolak dan notifikasi dikirim ke guru." };
+    // --- [BARU] Kirim Email Notifikasi ---
+    kirimNotifikasiKeGuru(email_guru, nama_mapel_app2, "REJECTED", reason, namaSekolah);
+    // --- [AKHIR BARU] ---
+
+    return { status: "sukses", message: "Nilai berhasil ditolak dan notifikasi email dikirim ke guru." };
 
   } catch (e) {
     Logger.log("rejectTeacherScore Error: " + e.message);
@@ -8681,5 +8696,63 @@ function _getSuperadminEmail(masterSS) {
     return email ? email : null;
   } catch (e) {
     return null;
+  }
+}
+
+/**
+ * [BARU] Helper untuk mengirim email notifikasi ke guru (Aplikasi 2)
+ * saat nilai disetujui atau ditolak.
+ */
+function kirimNotifikasiKeGuru(emailGuru, namaMapel, status, alasan, namaSekolah) {
+  try {
+    let subject, color, statusText, messageBody;
+
+    if (status === 'APPROVED') {
+      subject = `[DISETUJUI] Nilai ${namaMapel} - ${namaSekolah}`;
+      color = '#198754'; // Hijau
+      statusText = 'DISETUJUI';
+      messageBody = `
+        <p>Nilai yang Anda kirimkan untuk mata pelajaran <strong>${namaMapel}</strong> telah <strong>DISETUJUI</strong> oleh Admin Sekolah.</p>
+        <p>Data nilai tersebut sekarang telah masuk ke database utama sekolah dan akan digunakan untuk pengolahan nilai akhir/ijazah.</p>
+      `;
+    } else {
+      subject = `[DITOLAK] Revisi Nilai ${namaMapel} - ${namaSekolah}`;
+      color = '#dc3545'; // Merah
+      statusText = 'DITOLAK / PERLU REVISI';
+      messageBody = `
+        <p>Nilai yang Anda kirimkan untuk mata pelajaran <strong>${namaMapel}</strong> telah <strong>DITOLAK</strong> oleh Admin Sekolah.</p>
+        <p><strong>Alasan / Catatan Admin:</strong></p>
+        <blockquote style="background: #f8d7da; padding: 15px; border-left: 5px solid #dc3545; color: #721c24;">
+          ${alasan || '-'}
+        </blockquote>
+        <p>Silakan perbaiki data nilai Anda di Aplikasi Guru, lalu kirim ulang.</p>
+      `;
+    }
+
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: ${color}; color: white; padding: 20px; text-align: center;">
+          <h2 style="margin: 0;">Status Pengiriman Nilai</h2>
+        </div>
+        <div style="padding: 20px;">
+          <p>Halo Bapak/Ibu Guru,</p>
+          ${messageBody}
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="font-size: 12px; color: #777;">Email ini dikirim otomatis oleh Sistem Aplikasi Nilai Ijazah (${namaSekolah}).</p>
+        </div>
+      </div>
+    `;
+
+    MailApp.sendEmail({
+      to: emailGuru,
+      subject: subject,
+      htmlBody: htmlBody,
+      name: `Admin ${namaSekolah}`
+    });
+    Logger.log(`Email notifikasi ${status} terkirim ke ${emailGuru}`);
+
+  } catch (e) {
+    Logger.log(`Gagal mengirim email ke guru (${emailGuru}): ${e.message}`);
+    // Jangan throw error agar proses simpan data tetap berjalan meskipun email gagal
   }
 }
