@@ -1579,13 +1579,48 @@
           <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat halaman ini, tetapi tidak dapat menyetujui atau menolak nilai. Silakan <a href="#" id="link-donasi-dari-kelola-nilai">Donasi</a> untuk mengaktifkan fitur ini.
         </div>
 
-        <p>Tinjau nilai yang telah dikirim oleh guru dari Aplikasi 2. Anda dapat menyetujui nilai untuk dimasukkan ke database Nilai Ijazah, atau menolaknya untuk direvisi.</p>
-        
-        <p id="kelola-nilai-guru-message" class="message" style="display: none;"></p>
-        
-        <div class="superadmin-table-container" id="pending-scores-container">
-          <p>Memuat data nilai yang dikirim...</p>
+        <div class="tab-bar" id="kelola-nilai-tab-bar" style="margin-top: 20px;">
+          <button class="tab-link active" data-tab="pending">
+            <i class="fas fa-hourglass-half"></i> Menunggu Persetujuan
+          </button>
+          <button class="tab-link" data-tab="riwayat">
+            <i class="fas fa-history"></i> Riwayat & Rekap
+          </button>
         </div>
+
+        <p id="kelola-nilai-guru-message" class="message" style="display: none;"></p>
+
+        <div id="tab-nilai-pending-content" class="tab-content active">
+            <p class="text-muted" style="margin-top: 15px;">Tinjau nilai yang baru dikirim oleh guru. Setujui untuk memasukkan ke database Ijazah.</p>
+            <div class="superadmin-table-container" id="pending-scores-container">
+              <p>Memuat data nilai yang dikirim...</p>
+            </div>
+        </div>
+
+        <div id="tab-nilai-riwayat-content" class="tab-content">
+            <div class="filter-bar" style="margin-top: 15px;">
+              <div class="form-group">
+                <label for="riwayat-filter-ta">Tahun Ajaran</label>
+                <select id="riwayat-filter-ta">
+                  <option value="">-- Memuat... --</option>
+                </select>
+              </div>
+               <div class="form-group">
+                <label for="riwayat-search">Cari Guru/Mapel</label>
+                <input type="text" id="riwayat-search" placeholder="Ketik nama guru atau mapel...">
+              </div>
+              <div class="form-group filter-bar-action" style="display: flex;">
+                 <button id="btn-tampilkan-riwayat" class="btn-aksi" style="background-color: var(--primary-color); width: auto; margin-top: auto;">
+                   <i class="fas fa-search"></i> Tampilkan
+                 </button>
+              </div>
+            </div>
+
+            <div class="superadmin-table-container" id="riwayat-scores-container">
+               <p style="text-align: center; padding: 20px;">Silakan pilih Tahun Ajaran dan klik Tampilkan.</p>
+            </div>
+        </div>
+
       </div>
     </div>
 
