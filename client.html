@@ -1210,6 +1210,34 @@
     }, true); 
     // --- [AKHIR MODIFIKASI] ---
 
+    // Listener Tab Kelola Nilai Guru
+    document.getElementById('kelola-nilai-tab-bar').addEventListener('click', (e) => {
+        const target = e.target.closest('.tab-link');
+        if (target) {
+            const tabName = target.dataset.tab;
+            activateKelolaNilaiTab(tabName);
+        }
+    });
+
+    document.getElementById('btn-tampilkan-riwayat').addEventListener('click', loadRiwayatNilaiGuru);
+    
+    // Listener untuk tombol Unduh PDF di tabel Riwayat (Delegasi Event)
+    document.getElementById('riwayat-scores-container').addEventListener('click', (e) => {
+        const btnPdf = e.target.closest('.btn-unduh-pdf-admin');
+        const btnDetail = e.target.closest('.btn-lihat-rekap-admin');
+        
+        if (btnPdf) {
+            const key = btnPdf.dataset.key;
+            handleAdminDownloadPdf(key, btnPdf);
+        } else if (btnDetail) {
+            const key = btnDetail.dataset.key;
+            const mapel = btnDetail.dataset.mapel;
+            const guru = btnDetail.dataset.guru;
+            // Gunakan modal preview yang sudah ada untuk melihat rekap
+            bukaPreviewModal(key, mapel, guru);
+        }
+    });
+
     // --- [TAMBAHAN BARU UNTUK KELOLA KELULUSAN] ---
     // Tambahkan listener fase capture untuk halaman kelulusan
     document.getElementById('halaman-kelola-kelulusan').addEventListener('click', (e) => {
@@ -13345,6 +13373,219 @@
     
     tableHtml += '</tbody></table>';
     container.innerHTML = tableHtml;
+  }
+
+  // Fungsi untuk Ganti Tab
+  function activateKelolaNilaiTab(tabName) {
+      // Reset Active Classes
+      document.querySelectorAll('#kelola-nilai-tab-bar .tab-link').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('#halaman-kelola-nilai-guru .tab-content').forEach(el => el.classList.remove('active'));
+      
+      // Set Active
+      document.querySelector(`#kelola-nilai-tab-bar .tab-link[data-tab="${tabName}"]`).classList.add('active');
+      document.getElementById(`tab-nilai-${tabName}-content`).classList.add('active');
+      
+      if (tabName === 'pending') {
+          bukaHalamanKelolaNilaiGuru(); // Refresh pending list
+      } else if (tabName === 'riwayat') {
+          // Load TA jika belum ada
+          if (document.getElementById('riwayat-filter-ta').options.length <= 1) {
+             loadTaForRiwayat();
+          }
+      }
+  }
+
+  function loadTaForRiwayat() {
+      const select = document.getElementById('riwayat-filter-ta');
+      select.innerHTML = '<option value="">Memuat...</option>';
+      google.script.run.withSuccessHandler((response) => {
+          select.innerHTML = '<option value="">-- Pilih T.A. --</option>';
+          if(response.status === 'sukses' && response.taList) {
+              // Urutkan T.A terbaru di atas
+              response.taList.sort((a,b) => b.deskripsi.localeCompare(a.deskripsi));
+              response.taList.forEach(ta => {
+                  select.add(new Option(ta.deskripsi, ta.id));
+              });
+              // Pilih otomatis yang pertama (terbaru)
+              if(response.taList.length > 0) select.selectedIndex = 1;
+          }
+      }).withFailureHandler(onGagal).getTahunAjaranList(getToken());
+  }
+
+  function loadRiwayatNilaiGuru() {
+      // Ambil elemen filter
+      const selectTa = document.getElementById('riwayat-filter-ta');
+      const searchInput = document.getElementById('riwayat-search');
+      
+      // Validasi elemen ada
+      if (!selectTa) {
+          showToast("Error: Dropdown Tahun Ajaran tidak ditemukan.", 'gagal');
+          return;
+      }
+
+      const taId = selectTa.value;
+      const search = searchInput ? searchInput.value.toLowerCase() : '';
+      
+      // Cek apakah TA dipilih
+      if (!taId) {
+          showToast("Silakan pilih Tahun Ajaran terlebih dahulu.", 'gagal');
+          selectTa.focus(); // Arahkan kursor ke dropdown
+          return;
+      }
+      
+      // Tampilkan status loading di container
+      const container = document.getElementById('riwayat-scores-container');
+      if (container) {
+          container.innerHTML = `
+            <div class="text-center p-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2">Mengambil data riwayat dari server...</p>
+            </div>`;
+      }
+      
+      // Panggil Server
+      console.log("Memanggil getRiwayatNilaiGuru dengan TA ID:", taId);
+      
+      google.script.run
+          .withSuccessHandler((response) => {
+              console.log("Data diterima dari server:", response);
+              renderRiwayatTable(response, search);
+          })
+          .withFailureHandler((e) => {
+              console.error("Server Error:", e);
+              if (container) {
+                  container.innerHTML = `<div class="alert alert-danger">Gagal memuat data: ${e.message}</div>`;
+              }
+              showToast("Gagal terhubung ke server.", 'gagal');
+          })
+          .getRiwayatNilaiGuru(getToken(), taId);
+  }
+
+  function renderRiwayatTable(response, searchTerm) {
+      const container = document.getElementById('riwayat-scores-container');
+      if (!container) return;
+
+      // 1. Cek Error dari Server
+      if (!response || response.status !== 'sukses') {
+          const msg = (response && response.message) ? response.message : "Gagal terhubung ke data server.";
+          container.innerHTML = `
+            <div class="alert alert-danger">
+              <i class="fas fa-exclamation-circle"></i> ${msg}
+            </div>`;
+          return;
+      }
+      
+      let list = response.data || [];
+      
+      // 2. Filter Pencarian (Client Side)
+      if (searchTerm) {
+          const lowerTerm = searchTerm.toLowerCase();
+          list = list.filter(item => {
+              const guru = (item.nama_guru || "").toLowerCase();
+              const mapel = (item.nama_mapel || "").toLowerCase();
+              return guru.includes(lowerTerm) || mapel.includes(lowerTerm);
+          });
+      }
+      
+      // 3. Tampilan Jika Data Kosong
+      if (list.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 30px; background-color: #f8f9fa; border-radius: 8px; border: 1px dashed #ccc;">
+                <i class="fas fa-folder-open" style="font-size: 3rem; color: #ccc; margin-bottom: 10px;"></i>
+                <p style="color: #666; margin: 0;">Tidak ada riwayat pengiriman nilai untuk Tahun Ajaran ini.</p>
+                <small style="color: #999;">Pastikan guru sudah mengirim nilai (klik "Simpan & Kirim") di aplikasi mereka.</small>
+            </div>`;
+          return;
+      }
+      
+      // 4. Render Tabel
+      let html = `
+        <div style="overflow-x: auto;">
+            <table class="superadmin-table" style="width: 100%; min-width: 600px;">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Guru</th>
+                        <th style="width: 20%;">Mapel</th>
+                        <th style="width: 20%;">Waktu Kirim</th>
+                        <th style="width: 15%; text-align: center;">Status</th>
+                        <th style="width: 20%; text-align: center;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+      `;
+      
+      list.forEach(item => {
+          // Badge Status
+          let statusBadge = '<span class="badge badge-secondary">Unknown</span>';
+          const st = (item.status || 'PENDING');
+          
+          if (st === 'APPROVED' || st === 'APPROVED_NOTIFIED') {
+              statusBadge = '<span style="color: #198754; font-weight: bold; background: #d1e7dd; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Disetujui</span>';
+          } else if (st === 'REJECTED' || st === 'REJECTED_NOTIFIED') {
+              statusBadge = '<span style="color: #dc3545; font-weight: bold; background: #f8d7da; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Ditolak</span>';
+          } else {
+              statusBadge = '<span style="color: #fd7e14; font-weight: bold; background: #fff3cd; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Menunggu</span>';
+          }
+          
+          // Tombol PDF
+          const isApproved = (st === 'APPROVED' || st === 'APPROVED_NOTIFIED');
+          const btnPdfClass = isApproved ? 'btn-danger' : 'btn-secondary';
+          const btnPdfStyle = isApproved ? 'background-color: #dc3545; color: white;' : 'background-color: #e9ecef; color: #aaa; cursor: not-allowed;';
+          const btnPdfAttr = isApproved ? '' : 'disabled';
+
+          html += `
+            <tr style="border-bottom: 1px solid #dee2e6;">
+                <td style="padding: 12px;">
+                    <div style="font-weight: 600; color: #333;">${item.nama_guru}</div>
+                    <div style="font-size: 12px; color: #777;">${item.email_guru}</div>
+                </td>
+                <td style="padding: 12px;">${item.nama_mapel}</td>
+                <td style="padding: 12px;">${item.timestamp_str}</td>
+                <td style="padding: 12px; text-align: center;">${statusBadge}</td>
+                <td style="padding: 12px; text-align: center;">
+                    <div style="display: flex; gap: 5px; justify-content: center;">
+                        <button class="btn-aksi btn-lihat-rekap-admin" 
+                                data-key="${item.key}" 
+                                data-mapel="${item.nama_mapel}" 
+                                data-guru="${item.nama_guru}"
+                                style="padding: 6px 10px; font-size: 12px; width: auto;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn-aksi btn-unduh-pdf-admin" 
+                                data-key="${item.key}"
+                                ${btnPdfAttr}
+                                style="padding: 6px 10px; font-size: 12px; width: auto; ${btnPdfStyle}"
+                                title="${isApproved ? 'Unduh PDF' : 'Menunggu Persetujuan'}">
+                            <i class="fas fa-file-pdf"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+          `;
+      });
+      
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+  }
+
+  function handleAdminDownloadPdf(submissionKey, btnElement) {
+      setButtonLoading(btnElement, ""); // Spinner saja
+      showToast("Membuat PDF Laporan...", 'proses');
+      
+      google.script.run
+          .withSuccessHandler((res) => {
+              resetButtonLoading(btnElement);
+              if (res.status === 'sukses') {
+                  onDataExported(res, 'pdf'); // Reuse fungsi download yang ada
+              } else {
+                  showToast(res.message, 'gagal');
+              }
+          })
+          .withFailureHandler((e) => {
+              resetButtonLoading(btnElement);
+              onGagal(e);
+          })
+          .generateGuruPdfAdmin(getToken(), submissionKey);
   }
 
 </script>
