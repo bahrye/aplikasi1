@@ -8928,9 +8928,19 @@ function generateGuruPdfAdmin(token, submissionKey) {
        infoCetak.tanggalFormatted = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     } catch(e) { infoCetak.tanggalFormatted = '......'; }
 
-    // 6. Ambil Kop Surat
-    const sekolahRow = ss_app1.getSheetByName('Sheet_Sekolah').getDataRange().getValues().find(r => r[0] == session.sekolahID);
-    const kopId = sekolahRow ? sekolahRow[15] : null;
+    // 6. Ambil Kop Surat (DIPERBAIKI)
+    // FIX: Membuka MASTER_SHEET_ID karena 'Sheet_Sekolah' ada di sana, bukan di DB lokal.
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolahMaster = masterSS.getSheetByName('Sheet_Sekolah');
+    
+    let kopId = null;
+    if (sheetSekolahMaster) {
+      const dataSekolahMaster = sheetSekolahMaster.getDataRange().getValues();
+      // Cari baris berdasarkan ID Sekolah (Kolom A)
+      const sekolahRow = dataSekolahMaster.find(r => r[0] == session.sekolahID);
+      kopId = sekolahRow ? sekolahRow[15] : null; // Kolom P (Index 15)
+    }
+
     let kopBase64 = null;
     if (kopId) kopBase64 = _getImageAsBase64DataUrl(kopId);
 
@@ -9038,5 +9048,88 @@ function generateGuruPdfAdmin(token, submissionKey) {
 
   } catch (e) {
     return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * Memformat string gelar menjadi Proper Case.
+ * Contoh: "s.pd.i" -> "S.Pd.I"
+ */
+function properCaseGelar(gelarString) {
+  if (!gelarString) return '';
+  
+  return gelarString.split(' ') // 1. Pisah antar gelar (e.g., "S.Pd M.Pd")
+    .map(gelarPart => {
+      
+      return gelarPart.split('.') // 2. Pisah per titik (e.g., "s", "pd", "i")
+        .map(subPart => {
+          if (subPart.length === 0) return ''; // Menangani '..'
+          
+          // Jika sudah UPPERCASE (misal: S, TR, T), biarkan.
+          if (subPart === subPart.toUpperCase()) return subPart; 
+          
+          // Jika lowercase (misal: s, pd, i)
+          if (subPart.length === 1) return subPart.toUpperCase(); // s -> S, i -> I
+          
+          // Jika mixed/lower (misal: pd, Tr)
+          return subPart.charAt(0).toUpperCase() + subPart.slice(1).toLowerCase(); // pd -> Pd
+        })
+        .join('.'); // 3. Gabungkan kembali dengan titik
+        
+    })
+    .join(' '); // 4. Gabungkan kembali dengan spasi
+}
+
+/**
+ * Memformat nama lengkap menjadi NAMA KAPITAL, Gelar.Proper.
+ * Akan mencoba menebak gelar jika tidak ada koma.
+ */
+function formatNamaGelar(namaLengkap) {
+  if (!namaLengkap) return '';
+  namaLengkap = namaLengkap.trim();
+  
+  let nama = '';
+  let gelar = '';
+  
+  const commaIndex = namaLengkap.indexOf(',');
+  
+  if (commaIndex > -1) {
+    // KASUS 1: Ada koma (e.g., "Asma, s.pd.i") - Paling Ideal
+    nama = namaLengkap.substring(0, commaIndex).trim();
+    gelar = namaLengkap.substring(commaIndex + 1).trim();
+    
+  } else {
+    // KASUS 2: Tidak ada koma (e.g., "Asma S.pd.i") - Coba tebak
+    const parts = namaLengkap.split(' ');
+    if (parts.length < 2) return namaLengkap.toUpperCase(); // Hanya satu kata, kapitalkan semua
+    
+    let titleStartIndex = -1;
+    
+    // Cari bagian pertama yang terlihat seperti gelar (mulai dari kata KEDUA)
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      // Asumsi gelar jika: mengandung titik (S.Pd) ATAU 1-3 huruf kapital (SE)
+      if (part.includes('.') || (part.length >= 1 && part.length <= 3 && part === part.toUpperCase())) {
+        titleStartIndex = i;
+        break;
+      }
+    }
+
+    if (titleStartIndex > -1) {
+      // Ditemukan gelar
+      nama = parts.slice(0, titleStartIndex).join(' ');
+      gelar = parts.slice(titleStartIndex).join(' ');
+    } else {
+      // Tidak ditemukan gelar, kapitalkan semua
+      nama = namaLengkap;
+      gelar = '';
+    }
+  }
+
+  // Format dan gabungkan kembali
+  if (gelar) {
+    return nama.toUpperCase() + ', ' + properCaseGelar(gelar);
+  } else {
+    return nama.toUpperCase();
   }
 }
