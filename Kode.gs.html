@@ -8756,3 +8756,287 @@ function kirimNotifikasiKeGuru(emailGuru, namaMapel, status, alasan, namaSekolah
     // Jangan throw error agar proses simpan data tetap berjalan meskipun email gagal
   }
 }
+
+/**
+ * [PERBAIKAN] Mengambil riwayat nilai dengan penanganan error yang ketat.
+ */
+function getRiwayatNilaiGuru(token, id_ta_filter) {
+  try {
+    // 1. Validasi Sesi
+    const session = validateAdminSession(token);
+    const app2DbId = session.app2DbId;
+    const sekolahID = session.sekolahID;
+    
+    if (!app2DbId) throw new Error("Database App 2 tidak ditemukan dalam sesi.");
+
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const statusSheet = ss_app2.getSheetByName('db_status_kirim');
+    
+    // Jika sheet belum ada/kosong, kembalikan list kosong (bukan error)
+    if (!statusSheet) return { status: "sukses", data: [] };
+    if (statusSheet.getLastRow() <= 1) return { status: "sukses", data: [] };
+
+    // 2. Ambil Peta Nama Guru (Opsional, jika gagal tetap lanjut)
+    const guruMap = new Map();
+    try {
+      const ss_global = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+      const sheetGuru = ss_global.getSheetByName('db_guru');
+      if (sheetGuru) {
+        const dataGuru = sheetGuru.getDataRange().getValues();
+        // Mulai baris 2 (index 1)
+        for (let i = 1; i < dataGuru.length; i++) {
+          const row = dataGuru[i];
+          // row[3] = id_sekolah, row[0] = email, row[2] = nama
+          if (row[3] == sekolahID && row[0]) {
+            guruMap.set(String(row[0]).toLowerCase(), row[2]);
+          }
+        }
+      }
+    } catch (err) {
+      Logger.log("Gagal ambil nama guru global: " + err.message);
+    }
+
+    // 3. Ambil Data Status
+    const statusData = statusSheet.getDataRange().getValues();
+    const riwayat = [];
+    
+    // Loop mulai index 1 (skip header)
+    for (let i = 1; i < statusData.length; i++) {
+      const row = statusData[i];
+      const rowTaId = String(row[1]); // Kolom B: ID Tahun Ajaran
+
+      // Filter T.A.
+      if (rowTaId === String(id_ta_filter)) {
+        const email = String(row[2] || "").toLowerCase();
+        const rawDate = row[4];
+        
+        // Format tanggal di server agar aman
+        let dateStr = "";
+        try {
+          if (rawDate instanceof Date) {
+            dateStr = Utilities.formatDate(rawDate, "Asia/Jakarta", "dd MMM yyyy HH:mm");
+          } else {
+            dateStr = String(rawDate);
+          }
+        } catch (e) { dateStr = "-"; }
+
+        riwayat.push({
+          key: row[0],            
+          id_ta: row[1],
+          email_guru: row[2],
+          nama_mapel: row[3],
+          timestamp_str: dateStr, // Kirim sebagai string jadi
+          timestamp_raw: rawDate, // Untuk sorting
+          status: row[6] || 'PENDING',
+          alasan: row[7] || '',
+          nama_guru: guruMap.get(email) || email // Fallback ke email jika nama tidak ketemu
+        });
+      }
+    }
+    
+    // Sort: Terbaru di atas (menggunakan timestamp_raw)
+    riwayat.sort((a, b) => {
+      const dateA = new Date(a.timestamp_raw || 0);
+      const dateB = new Date(b.timestamp_raw || 0);
+      return dateB - dateA;
+    });
+    
+    // Bersihkan timestamp_raw sebelum dikirim (opsional, biar ringan)
+    const cleanRiwayat = riwayat.map(r => {
+      delete r.timestamp_raw;
+      return r;
+    });
+    
+    return { status: "sukses", data: cleanRiwayat };
+
+  } catch (e) {
+    Logger.log("Error getRiwayatNilaiGuru: " + e.stack);
+    return { status: "gagal", message: "Error Server: " + e.message };
+  }
+}
+
+/**
+ * [BARU] Membuat PDF Laporan Nilai Guru dari sisi Admin.
+ * Menggunakan data yang sudah ada di App 2.
+ */
+function generateGuruPdfAdmin(token, submissionKey) {
+  try {
+    // 1. Validasi
+    const session = validateAdminSession(token);
+    
+    // 2. Ambil data nilai detail (reuse fungsi existing)
+    // Fungsi ini mengembalikan { status: 'sukses', scores: [...], mapelInfo: {...}, allKelas: [...] }
+    const dataResponse = getTeacherSubmittedScores(token, submissionKey);
+    
+    if (dataResponse.status !== 'sukses') {
+      throw new Error(dataResponse.message);
+    }
+    
+    const scoresList = dataResponse.scores;
+    const mapelInfo = dataResponse.mapelInfo; // { isUS: boolean, isUP: boolean }
+
+    // 3. Ambil Metadata Submission
+    const ss_app2 = SpreadsheetApp.openById(session.app2DbId);
+    const statusSheet = getStatusKirimSheet(ss_app2);
+    const statusData = statusSheet.getDataRange().getValues();
+    let meta = null;
+    for(let i=1; i<statusData.length; i++) {
+      if(statusData[i][0] === submissionKey) {
+        meta = {
+           id_ta: statusData[i][1],
+           email_guru: statusData[i][2],
+           nama_mapel: statusData[i][3],
+           tanggal_ttd: statusData[i][5] // Tanggal yang dikunci saat kirim
+        };
+        break;
+      }
+    }
+    if (!meta) throw new Error("Metadata submission tidak ditemukan.");
+
+    // 4. Ambil Deskripsi TA
+    const taSheet = getTahunAjaranSheet(ss_app2);
+    const taRow = taSheet.getDataRange().getValues().find(r => r[0] == meta.id_ta);
+    const deskripsiTA = taRow ? taRow[1] : meta.id_ta;
+
+    // 5. Ambil Info Sekolah & Guru & Pengaturan Cetak
+    // (Mirip dengan getCetakData di App 2, tapi disederhanakan untuk Admin)
+    const ss_app1 = SpreadsheetApp.openById(session.spreadsheetID);
+    const dataSekolah = ss_app1.getSheetByName('Data_Sekolah').getRange("A2:P2").getValues()[0];
+    
+    // Nama Guru
+    let namaGuru = meta.email_guru;
+    let nipGuru = '-';
+    const guruSheet = ss_app1.getSheetByName('Akun_Guru');
+    const guruData = guruSheet.getDataRange().getValues().slice(1);
+    const foundGuru = guruData.find(r => r[0].toLowerCase() === meta.email_guru.toLowerCase());
+    if (foundGuru) {
+      namaGuru = foundGuru[1];
+      nipGuru = foundGuru[2] || '-';
+    }
+    
+    const infoCetak = {
+      namaSekolah: session.sessionData.namaSekolah,
+      kepsek: dataSekolah[14],
+      nipKepsek: dataSekolah[15] || '-',
+      tempatTtd: dataSekolah[19] || '', // Kolom T (TempatTTD)
+      tanggalFormatted: ''
+    };
+    
+    // Format Tanggal
+    try {
+       const d = new Date(meta.tanggal_ttd);
+       infoCetak.tanggalFormatted = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch(e) { infoCetak.tanggalFormatted = '......'; }
+
+    // 6. Ambil Kop Surat
+    const sekolahRow = ss_app1.getSheetByName('Sheet_Sekolah').getDataRange().getValues().find(r => r[0] == session.sekolahID);
+    const kopId = sekolahRow ? sekolahRow[15] : null;
+    let kopBase64 = null;
+    if (kopId) kopBase64 = _getImageAsBase64DataUrl(kopId);
+
+    // 7. Generate HTML (Gunakan logic HTML yang sama dengan App 2)
+    const labelUjian = (session.sessionData.jenjangPilihan.includes('M')) ? "NILAI UJIAN MADRASAH" : "NILAI UJIAN SEKOLAH";
+    
+    let headerHtml = '';
+    if (kopBase64) {
+        headerHtml = `<div style="width: 100%; margin-bottom: 10px; border-bottom: 3px solid black;">
+                        <img src="${kopBase64}" alt="Kop Surat" style="width: 100%; height: auto; display: block;">
+                      </div>`;
+    }
+
+    // Table Rows
+    let tableRowsHtml = '';
+    scoresList.forEach((item, index) => {
+        // Hitung Nilai Akhir untuk Huruf
+        let nilaiAkhir = null;
+        const u = parseFloat(item.nilai_ujian);
+        const p = parseFloat(item.nilai_praktek);
+        
+        if (mapelInfo.isUS && mapelInfo.isUP && !isNaN(u) && !isNaN(p)) nilaiAkhir = (u + p) / 2;
+        else if (mapelInfo.isUS && !isNaN(u)) nilaiAkhir = u;
+        else if (mapelInfo.isUP && !isNaN(p)) nilaiAkhir = p;
+        
+        const nilaiHuruf = (nilaiAkhir !== null) ? terbilang(Math.round(nilaiAkhir)) : '';
+
+        tableRowsHtml += `
+          <tr>
+            <td style="text-align:center;">${index + 1}</td>
+            <td style="text-align:center;">${item.no_ujian}</td>
+            <td>${item.nama}</td>
+            <td style="text-align:center;">${item.kelas}</td>
+            <td style="text-align:center;">${item.nilai_ujian}</td>
+            <td style="text-align:center;">${item.nilai_praktek}</td>
+            <td style="font-style:italic;">${nilaiHuruf}</td>
+          </tr>`;
+    });
+
+    // HTML Lengkap
+    const htmlContent = `
+      <html><head><style>
+        body { font-family: Arial, sans-serif; font-size: 10pt; margin: 1cm; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid black; padding: 4px; font-size: 9pt; }
+        th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
+        .info-table td { border: none; padding: 2px; }
+        .footer-table td { border: none; vertical-align: top; padding-top: 30px; text-align: center; }
+      </style></head><body>
+        ${headerHtml}
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h3 style="margin:0; text-decoration:underline;">${labelUjian}</h3>
+            <h4 style="margin:5px 0;">TAHUN AJARAN ${deskripsiTA}</h4>
+        </div>
+        
+        <table class="info-table" style="width:100%; margin-bottom:15px;">
+            <tr><td style="width:150px;">Mata Pelajaran</td><td>: ${meta.nama_mapel}</td></tr>
+            <tr><td>Guru Pengampu</td><td>: ${formatNamaGelar(namaGuru)}</td></tr>
+        </table>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:30px;">No</th>
+                    <th style="width:100px;">No. Ujian</th>
+                    <th>Nama Siswa</th>
+                    <th style="width:60px;">Kelas</th>
+                    <th style="width:50px;">Ujian</th>
+                    <th style="width:50px;">Praktek</th>
+                    <th>Huruf (Akhir)</th>
+                </tr>
+            </thead>
+            <tbody>${tableRowsHtml}</tbody>
+        </table>
+        
+        <table class="footer-table" style="width:100%;">
+            <tr>
+                <td style="width:40%;">
+                    Mengetahui,<br>Kepala Sekolah<br><br><br><br>
+                    <b><u>${formatNamaGelar(infoCetak.kepsek)}</u></b><br>
+                    NIP. ${infoCetak.nipKepsek}
+                </td>
+                <td style="width:20%;"></td>
+                <td style="width:40%;">
+                    ${infoCetak.tempatTtd}, ${infoCetak.tanggalFormatted}<br>
+                    Guru Mata Pelajaran<br><br><br><br>
+                    <b><u>${formatNamaGelar(namaGuru)}</u></b><br>
+                    NIP. ${nipGuru}
+                </td>
+            </tr>
+        </table>
+      </body></html>
+    `;
+
+    const pdfBlob = Utilities.newBlob(htmlContent, MimeType.HTML).getAs(MimeType.PDF);
+    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
+    const safeName = meta.nama_mapel.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    return { 
+      status: "sukses", 
+      base64: base64, 
+      mimeType: MimeType.PDF, 
+      fileName: `Laporan_${safeName}_${deskripsiTA}.pdf` 
+    };
+
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
