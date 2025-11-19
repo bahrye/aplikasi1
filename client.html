@@ -168,6 +168,9 @@
   let isFormDirty = false;
   // --- AKHIR TAMBAHAN ---
 
+  let globalSetTaData = []; // Cache lokal untuk data modal Set TA
+  let isSetTaDirty = false;
+
   // --- [VARIABEL BARU UNTUK PAGINASI] ---
   let currentNilaiPage = 1;
   const ROWS_PER_PAGE = 50; // Batas aman render di HP
@@ -1269,6 +1272,56 @@
       // Jika tidak dalam mode read-only, biarkan event berjalan normal
     }, true); // <-- Gunakan fase CAPTURE (true)
     // --- [AKHIR TAMBAHAN BARU] ---
+
+    // Listener untuk Tombol Buka Modal
+    document.getElementById('btn-set-tahun-ajar-siswa').addEventListener('click', bukaModalSetTahunAjar);
+
+    // Listener Modal Set TA
+    document.getElementById('btn-tutup-modal-set-ta').addEventListener('click', tutupModalSetTahunAjar);
+    document.getElementById('btn-batal-modal-set-ta').addEventListener('click', tutupModalSetTahunAjar);
+
+    // Listener Dropdown TA (Load Data)
+    document.getElementById('set-ta-select').addEventListener('change', (e) => {
+        const taId = e.target.value;
+        if(taId) loadDataForSetTahunAjar(taId);
+    });
+
+    // Listener Filter (Lokal)
+    document.getElementById('set-ta-filter-kelas').addEventListener('change', renderTableSetTahunAjar);
+    document.getElementById('set-ta-search').addEventListener('input', renderTableSetTahunAjar);
+
+    // Listener Tombol Tandai/Batal
+    document.getElementById('btn-set-ta-tandai').addEventListener('click', () => toggleSetTaCheckboxes(true));
+    document.getElementById('btn-set-ta-batal').addEventListener('click', () => toggleSetTaCheckboxes(false));
+
+    // Update listener ini di dalam blok DOMContentLoaded
+    document.getElementById('set-ta-table-container').addEventListener('input', (e) => {
+        // HAPUS pengecekan 'enroll-noujian-input'
+        if (e.target.classList.contains('enroll-checkbox') || 
+            e.target.classList.contains('enroll-ruang-input')) { 
+            
+            isSetTaDirty = true;
+            document.getElementById('btn-simpan-set-ta').disabled = false;
+            
+            // Update state global agar tidak hilang saat filter
+            const tr = e.target.closest('tr');
+            const id = tr.dataset.id;
+            const siswa = globalSetTaData.find(s => s.id === id);
+            if(siswa) {
+                if(e.target.classList.contains('enroll-checkbox')) siswa.isEnrolled = e.target.checked;
+                if(e.target.classList.contains('enroll-ruang-input')) siswa.ruang_ujian = e.target.value;
+            }
+
+            // Auto-enable/disable input ruang
+            if(e.target.classList.contains('enroll-checkbox')) {
+                const inputs = tr.querySelectorAll('.enroll-ruang-input');
+                inputs.forEach(inp => inp.disabled = !e.target.checked);
+            }
+        }
+    });
+
+    // Listener Simpan
+    document.getElementById('btn-simpan-set-ta').addEventListener('click', simpanSetTahunAjar);
 
     // --- [TAMBAHAN BARU UNTUK PENGATURAN CETAK] ---
     document.getElementById('halaman-pengaturan-cetak').addEventListener('click', (e) => {
@@ -4604,31 +4657,27 @@
     renderSiswaTable(processedSiswa);
   }
   
-  /**
-   * VERSI REFACTOR (Cepat)
-   * Merender tabel siswa menggunakan DocumentFragment untuk performa.
-   */
+  // GANTI fungsi renderSiswaTable yang lama dengan ini:
   function renderSiswaTable(siswaList) {
       const container = document.getElementById('siswa-table-container');
-      container.innerHTML = ""; // 1. Kosongkan container
+      container.innerHTML = ""; 
 
-      // 2. Buat elemen tabel
       const table = document.createElement('table');
       table.className = 'siswa-table';
 
-      // 3. Buat header
       const thead = table.createTHead();
       const headerRow = thead.insertRow();
-      // Menggunakan innerHTML di sini aman & cepat karena elemen belum terpasang ke DOM
-      headerRow.innerHTML = '<th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Aksi</th>';
+      
+      // --- [MODIFIKASI HEADER] Menambahkan kolom Tahun Ajar ---
+      headerRow.innerHTML = '<th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Tahun Ajar</th><th>Aksi</th>';
 
-      // 4. Buat body dan DocumentFragment
       const tbody = table.createTBody();
-      const fragment = document.createDocumentFragment(); // <-- KUNCI OPTIMISASI
+      const fragment = document.createDocumentFragment(); 
 
       if (siswaList.length === 0) {
           const emptyRow = tbody.insertRow();
-          emptyRow.innerHTML = '<td colspan="4" style="text-align: center;">Tidak ada data siswa yang sesuai dengan filter.</td>';
+          // Colspan jadi 5 karena tambah 1 kolom
+          emptyRow.innerHTML = '<td colspan="5" style="text-align: center;">Tidak ada data siswa yang sesuai dengan filter.</td>';
       } else {
           let currentKelas = null;
           const selectedSort = document.getElementById('siswa-sort-by').value;
@@ -4644,32 +4693,22 @@
               let moveButtonsHtml = '';
               if (isDefaultSort) {
                 moveButtonsHtml = `
-                  <button 
-                    class="btn-aksi btn-move-up" 
-                    data-id="${siswa.id}" 
-                    ${isFirstOfClass ? 'disabled' : ''}
-                    title="Naikkan posisi">
-                      <i class="fas fa-arrow-up"></i>
-                  </button>
-                  <button 
-                    class="btn-aksi btn-move-down" 
-                    data-id="${siswa.id}" 
-                    ${isLastOfClass ? 'disabled' : ''}
-                    title="Turunkan posisi">
-                        <i class="fas fa-arrow-down"></i>
-                  </button>
+                  <button class="btn-aksi btn-move-up" data-id="${siswa.id}" ${isFirstOfClass ? 'disabled' : ''} title="Naikkan posisi"><i class="fas fa-arrow-up"></i></button>
+                  <button class="btn-aksi btn-move-down" data-id="${siswa.id}" ${isLastOfClass ? 'disabled' : ''} title="Turunkan posisi"><i class="fas fa-arrow-down"></i></button>
                 `;
               }
               
-              // 5. Buat <tr> baru di memori
               const tr = document.createElement('tr');
               
-              // 6. Isi <td> menggunakan .innerHTML (ini cepat karena 'tr' belum nyambung ke DOM)
+              // --- [MODIFIKASI BODY] Menambahkan data Tahun Ajar ---
+              // Kita gunakan badge agar terlihat rapi jika ada banyak tahun
+              const tahunAjarDisplay = siswa.tahun_ajar ? `<span style="background:#e7f1ff; color:#0d6efd; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:500;">${siswa.tahun_ajar}</span>` : '-';
+
               tr.innerHTML = `
-                <td>${siswa.nama}</td>
+                <td><strong>${siswa.nama}</strong></td>
                 <td>${siswa.nisn}</td>
                 <td>${siswa.kelas}</td>
-                <td>
+                <td>${tahunAjarDisplay}</td> <td>
                   <div class="btn-grup-gerak">
                     ${moveButtonsHtml}
                   </div>
@@ -4682,15 +4721,11 @@
                 </td>
               `;
               
-              // 7. Tambahkan <tr> ke fragment (bukan ke tbody langsung)
               fragment.appendChild(tr);
           });
       }
       
-      // 8. Tambahkan fragment (berisi SEMUA <tr>) ke tbody (HANYA 1x operasi DOM)
       tbody.appendChild(fragment);
-
-      // 9. Tambahkan tabel yang sudah jadi ke container
       container.appendChild(table);
   }
 
@@ -13671,6 +13706,237 @@
               onGagal(e);
           })
           .generateGuruPdfAdmin(getToken(), submissionKey);
+  }
+
+  // --- FUNGSI LOGIKA MODAL SET TAHUN AJAR ---
+
+  function bukaModalSetTahunAjar() {
+      // Reset UI
+      document.getElementById('set-ta-select').innerHTML = '<option value="">Memuat T.A...</option>';
+      document.getElementById('set-ta-table-container').innerHTML = '<p style="padding: 20px; text-align: center;">Silakan pilih Tahun Ajaran.</p>';
+      document.getElementById('set-ta-filter-kelas').innerHTML = '<option value="semua">-- Semua Kelas --</option>';
+      document.getElementById('set-ta-search').value = '';
+      document.getElementById('btn-simpan-set-ta').disabled = true;
+      isSetTaDirty = false;
+      globalSetTaData = [];
+
+      // Tampilkan Modal
+      document.getElementById('modal-set-tahun-ajar').classList.add('show');
+
+      // Ambil List Tahun Ajaran (Menggunakan fungsi yang sudah ada)
+      google.script.run
+        .withSuccessHandler((response) => {
+            const select = document.getElementById('set-ta-select');
+            select.innerHTML = '<option value="">-- Pilih Tahun Ajaran --</option>';
+            if(response.status === 'sukses' && response.taList) {
+                response.taList.forEach(ta => {
+                    const lockText = ta.isLocked ? ' (Terkunci)' : '';
+                    select.add(new Option(ta.deskripsi + lockText, ta.id));
+                });
+            }
+        })
+        .withFailureHandler(onGagal)
+        .getTahunAjaranList(getToken());
+  }
+
+  function tutupModalSetTahunAjar() {
+      if(isSetTaDirty) {
+          if(!confirm("Ada perubahan yang belum disimpan. Yakin ingin menutup?")) return;
+      }
+      document.getElementById('modal-set-tahun-ajar').classList.remove('show');
+  }
+
+  function loadDataForSetTahunAjar(taId) {
+      const container = document.getElementById('set-ta-table-container');
+      container.innerHTML = '<div class="spinner-inline"></div> Memuat data siswa & penempatan...';
+      document.getElementById('btn-simpan-set-ta').disabled = true;
+      
+      // Reuse fungsi backend 'getPenempatanData' yang sangat lengkap
+      // Fungsi ini mengembalikan gabungan data Siswa App 1 + Enrollment App 2
+      google.script.run
+          .withSuccessHandler((response) => {
+              if(response.status !== 'sukses') {
+                  container.innerHTML = `<p class="message error">${response.message}</p>`;
+                  return;
+              }
+              
+              // Simpan data ke variabel global untuk filtering cepat client-side
+              globalSetTaData = response.siswaData; // Array objek siswa
+              
+              // Populate Filter Kelas
+              const kelasSet = new Set(globalSetTaData.map(s => s.kelas));
+              const kelasList = Array.from(kelasSet).sort(compareKelas); // Gunakan helper sort yang ada
+              const selectKelas = document.getElementById('set-ta-filter-kelas');
+              selectKelas.innerHTML = '<option value="semua">-- Semua Kelas --</option>';
+              kelasList.forEach(k => selectKelas.add(new Option(k, k)));
+              
+              // Render Tabel Awal
+              renderTableSetTahunAjar();
+              
+              // Cek jika TA terkunci
+              const taSelect = document.getElementById('set-ta-select');
+              const taText = taSelect.options[taSelect.selectedIndex].text;
+              if(taText.includes('(Terkunci)')) {
+                  showToast("Tahun Ajaran ini terkunci. Anda hanya bisa melihat data.", "gagal");
+              } else {
+                  // Aktifkan tombol simpan (nanti akan didisable lagi jika tidak dirty, 
+                  // tapi kita biarkan enable dulu agar user tahu tombolnya ada)
+                  // Sebenarnya logic dirty state lebih baik:
+                  document.getElementById('btn-simpan-set-ta').disabled = true; 
+              }
+              isSetTaDirty = false;
+          })
+          .withFailureHandler(onGagal)
+          .getPenempatanData(getToken(), taId);
+  }
+
+  // --- [PERBAIKAN TAMPILAN] Hapus kolom No. Ujian App 2 ---
+  function renderTableSetTahunAjar() {
+      const container = document.getElementById('set-ta-table-container');
+      const filterKelas = document.getElementById('set-ta-filter-kelas').value;
+      const filterNama = document.getElementById('set-ta-search').value.toLowerCase();
+
+      const filteredData = globalSetTaData.filter(s => {
+          const matchKelas = (filterKelas === 'semua' || s.kelas === filterKelas);
+          const matchNama = (s.nama.toLowerCase().includes(filterNama) || String(s.nisn).includes(filterNama));
+          return matchKelas && matchNama;
+      });
+
+      if(filteredData.length === 0) {
+          container.innerHTML = '<p style="padding:20px; text-align:center;">Tidak ada siswa yang cocok dengan filter.</p>';
+          return;
+      }
+
+      let html = `
+        <table class="siswa-table" style="width:100%; border-collapse: collapse;">
+          <thead style="position: sticky; top: 0; z-index: 5; background: #f8f9fa;">
+            <tr>
+              <th style="width: 40px; text-align: center;"><i class="fas fa-check"></i></th>
+              <th>Nama Siswa</th>
+              <th style="width: 80px;">Kelas</th>
+              <th style="width: 150px;">NISN</th> 
+              <th style="width: 100px;">Ruang</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      filteredData.forEach(s => {
+          const checkedAttr = s.isEnrolled ? 'checked' : '';
+          const rowClass = s.isEnrolled ? 'row-enrolled' : '';
+          // Input ruang hanya aktif jika dicentang
+          const disabledAttr = s.isEnrolled ? '' : 'disabled';
+
+          html += `
+            <tr class="${rowClass}" data-id="${s.id}" data-nama="${s.nama}">
+              <td style="text-align: center;">
+                <input type="checkbox" class="enroll-checkbox" ${checkedAttr}>
+              </td>
+              <td>${s.nama}</td>
+              <td style="text-align: center;">${s.kelas}</td>
+              <td style="text-align: center;">${s.nisn}</td>
+              <td>
+                <input type="text" class="form-control form-control-sm enroll-ruang-input" 
+                      value="${s.ruang_ujian || ''}" ${disabledAttr} placeholder="R-01">
+              </td>
+            </tr>
+          `;
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+  }
+
+  function toggleSetTaCheckboxes(checkStatus) {
+      const checkboxes = document.querySelectorAll('#set-ta-table-container .enroll-checkbox');
+      checkboxes.forEach(cb => {
+          cb.checked = checkStatus;
+          // Trigger event change manual untuk update state input text
+          const tr = cb.closest('tr');
+          const inputs = tr.querySelectorAll('input[type="text"]');
+          inputs.forEach(inp => inp.disabled = !checkStatus);
+      });
+      isSetTaDirty = true;
+      document.getElementById('btn-simpan-set-ta').disabled = false;
+  }
+
+  // --- [PERBAIKAN SIMPAN] Otomatis hapus yang tidak dicentang ---
+  function simpanSetTahunAjar() {
+      const taId = document.getElementById('set-ta-select').value;
+      if(!taId) return;
+
+      setButtonLoading(document.getElementById('btn-simpan-set-ta'), 'Menyimpan...');
+      
+      const enrollmentData = [];
+      let errorFound = false;
+      let errorMsg = "";
+
+      // 1. Loop data global kita (source of truth)
+      globalSetTaData.forEach(siswa => {
+          
+          // 2. Cek apakah siswa ini ada di DOM (tampil di tabel saat ini)
+          // untuk mengambil nilai Ruang terbaru yang mungkin baru diedit user.
+          const tr = document.querySelector(`#set-ta-table-container tr[data-id="${siswa.id}"]`);
+          
+          // Default gunakan data di memori
+          let isChecked = siswa.isEnrolled;
+          let currentRuang = siswa.ruang_ujian;
+
+          // Jika tampil di tabel, ambil nilai langsung dari input
+          if (tr) {
+              isChecked = tr.querySelector('.enroll-checkbox').checked;
+              currentRuang = tr.querySelector('.enroll-ruang-input').value.trim();
+              
+              // Update memori agar sinkron
+              siswa.isEnrolled = isChecked;
+              siswa.ruang_ujian = currentRuang;
+          }
+
+          // 3. LOGIKA PENYIMPANAN & PENGHAPUSAN OTOMATIS
+          // Backend akan menghapus SEMUA data di TA ini, lalu hanya menulis ulang
+          // apa yang ada di array `enrollmentData`.
+          // JADI: Jika checkbox dicentang -> Masukkan ke array (Disimpan).
+          //       Jika checkbox TIDAK dicentang -> Jangan masukkan (Otomatis terhapus/tidak disimpan).
+
+          if (isChecked) {
+              const nisn = String(siswa.nisn).trim();
+              
+              if (!nisn || nisn === "") {
+                  errorFound = true;
+                  errorMsg = `Siswa <strong>${siswa.nama}</strong> dicentang tapi tidak punya NISN.`;
+                  return;
+              }
+
+              enrollmentData.push({
+                  id_siswa_app1: siswa.id,
+                  isEnrolled: true,
+                  nomor_ujian_app2: nisn, // Gunakan NISN sebagai nomor ujian
+                  ruang_ujian: currentRuang,
+                  nama_app1: siswa.nama
+              });
+          }
+      });
+
+      if(errorFound) {
+          resetButtonLoading(document.getElementById('btn-simpan-set-ta'));
+          showToast(errorMsg, "gagal");
+          return;
+      }
+
+      google.script.run
+          .withSuccessHandler((response) => {
+              resetButtonLoading(document.getElementById('btn-simpan-set-ta'));
+              if(response.status === 'sukses') {
+                  showToast("Data berhasil disimpan!", "sukses");
+                  isSetTaDirty = false;
+                  document.getElementById('btn-simpan-set-ta').disabled = true;
+                  loadDataForSetTahunAjar(taId); // Reload untuk verifikasi
+              } else {
+                  showToast(response.message, "gagal");
+              }
+          })
+          .withFailureHandler(onGagal)
+          .saveSiswaEnrollment(getToken(), taId, enrollmentData);
   }
 
 </script>
