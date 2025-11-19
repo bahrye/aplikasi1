@@ -168,6 +168,11 @@
   let isFormDirty = false;
   // --- AKHIR TAMBAHAN ---
 
+  // --- [VARIABEL BARU UNTUK PAGINASI] ---
+  let currentNilaiPage = 1;
+  const ROWS_PER_PAGE = 50; // Batas aman render di HP
+  // --------------------------------------
+
   function getToken() {
     return localStorage.getItem('sessionToken');
   }
@@ -2245,7 +2250,11 @@
       }
     });
 
-    document.getElementById('input-nilai-filter-kelas').addEventListener('change', renderNilaiGridTable);
+    document.getElementById('input-nilai-filter-kelas').addEventListener('change', () => {
+        currentNilaiPage = 1; // Reset ke halaman 1 saat filter berubah
+        renderNilaiGridTable();
+    });
+
     document.getElementById('rekap-nilai-filter-kelas').addEventListener('change', renderRekapNilaiTable);
 
     document.getElementById('btn-buka-mapel').addEventListener('click', () => {
@@ -5540,7 +5549,7 @@
     const selectedValue = selectKelas.value;
   
     const kelasSet = new Set(siswaList.map(siswa => siswa.kelas));
-    const kelasList = Array.from(kelasSet).sort(compareKelas); // [MODIFIKASI]
+    const kelasList = Array.from(kelasSet).sort(compareKelas); 
   
     let optionsHtml = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
     kelasList.forEach(kelas => {
@@ -5548,7 +5557,15 @@
     });
   
     selectKelas.innerHTML = optionsHtml;
-    selectKelas.value = selectedValue || (kelasList.length === 1 ? kelasList[0] : 'semua');
+    
+    // [MODIFIKASI] Default ke kelas pertama, bukan 'semua' jika kelas lebih dari 1
+    if (selectedValue) {
+       selectKelas.value = selectedValue;
+    } else if (kelasList.length > 0) {
+       // Ubah baris di bawah ini jika ingin default ke kelas pertama:
+       // selectKelas.value = kelasList[0]; 
+       selectKelas.value = 'semua'; // Saya biarkan 'semua' karena sudah ada pagination
+    }
   }
 
   function onNilaiGridLoaded(response) {
@@ -5620,8 +5637,8 @@
   }
 
   /**
-   * VERSI REFACTOR (Cepat)
-   * Merender grid input nilai menggunakan DocumentFragment dan pembuatan elemen dinamis.
+   * VERSI TEROPTIMASI: DENGAN PAGINATION
+   * Merender grid input nilai secara bertahap (per halaman) untuk mencegah lag.
    */
   function renderNilaiGridTable() {
       const container = document.getElementById('input-nilai-table-container');
@@ -5630,40 +5647,40 @@
       const { siswaList, mapelList, nilaiData, mapelKelasData } = globalGridData;
       const selectedKelas = document.getElementById('input-nilai-filter-kelas').value;
 
-      // 2. Logika Pengecekan Data Kosong (Membuat <p> dan keluar)
+      // 2. Logika Pengecekan Data Kosong
       if (!siswaList || siswaList.length === 0) {
-          let pesan = 'Belum ada data siswa.';
-          if (currentUserRole === 'admin') {
-              pesan += ' Harap isi di menu "Kelola Data Siswa".';
-          }
-          const p = document.createElement('p');
-          p.style = "text-align: center; padding: 20px;";
-          p.textContent = pesan;
-          container.appendChild(p);
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
           return;
       }
-      
       if (!mapelList || mapelList.length === 0) {
-          const tipeUjian = document.getElementById('judul-halaman-input-nilai').dataset.tipeUjian;
-          const pesan = `Tidak ada mapel yang diatur untuk ${tipeUjian === 'UM' ? 'Ujian Sekolah/Madrasah' : 'Ujian Praktek'}. Harap centang di menu "Kelola Mapel".`;
-          const p = document.createElement('p');
-          p.style = "text-align: center; padding: 20px;";
-          p.textContent = pesan;
-          container.appendChild(p);
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada mapel yang diatur.</p>';
           return;
       }
 
+      // Filter Data
       const filteredSiswaList = (selectedKelas === 'semua')
         ? siswaList
         : siswaList.filter(siswa => siswa.kelas === selectedKelas);
 
       if (filteredSiswaList.length === 0) {
-          const p = document.createElement('p');
-          p.style = "text-align: center; padding: 20px;";
-          p.textContent = (selectedKelas !== 'semua') ? 'Tidak ada siswa di kelas yang dipilih.' : 'Tidak ada data siswa.';
-          container.appendChild(p);
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
           return;
       }
+
+      // --- [LOGIKA PAGINASI BARU] ---
+      const totalRows = filteredSiswaList.length;
+      const totalPages = Math.ceil(totalRows / ROWS_PER_PAGE);
+      
+      // Pastikan current page valid
+      if (currentNilaiPage > totalPages) currentNilaiPage = 1;
+      if (currentNilaiPage < 1) currentNilaiPage = 1;
+
+      const startIndex = (currentNilaiPage - 1) * ROWS_PER_PAGE;
+      const endIndex = Math.min(startIndex + ROWS_PER_PAGE, totalRows);
+      
+      // Ambil data HANYA untuk halaman ini
+      const paginatedList = filteredSiswaList.slice(startIndex, endIndex);
+      // --- [AKHIR LOGIKA PAGINASI] ---
 
       // 3. Mulai Buat Tabel
       const mapelCount = mapelList.length;
@@ -5680,13 +5697,7 @@
       const headerRow = thead.insertRow();
       let headerHTML = '<th>Nama Siswa</th>';
       mapelList.forEach(mapel => {
-        headerHTML += `<th 
-                        class="col-mapel clickable-mapel-header" 
-                        data-mapel-nama="${mapel.nama}" 
-                        title="Klik untuk lihat nama mapel"
-                      >
-                        ${mapel.id}
-                      </th>`;
+        headerHTML += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="${mapel.nama}">${mapel.id}</th>`;
       });
       headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
       headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
@@ -5694,26 +5705,26 @@
 
       // 5. Buat Body & Fragment
       const tbody = table.createTBody();
-      const fragment = document.createDocumentFragment(); // <-- KUNCI OPTIMISASI
+      const fragment = document.createDocumentFragment();
 
-      filteredSiswaList.forEach(siswa => {
+      // Loop data yang SUDAH DIPAGINASI
+      paginatedList.forEach((siswa, index) => {
+          // Hitung nomor urut asli (berdasarkan halaman)
+          const absoluteIndex = startIndex + index + 1;
+
           const tr = document.createElement('tr');
           
-          // --- Buat <td> Nama ---
+          // <td> Nama
           const tdNama = tr.insertCell();
           const namaProper = toProperCase(siswa.nama);
           const namaFormatted = formatNamaSiswa(namaProper);
           tdNama.innerHTML = `
-            <span 
-              class="clickable-nama-siswa" 
-              data-nisn="${siswa.nisn}" 
-              data-nama-lengkap="${siswa.nama}"
-              title="Klik untuk lihat NISN"
-            >
-              ${namaFormatted}
-            </span>`;
+            <div style="display:flex; gap:5px;">
+                <span class="text-muted" style="font-size:0.85em; min-width:20px;">${absoluteIndex}.</span>
+                <span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}">${namaFormatted}</span>
+            </div>`;
           
-          // --- Loop <td> Mapel ---
+          // Loop <td> Mapel
           mapelList.forEach(mapel => {
               const key = `${siswa.id}_${mapel.id}`;
               const storedNilai = nilaiData[key];
@@ -5736,22 +5747,21 @@
               const tdMapel = tr.insertCell();
               tdMapel.className = 'col-mapel';
               
-              // BUAT INPUT SECARA DINAMIS (Bukan innerHTML)
               const input = document.createElement('input');
               input.type = 'number';
               input.className = 'input-nilai';
               input.min = 0;
               input.max = 100;
               input.placeholder = '-';
-              input.value = nilai; // .value lebih baik dari .setAttribute('value', ...)
+              input.value = nilai;
               input.dataset.siswaId = siswa.id;
               input.dataset.mapelId = mapel.id;
               input.disabled = isCellDisabled;
               
-              tdMapel.appendChild(input); // Tambah input ke TD
+              tdMapel.appendChild(input);
           });
           
-          // --- Buat <td> Total ---
+          // <td> Total
           const tdJumlah = tr.insertCell();
           tdJumlah.className = 'col-total col-total-jumlah';
           tdJumlah.id = `jumlah_${siswa.id}`;
@@ -5762,21 +5772,96 @@
           tdRata.id = `rata_${siswa.id}`;
           tdRata.textContent = '0.00';
           
-          // Tambah <tr> ke fragment
           fragment.appendChild(tr);
       });
       
-      // 6. Tambahkan fragment ke body
       tbody.appendChild(fragment);
-      // 7. Tambahkan tabel ke container
       container.appendChild(table);
 
-      // 8. Panggil update totals (logic ini tidak berubah)
+      // 6. Update totals untuk baris yang terlihat
       if (mapelCount > 0) {
-        filteredSiswaList.forEach(siswa => {
+        paginatedList.forEach(siswa => {
           updateRowTotals(siswa.id, mapelCount);
         });
       }
+
+      // 7. [BARU] Render Kontrol Paginasi
+      renderPaginationControls(totalPages, totalRows, startIndex + 1, endIndex);
+  }
+
+  /**
+   * [FUNGSI BARU] Membuat tombol navigasi (Prev/Next) di bawah tabel.
+   */
+  function renderPaginationControls(totalPages, totalRows, startRow, endRow) {
+      const container = document.getElementById('input-nilai-table-container');
+      
+      // Hapus pagination lama jika ada
+      const oldNav = document.getElementById('nilai-pagination-nav');
+      if (oldNav) oldNav.remove();
+
+      if (totalPages <= 1) return; // Tidak perlu paginasi jika cuma 1 halaman
+
+      const nav = document.createElement('div');
+      nav.id = 'nilai-pagination-nav';
+      nav.className = 'd-flex justify-content-between align-items-center mt-3 p-2 bg-light border rounded';
+      
+      // Info Baris
+      const infoDiv = document.createElement('div');
+      infoDiv.className = 'small text-muted font-weight-bold';
+      infoDiv.innerText = `Menampilkan ${startRow}-${endRow} dari ${totalRows} siswa`;
+
+      // Tombol Group
+      const btnGroup = document.createElement('div');
+      
+      // Tombol Prev
+      const btnPrev = document.createElement('button');
+      btnPrev.className = 'btn btn-sm btn-outline-primary mr-2';
+      btnPrev.innerHTML = '<i class="fas fa-chevron-left"></i> Sebelumnya';
+      btnPrev.disabled = (currentNilaiPage === 1);
+      btnPrev.onclick = () => changeNilaiPage(currentNilaiPage - 1);
+
+      // Info Halaman (Dropdown)
+      const pageSelect = document.createElement('select');
+      pageSelect.className = 'form-control form-control-sm d-inline-block mr-2';
+      pageSelect.style.width = 'auto';
+      for (let i = 1; i <= totalPages; i++) {
+          const opt = new Option(`Hal ${i}`, i);
+          if (i === currentNilaiPage) opt.selected = true;
+          pageSelect.add(opt);
+      }
+      pageSelect.onchange = (e) => changeNilaiPage(parseInt(e.target.value));
+
+      // Tombol Next
+      const btnNext = document.createElement('button');
+      btnNext.className = 'btn btn-sm btn-outline-primary';
+      btnNext.innerHTML = 'Berikutnya <i class="fas fa-chevron-right"></i>';
+      btnNext.disabled = (currentNilaiPage === totalPages);
+      btnNext.onclick = () => changeNilaiPage(currentNilaiPage + 1);
+
+      btnGroup.appendChild(btnPrev);
+      btnGroup.appendChild(pageSelect);
+      btnGroup.appendChild(btnNext);
+
+      nav.appendChild(infoDiv);
+      nav.appendChild(btnGroup);
+      
+      container.appendChild(nav);
+  }
+
+  /**
+   * [FUNGSI BARU] Mengganti halaman.
+   */
+  function changeNilaiPage(newPage) {
+      // Simpan nilai sementara sebelum pindah halaman?
+      // Karena data disimpan di variabel global via event 'input', 
+      // kita tidak perlu simpan manual di sini. Cukup render ulang.
+      
+      currentNilaiPage = newPage;
+      renderNilaiGridTable(); // Render ulang halaman baru
+      
+      // Scroll kembali ke atas tabel
+      const container = document.getElementById('input-nilai-table-container');
+      if(container) container.scrollTop = 0;
   }
 
   function updateRowTotals(siswaId, mapelCount) {
