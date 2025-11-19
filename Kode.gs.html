@@ -1915,15 +1915,72 @@ function getSiswaSheet(ss) {
   return sheet;
 }
 
-// Salin dan GANTI fungsi getSiswa() Anda dengan yang ini
 function getSiswa(token) {
   try {
+    // 1. Validasi Sesi
     const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
     const sekolahID = sessionData.sekolahID;
     
-    // Panggil helper internal yang mengelola cache
+    // 2. Ambil Data Master Siswa (dari Cache/Sheet App 1)
     const siswaList = _getSiswaInternal(spreadsheetID, sekolahID);
     
+    // --- TAMBAHAN: AMBIL DATA TAHUN AJAR DARI APP 2 ---
+    try {
+      const app2DbId = getApp2DatabaseId(token);
+      const ss_app2 = SpreadsheetApp.openById(app2DbId);
+      
+      // A. Ambil Kamus Tahun Ajaran (ID -> Deskripsi)
+      const sheetTA = getTahunAjaranSheet(ss_app2);
+      const dataTA = sheetTA.getDataRange().getValues();
+      const taMap = new Map(); // Map<id_ta, deskripsi>
+      // Mulai baris 2 (index 1)
+      for(let i=1; i<dataTA.length; i++) {
+        if(dataTA[i][0]) taMap.set(dataTA[i][0], dataTA[i][1]); 
+      }
+
+      // B. Ambil Data Enrollment
+      const sheetEnroll = getEnrollmentSheet_App2(ss_app2);
+      const dataEnroll = sheetEnroll.getDataRange().getValues();
+      
+      // Map<NISN, Set<nama_ta>>
+      const siswaTaMap = new Map();
+      
+      // Mulai baris 2 (index 1)
+      for(let i=1; i<dataEnroll.length; i++) {
+        // Col B (Index 1) = nomor_ujian (NISN) <-- PERBAIKAN UTAMA DI SINI
+        // Col D (Index 3) = id_tahun_ajaran
+        const nisnEnroll = String(dataEnroll[i][1]).trim(); 
+        const idTA = dataEnroll[i][3];
+        
+        if (nisnEnroll) {
+           if (!siswaTaMap.has(nisnEnroll)) {
+             siswaTaMap.set(nisnEnroll, new Set());
+           }
+           const namaTa = taMap.get(idTA) || idTA;
+           siswaTaMap.get(nisnEnroll).add(namaTa);
+        }
+      }
+
+      // C. Gabungkan ke object siswaList berdasarkan NISN
+      siswaList.forEach(siswa => {
+        const siswaNisn = String(siswa.nisn).trim(); // Pastikan format string
+        
+        if (siswaNisn && siswaTaMap.has(siswaNisn)) {
+          // Ubah Set menjadi Array, urutkan (terbaru), lalu gabung koma
+          const taArray = Array.from(siswaTaMap.get(siswaNisn)).sort().reverse();
+          siswa.tahun_ajar = taArray.join(', ');
+        } else {
+          siswa.tahun_ajar = '-';
+        }
+      });
+
+    } catch (err) {
+      Logger.log("Gagal mengambil info Tahun Ajar untuk tabel siswa: " + err.message);
+      // Jika gagal koneksi ke App 2, beri tanda '-' tapi jangan gagalkan load siswa
+      siswaList.forEach(s => s.tahun_ajar = '-');
+    }
+    // --- AKHIR TAMBAHAN ---
+
     return { status: "sukses", siswa: siswaList };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -6921,90 +6978,79 @@ function getTahunAjaranList(token) {
 }
 
 /**
- * [API BARU] Mengambil semua data yang diperlukan untuk halaman "Kelola Penempatan".
- * Menggabungkan data dari Aplikasi 1 (Siswa, Mapel, Guru) dan Aplikasi 2 (Enrollment, Mapel Assignment).
+ * [PERBAIKAN LOGIKA] Mengambil data penempatan dengan aturan:
+ * "Satu Siswa Hanya Bisa di Satu Tahun Ajar".
+ * Siswa yang sudah ada di TA lain akan disembunyikan dari daftar.
  */
 function getPenempatanData(token, id_tahun_ajaran) {
   try {
     const { sessionData, spreadsheetID: app1DbId } = validateAdminSession(token);
-    const app2DbId = getApp2DatabaseId(token); // Helper yang sudah ada
+    const app2DbId = getApp2DatabaseId(token); 
     
-    // 1. Buka kedua database
     const ss_app1 = SpreadsheetApp.openById(app1DbId);
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
     
-    // 2. Ambil Data Master dari Aplikasi 1
-    
-    // [MODIFIKASI] Ambil 'nisn' juga
+    // 1. Ambil Data Master Siswa
     const siswaListApp1 = _getSiswaInternal(app1DbId, sessionData.sekolahID).map(s => ({
       id: s.id,
       nama: s.nama,
       kelas: s.kelas,
-      nisn: s.nisn // <-- BARIS INI DITAMBAHKAN
+      nisn: String(s.nisn).trim()
     }));
-    // [AKHIR MODIFIKASI]
     
-    // Ambil Mapel (sudah di-cache server)
+    // Ambil Mapel, Guru, Kelas (Logika Tetap)
     const mapelListApp1 = _getMapelInternal(ss_app1, sessionData.sekolahID).map(m => ({
-      id: m.id,
-      nama: m.nama,
-      isUS: m.isUS,
-      isUP: m.isUP
+      id: m.id, nama: m.nama, isUS: m.isUS, isUP: m.isUP
     }));
-
     const mapelApp1Info = new Map(mapelListApp1.map(m => [m.id, { isUS: m.isUS, isUP: m.isUP }]));
     
-    // Ambil Guru (baca langsung)
     const sheetGuruApp1 = getGuruSheet(ss_app1);
     const guruDataApp1 = sheetGuruApp1.getDataRange().getValues();
     guruDataApp1.shift();
-    const guruListApp1 = guruDataApp1.map(row => ({
-      email: row[0],
-      nama: row[1]
-    })).filter(g => g.email && g.nama);
+    const guruListApp1 = guruDataApp1.map(row => ({ email: row[0], nama: row[1] })).filter(g => g.email && g.nama);
     
-    // Ambil data Kelas dari Aplikasi 1
     const sheetKelasApp1 = getKelasSheet(ss_app1);
     const kelasDataApp1 = sheetKelasApp1.getDataRange().getValues();
-    kelasDataApp1.shift(); // Hapus header
-    
-    // Ambil juga status 'isLocked'
+    kelasDataApp1.shift();
     const lockedKelasSet = getLockedKelasSet(ss_app1, sessionData.sekolahID);
-    
-    // Ubah dari array string menjadi array objek
     const kelasListApp1 = kelasDataApp1.map(row => {
       const namaKelas = row[0];
-      if (!namaKelas) return null; // Filter baris kosong
-      return {
-        nama: namaKelas,
-        isLocked: lockedKelasSet.has(namaKelas.toUpperCase())
-      };
-    }).filter(kelas => kelas !== null); // Hapus baris null
+      if (!namaKelas) return null;
+      return { nama: namaKelas, isLocked: lockedKelasSet.has(namaKelas.toUpperCase()) };
+    }).filter(kelas => kelas !== null);
     
-    // 3. Ambil Data Penempatan dari Aplikasi 2
-    let enrolledSiswaMap = new Map();
+    // 2. Ambil Data Penempatan dari Aplikasi 2
+    let enrolledSiswaMap = new Map(); // Siswa di TA ini (Target)
+    let busySiswaSet = new Set();     // Siswa di TA LAIN (Sibuk)
     let mapelAssignments = [];
-    let app2SiswaMap = new Map();
 
     if (id_tahun_ajaran) {
-      // Ambil data db_enrollment
+      // Baca db_enrollment
       const sheetEnrollment = getEnrollmentSheet_App2(ss_app2);
       if (sheetEnrollment.getLastRow() > 1) {
         const dataEnroll = sheetEnrollment.getDataRange().getValues();
         dataEnroll.shift();
+        
         dataEnroll.forEach(row => {
-          // row[3] = id_tahun_ajaran, row[0] = id_enrollment (SiswaID App 1)
-          if (row[3] === id_tahun_ajaran) {
-            enrolledSiswaMap.set(row[0], {
-              id_enrollment_app2: row[0], // Ini ID Siswa App 1
-              nomor_ujian_app2: row[1], // Ini Nomor Ujian App 2
+          // row[1] = nomor_ujian (NISN), row[3] = id_tahun_ajaran
+          const nisnApp2 = String(row[1]).trim();
+          const taInDb = row[3];
+          
+          if (taInDb === id_tahun_ajaran) {
+            // Siswa ini ada di TA yang sedang dibuka -> Masukkan ke Map
+            enrolledSiswaMap.set(nisnApp2, {
+              id_enrollment_app2: row[0],
+              nomor_ujian_app2: nisnApp2,
               ruang_ujian: row[4] || ''
             });
+          } else {
+            // Siswa ini ada di TA LAIN -> Masukkan ke Busy Set
+            if (nisnApp2) busySiswaSet.add(nisnApp2);
           }
         });
       }
       
-      // Ambil data db_mapel
+      // Ambil Mapel Assignments (Logika Tetap)
       const sheetMapelApp2 = getMapelSheet_App2(ss_app2);
       if (sheetMapelApp2.getLastRow() > 1) {
         const dataMapel = sheetMapelApp2.getDataRange().getValues();
@@ -7012,45 +7058,37 @@ function getPenempatanData(token, id_tahun_ajaran) {
         dataMapel.forEach(row => {
           if (row[2] === id_tahun_ajaran) {
             const mapelId = row[1];
-            // Ambil info isUS/isUP dari Peta (Map)
             const app1Info = mapelApp1Info.get(mapelId) || { isUS: false, isUP: false }; 
-
             mapelAssignments.push({
-              email_guru: row[0],
-              mapel: mapelId,
-              singkatan: row[3] || '',
-              kelas_json: row[4] || '["*"]',
-              isUS: app1Info.isUS, // <-- DATA BARU
-              isUP: app1Info.isUP  // <-- DATA BARU
+              email_guru: row[0], mapel: mapelId, singkatan: row[3] || '',
+              kelas_json: row[4] || '["*"]', isUS: app1Info.isUS, isUP: app1Info.isUP
             });
           }
         });
       }
-
-      // Ambil data db_siswa (App 2)
-      const sheetSiswaApp2 = getSiswaSheet_App2(ss_app2);
-      if (sheetSiswaApp2.getLastRow() > 1) {
-        const dataSiswa = sheetSiswaApp2.getDataRange().getValues();
-        dataSiswa.shift();
-        dataSiswa.forEach(row => {
-          app2SiswaMap.set(row[0], row[1]); // Map[nomor_ujian] = nama
-        });
-      }
     }
     
-    // 4. Gabungkan Data Siswa
-    const siswaDataGabungan = siswaListApp1.map(siswaApp1 => {
-      const enrollmentInfo = enrolledSiswaMap.get(siswaApp1.id);
-      const isEnrolled = !!enrollmentInfo;
-      const nomorUjianApp2 = isEnrolled ? enrollmentInfo.nomor_ujian_app2 : null;
+    // 3. Gabungkan Data & Filter (PERBAIKAN UTAMA)
+    const siswaDataGabungan = [];
+    
+    siswaListApp1.forEach(siswaApp1 => {
+      const enrollmentInfo = enrolledSiswaMap.get(siswaApp1.nisn);
+      const isEnrolledInThisTA = !!enrollmentInfo;
       
-      return {
-        ...siswaApp1, // Ini sekarang akan berisi id, nama, kelas, dan nisn
-        isEnrolled: isEnrolled,
-        nomor_ujian_app2: nomorUjianApp2,
-        nama_app2: (isEnrolled && app2SiswaMap.has(nomorUjianApp2)) ? app2SiswaMap.get(nomorUjianApp2) : null, 
-        ruang_ujian: isEnrolled ? enrollmentInfo.ruang_ujian : ''
-      };
+      // LOGIKA PENENTU:
+      // Tampilkan siswa JIKA:
+      // 1. Dia sudah terdaftar di TA ini (agar bisa diedit/dihapus), ATAU
+      // 2. Dia BELUM terdaftar di TA manapun (bebas/available)
+      
+      // Jika dia tidak di TA ini TAPI ada di busySet (TA lain), maka SKIP (Sembunyikan).
+      if (isEnrolledInThisTA || !busySiswaSet.has(siswaApp1.nisn)) {
+          siswaDataGabungan.push({
+            ...siswaApp1,
+            isEnrolled: isEnrolledInThisTA,
+            nomor_ujian_app2: siswaApp1.nisn,
+            ruang_ujian: isEnrolledInThisTA ? enrollmentInfo.ruang_ujian : '' 
+          });
+      }
     });
     
     return {
