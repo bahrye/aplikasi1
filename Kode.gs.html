@@ -5346,36 +5346,16 @@ function getGuruSheet(ss) {
   let sheet = ss.getSheetByName('Akun_Guru');
   if (!sheet) {
     sheet = ss.insertSheet('Akun_Guru');
-    // [MODIFIKASI] Tambahkan NIP di header (Kolom C)
-    sheet.appendRow(['Email', 'Nama', 'NIP', 'HashedPassword', 'Salt', 'MapelKelasJSON']);
-    // --- AKHIR MODIFIKASI ---
+    // Tambah kolom 'ActiveTA' di akhir
+    sheet.appendRow(['Email', 'Nama', 'NIP', 'HashedPassword', 'Salt', 'MapelKelasJSON', 'ActiveTA']);
     sheet.setFrozenRows(1);
   } else {
-    // --- TAMBAHKAN BLOK MIGRASI INI ---
-    const headerNIP = sheet.getRange(1, 3).getValue();
-    if (headerNIP !== "NIP") {
-      sheet.insertColumnAfter(2); // Sisipkan kolom baru setelah Nama (Kolom B)
-      sheet.getRange(1, 3).setValue("NIP"); // Beri nama header
+    // Cek Header kolom G (Index 7)
+    const headerTA = sheet.getRange(1, 7).getValue();
+    if (headerTA !== "ActiveTA") {
+       sheet.getRange(1, 7).setValue("ActiveTA");
     }
-    // --- AKHIR BLOK MIGRASI ---
-
-    // --- MODIFIKASI: Pindahkan pengecekan MapelKelasJSON ke Kolom F (index 6) ---
-    const header = sheet.getRange(1, 6).getValue();
-    if (header === "MapelIDs") {
-      sheet.getRange(1, 6).setValue("MapelKelasJSON");
-    }
-    // --- AKHIR MODIFIKASI ---
   }
-
-  // --- TAMBAHAN PERBAIKAN (INTI MASALAH) ---
-  // Selalu pastikan Kolom C (NIP) diformat sebagai Teks.
-  try {
-    sheet.getRange('C:C').setNumberFormat('@');
-  } catch (e) {
-    Logger.log(`Gagal mengatur format Teks untuk kolom NIP: ${e.message}`);
-  }
-  // --- AKHIR TAMBAHAN PERBAIKAN ---
-
   return sheet;
 }
 
@@ -5388,10 +5368,12 @@ function getGuru(token) {
     data.shift(); // Hapus header
 
     const guruList = data.map(row => {
-      const email = row[0];
-      const nama = row[1];
-      const nip = row[2] || ''; // <-- TAMBAHKAN BARIS INI (Kolom C, index 2)
-      const dataMapel = row[5]; // <-- UBAH KE INDEX 5 (Kolom F)
+      const email = row[0]; // Kolom A
+      const nama = row[1];  // Kolom B
+      const nip = row[2] || ''; // Kolom C (NIP)
+      
+      // Kolom F (Index 5) adalah MapelKelasJSON
+      const dataMapel = row[5]; 
       let mapelKelasData = {};
 
       if (dataMapel) {
@@ -5399,7 +5381,7 @@ function getGuru(token) {
           // Coba parse sebagai JSON (Format baru)
           mapelKelasData = JSON.parse(dataMapel);
         } catch (e) {
-          // Gagal parse? Ini pasti format lama (string "MTK,IPA")
+          // Fallback jika format lama (string koma)
           mapelKelasData = {};
           const mapelArray = String(dataMapel).split(',').map(s => s.trim());
           mapelArray.forEach(mapelId => {
@@ -5413,8 +5395,9 @@ function getGuru(token) {
       return {
         email: email,
         nama: nama,
-        nip: nip, // <-- TAMBAHKAN BARIS INI
-        mapelKelas: mapelKelasData // Kirim sebagai objek JSON
+        nip: nip,
+        mapelKelas: mapelKelasData,
+        activeTA: row[6] || '' // <-- TAMBAHAN: Ambil kolom G (ActiveTA)
       };
     }).filter(g => g.email); // Hanya ambil yang emailnya ada
 
@@ -8171,51 +8154,6 @@ function HAPUS_CACHE_CONFIG_MANUAL() {
   }
 }
 
-// TAMBAHKAN FUNGSI INI di aplikasi2/Kode.gs.html
-
-/**
- * [FUNGSI PERBAIKAN MANUAL]
- * Jalankan fungsi ini SATU KALI SECARA MANUAL dari editor Apps Script
- * untuk menambahkan kolom "NIP" (Kolom G) ke sheet 'db_guru' di Aplikasi 2.
- */
-function _MIGRASI_TambahKolomNIPGuru() {
-  try {
-    const ss = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2); // Buka DB Global
-    const sheet = ss.getSheetByName('db_guru');
-    if (!sheet) {
-      Logger.log("Sheet 'db_guru' tidak ditemukan. Batal.");
-      Browser.msgBox("Sheet 'db_guru' tidak ditemukan. Batal.");
-      return;
-    }
-
-    const header = sheet.getRange(1, 7).getValue(); // Cek Kolom G
-
-    if (header === "NIP") {
-      Logger.log("Kolom 'NIP' sudah ada di Kolom G.");
-      Browser.msgBox("Kolom 'NIP' sudah ada di Kolom G. Tidak ada perubahan.");
-      return;
-    }
-    
-    // Cek apakah kolom G kosong (atau header lain yang salah)
-    if (header === "") {
-      // Kolom G kosong, cukup tambahkan header
-      sheet.getRange(1, 7).setValue("NIP");
-      Logger.log("BERHASIL! Header 'NIP' ditambahkan ke Kolom G.");
-      Browser.msgBox("BERHASIL! Header 'NIP' ditambahkan ke Kolom G.");
-    } else {
-      // Kolom G terisi data lain (seharusnya tidak terjadi, tapi untuk keamanan)
-      sheet.insertColumnAfter(6); // Sisipkan kolom baru setelah F (Salt)
-      sheet.getRange(1, 7).setValue("NIP"); // Set header di Kolom G baru
-      Logger.log("BERHASIL! Kolom baru 'NIP' disisipkan di Kolom G.");
-      Browser.msgBox("BERHASIL! Kolom baru 'NIP' disisipkan di Kolom G.");
-    }
-    
-  } catch (e) {
-    Logger.log("Gagal migrasi 'db_guru': " + e.message);
-    Browser.msgBox("Gagal migrasi 'db_guru': " + e.message);
-  }
-}
-
 function getPendingTeacherScores(token) {
   try {
     const { app2DbId, sekolahID } = validateAdminSession(token);
@@ -9260,5 +9198,77 @@ function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
 
   } catch (e) {
     Logger.log(`Gagal _syncGuruMapelToLocalApp2: ${e.message}`);
+  }
+}
+
+/**
+ * [DIPERBARUI] Menyimpan Tahun Ajaran Aktif Guru 
+ * (Sinkronisasi ke: Lokal App 1, Global App 2, dan Mapel di DB Sekolah App 2)
+ */
+function saveGuruActiveTA(token, emailGuru, taId) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(10000);
+  
+  try {
+    // Dapatkan ID Spreadsheet Sekolah (Lokal) dari sesi
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token);
+    
+    // --- 1. UPDATE DI APP 1 (LOKAL - Akun_Guru) ---
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getGuruSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    
+    let rowIndex = -1;
+    for(let i=1; i<data.length; i++) {
+      if (String(data[i][0]).toLowerCase() === emailGuru.toLowerCase()) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (rowIndex === -1) throw new Error("Guru tidak ditemukan di database lokal.");
+    sheet.getRange(rowIndex, 7).setValue(taId); // Kolom G (ActiveTA)
+    
+    
+    // --- 2. UPDATE DI APP 2 (GLOBAL - db_guru) ---
+    // Ini agar saat login, sistem tahu TA mana yang aktif
+    const ssGlobal = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetGlobal = ssGlobal.getSheetByName('db_guru');
+    const dataGlobal = sheetGlobal.getDataRange().getValues();
+    
+    for(let i=1; i<dataGlobal.length; i++) {
+      if (String(dataGlobal[i][0]).toLowerCase() === emailGuru.toLowerCase()) {
+        // Kolom H (index 7 -> getRange column 8) di db_guru global
+        sheetGlobal.getRange(i+1, 8).setValue(taId); 
+        break;
+      }
+    }
+
+    // --- 3. UPDATE DI APP 2 (LOKAL SEKOLAH - db_mapel) ---
+    // Ini yang PENTING: Mengubah TA semua mapel guru tersebut agar muncul
+    if (app2DbId) {
+      const ssLokalApp2 = SpreadsheetApp.openById(app2DbId);
+      const sheetMapel = ssLokalApp2.getSheetByName('db_mapel');
+      
+      if (sheetMapel) {
+        const dataMapel = sheetMapel.getDataRange().getValues();
+        
+        // Loop semua mapel
+        for(let i=1; i<dataMapel.length; i++) {
+          // Cek Kolom A (email_guru)
+          if (String(dataMapel[i][0]).toLowerCase() === emailGuru.toLowerCase()) {
+             // Update Kolom C (id_tahun_ajaran) menjadi TA yang baru dipilih
+             sheetMapel.getRange(i+1, 3).setValue(taId);
+          }
+        }
+      }
+    }
+
+    return { status: "sukses" };
+    
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
