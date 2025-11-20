@@ -868,6 +868,29 @@
       </div>
     </div>
 
+    <div id="modal-set-guru-ta" class="modal">
+      <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+          <h2 id="modal-guru-ta-title">Atur Tahun Ajar</h2>
+          <span class="close-button" id="btn-tutup-modal-guru-ta">&times;</span>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="target-guru-email">
+          <p>Pilih Tahun Ajaran aktif untuk guru: <strong id="target-guru-nama"></strong></p>
+          <div class="form-group">
+            <label for="select-guru-ta">Tahun Ajaran</label>
+            <select id="select-guru-ta" class="form-control">
+              <option value="">-- Pilih --</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-guru-ta"><i class="fas fa-times"></i> Batal</button>
+          <button id="btn-simpan-guru-ta" style="background-color: var(--success-color);"><i class="fas fa-save"></i> Simpan</button>
+        </div>
+      </div>
+    </div>
+
     <div id="siswa-modal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
