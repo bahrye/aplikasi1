@@ -9464,90 +9464,76 @@
     }
   }
 
-  // --- FUNGSI-FUNGSI MANAJEMEN GURU ---
-
   function bukaHalamanGuru() {
       tampilHalaman('halaman-guru');
       
-      // --- [MODIFIKASI DI SINI] ---
+      // --- Logika UI Premium (Tetap dipertahankan) ---
       const halaman = document.getElementById('halaman-guru');
       const isPremium = (globalDonasiStatus === 'APPROVED');
 
-      // 1. Hapus info box lama (jika ada)
       const oldInfoBox = document.getElementById('guru-premium-info');
-      if (oldInfoBox) {
-        oldInfoBox.remove();
-      }
+      if (oldInfoBox) oldInfoBox.remove();
 
-      // 2. Terapkan kelas read-only dan tambahkan info box jika non-premium
       if (isPremium) {
         halaman.classList.remove('non-premium-readonly');
       } else {
         halaman.classList.add('non-premium-readonly');
         
-        // 3. Buat dan sisipkan info box baru
         const infoBox = document.createElement('div');
         infoBox.id = 'guru-premium-info';
-        infoBox.className = 'premium-info-box'; // Style dari CSS
+        infoBox.className = 'premium-info-box';
         infoBox.innerHTML = '<i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data guru, tetapi tidak dapat menambah, mengedit, atau menghapus data. Silakan <a href="#" id="link-donasi-dari-guru">Donasi</a> untuk mengaktifkan fitur ini.';
         
         const pageHeader = halaman.querySelector('.page-header');
-        if (pageHeader) {
-          pageHeader.insertAdjacentElement('afterend', infoBox);
-        }
+        if (pageHeader) pageHeader.insertAdjacentElement('afterend', infoBox);
         
-        // 4. Tambahkan listener ke link donasi di dalam box
         const linkDonasi = document.getElementById('link-donasi-dari-guru');
         if (linkDonasi) {
           linkDonasi.addEventListener('click', (e) => {
             e.preventDefault();
-            bukaHalamanDonasi(); // Panggil fungsi yang sudah ada
+            bukaHalamanDonasi();
           });
         }
       }
-      // --- [AKHIR MODIFIKASI] ---
+      // --- Akhir Logika UI Premium ---
       
-      // (Sisa fungsi ini adalah logika cache Anda yang sudah ada, tetap dipertahankan)
-      const isKelasCached = (globalKelasListCache && globalKelasListCache.length > 0);
-      const isGuruCached = (globalGuruList && globalGuruList.length > 0);
+      // --- [PERBAIKAN UTAMA: LOADING BERANTAI MAPEL -> KELAS -> GURU] ---
+      console.log("Memulai sequence loading halaman Guru...");
+      setLoading(true, 'Memuat referensi data...', false, false);
+      
+      // Reset UI Tabel
+      document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
+      
+      // Matikan tombol sementara
+      document.getElementById('btn-tambah-guru-baru').disabled = true;
+      document.getElementById('btn-import-guru').disabled = true;
+      document.getElementById('btn-cetak-kartu-guru').disabled = true;
+      document.getElementById('btn-sync-guru-kelas').disabled = true;
+      document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
 
-      if (isKelasCached && isGuruCached) {
-          console.log("Memuat guru & kelas dari cache klien...");
-          setLoading(true, 'Memuat data guru...', false, false); 
-          onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true); 
-          onGuruLoaded({ status: "sukses", guru: globalGuruList });
+      // LANGKAH 1: Cek apakah Mapel sudah ada di cache?
+      if (globalMapelList && globalMapelList.length > 0) {
+          console.log("Cache Mapel ditemukan, lanjut ke Kelas...");
+          _loadKelasForGuruPage(); // Lanjut ke langkah 2
       } else {
-          console.log("Memuat data guru/kelas dari server...");
-          setLoading(true, 'Memuat data guru...', false, false);
-          
-          document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
-          document.getElementById('btn-tambah-guru-baru').disabled = true;
-          document.getElementById('btn-import-guru').disabled = true;
-          document.getElementById('btn-cetak-kartu-guru').disabled = true;
-          document.getElementById('btn-sync-guru-kelas').disabled = true;
-          document.getElementById('btn-sync-guru-kelas').style.display = 'none';
-          document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
-          const containerTanggal = document.getElementById('container-tanggal-input-guru');
-          if (containerTanggal) containerTanggal.style.display = 'none';
-          hideMessage('pengaturan-guru-message');
-
-          if (!isKelasCached) {
-              console.log("Cache kelas kosong, memuat kelas (akan memicu guru)...");
-              google.script.run
-                  .withSuccessHandler(onKelasLoadedForGuruPage) 
-                  .withFailureHandler(onGagal)
-                  .getKelas(getToken());
-          } else {
-              console.log("Cache kelas ada, memuat guru saja...");
-              onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
-              google.script.run
-                  .withSuccessHandler(onGuruLoaded)
-                  .withFailureHandler(onGagal)
-                  .getGuru(getToken());
-          }
+          console.log("Cache Mapel kosong, memuat dari server...");
+          // Ambil Mapel dari server
+          google.script.run
+              .withSuccessHandler((response) => {
+                  if (response.status === 'sukses') {
+                      // Simpan ke variabel global agar pencarian di modal berfungsi
+                      globalMapelList = response.mapel;
+                      // Setelah mapel siap, Lanjut ke langkah 2
+                      _loadKelasForGuruPage();
+                  } else {
+                      onGagal(response);
+                  }
+              })
+              .withFailureHandler(onGagal)
+              .getMapel(getToken());
       }
 
-      // Panggil data Pengaturan (selalu panggil, datanya kecil)
+      // Panggil data Pengaturan Guru (jalan paralel karena independen)
       google.script.run
           .withSuccessHandler(onPengaturanGuruLoaded)
           .withFailureHandler(onGagal) 
@@ -9798,13 +9784,28 @@
       const passLabel = document.getElementById('label-guru-password');
       const passInput = document.getElementById('modal-guru-password');
       
-      // [MODIFIKASI] Hapus semua logika untuk UI mapel
-      // karena sudah disembunyikan.
+      // --- [PEMULIHAN FITUR] ---
+      // 1. Tampilkan Container Mapel
+      const mapelContainer = document.querySelector('#form-guru .form-group[style*="display: none;"]');
+      if (mapelContainer) mapelContainer.style.display = 'block';
+
+      // 2. Pastikan menggunakan UI Multi-Kelas (Mapel + Kelas)
+      document.getElementById('modal-guru-ui-single-class').style.display = 'none';
+      document.getElementById('modal-guru-ui-multi-class').style.display = 'block';
+      
+      // 3. Set mode di hidden input agar pencarian mapel tahu kita pakai mode multi-kelas
+      // Penting: set ke 'false' agar pencarian mengarah ke container yang benar
+      document.getElementById('modal-guru-mode').dataset.isSingleClassMode = "false"; 
+      
+      // 4. Bersihkan list sebelumnya
+      document.getElementById('modal-guru-mapel-kelas-list').innerHTML = '';
+      document.getElementById('modal-guru-mapel-kelas-search').value = '';
+      // --- [AKHIR PEMULIHAN] ---
 
       if (mode === 'add') {
           document.getElementById('modal-guru-title').innerText = "Tambah Guru Baru";
           document.getElementById('modal-guru-nama').value = "";
-          document.getElementById('modal-guru-nip').value = ""; // <-- BARIS INI DIMODIFIKASI
+          document.getElementById('modal-guru-nip').value = ""; 
           document.getElementById('modal-guru-email').value = "";
           document.getElementById('modal-guru-original-email').value = "";
           passInput.value = "";
@@ -9814,17 +9815,21 @@
           // Mode Edit
           document.getElementById('modal-guru-title').innerText = "Edit Data Guru";
           document.getElementById('modal-guru-nama').value = guruData.nama;
-          document.getElementById('modal-guru-nip').value = guruData.nip || ""; // <-- BARIS INI DIMODIFIKASI
+          document.getElementById('modal-guru-nip').value = guruData.nip || ""; 
           document.getElementById('modal-guru-email').value = guruData.email;
           document.getElementById('modal-guru-original-email').value = guruData.email;
           passInput.value = "";
           passLabel.innerText = "Password (Kosongkan jika tidak diubah)";
           passInput.placeholder = "---";
+          
+          // --- [PEMULIHAN FITUR] Render data mapel yang sudah ada ---
+          if (guruData.mapelKelas) {
+             renderMapelKelasList(guruData.mapelKelas);
+          }
+          // --- [AKHIR PEMULIHAN] ---
       }
 
-      // Cukup tampilkan modalnya
       document.getElementById('guru-modal').classList.add('show');
-      // [AKHIR MODIFIKASI]
   }
 
   function tutupModalGuru() {
@@ -9836,16 +9841,42 @@
       hideMessage('modal-guru-error');
 
       const nama = document.getElementById('modal-guru-nama').value.trim();
-      const nip = document.getElementById('modal-guru-nip').value.trim(); // <-- Data NIP
+      const nip = document.getElementById('modal-guru-nip').value.trim(); 
       const email = document.getElementById('modal-guru-email').value.trim();
       const password = document.getElementById('modal-guru-password').value;
       const mode = document.getElementById('modal-guru-mode').value;
       const originalEmail = document.getElementById('modal-guru-original-email').value;
       
-      // [MODIFIKASI] Hapus semua logika pembacaan mapel dari modal.
-      // Cukup kirim objek kosong, karena mapel diatur di "Kelola Penempatan".
+      // --- [PEMULIHAN & UPDATE FITUR] ---
       const mapelKelasData = {};
-      // [AKHIR MODIFIKASI]
+      const rows = document.querySelectorAll('#modal-guru-mapel-kelas-list .mapel-kelas-row');
+      
+      rows.forEach(row => {
+          const mapelId = row.dataset.mapelId;
+          const select = row.querySelector('select.mapel-kelas-select');
+          const selectedKelas = select ? select.value : "";
+          
+          if (mapelId && selectedKelas) {
+              if (!mapelKelasData[mapelId]) {
+                  mapelKelasData[mapelId] = [];
+              }
+              
+              // --- [LOGIKA BARU UNTUK SEMUA KELAS] ---
+              if (selectedKelas === "*") {
+                  // Jika pilih "Semua Kelas", paksa array jadi ["*"] dan abaikan pilihan lain untuk mapel ini
+                  mapelKelasData[mapelId] = ["*"];
+              } else {
+                  // Jika bukan "*", masukkan ke array jika belum ada "Semua Kelas" di dalamnya
+                  if (!mapelKelasData[mapelId].includes("*")) {
+                      if (!mapelKelasData[mapelId].includes(selectedKelas)) {
+                          mapelKelasData[mapelId].push(selectedKelas);
+                      }
+                  }
+              }
+              // --- [AKHIR LOGIKA BARU] ---
+          }
+      });
+      // --- [AKHIR PEMULIHAN] ---
 
       if (!nama || !email) {
           resetButtonLoading(document.getElementById('btn-simpan-guru'));
@@ -9867,10 +9898,10 @@
           mode: mode,
           originalEmail: originalEmail,
           nama: nama,
-          nip: nip, // <-- Data NIP
+          nip: nip, 
           email: email,
           password: password,
-          mapelKelas: mapelKelasData // Kirim objek (bukan JSON string)
+          mapelKelas: mapelKelasData
       };
 
       google.script.run
@@ -9880,40 +9911,27 @@
                   tutupModalGuru();
                   showToast(response.message, 'sukses');
                   
-                  // --- [PERBAIKAN DIMULAI DI SINI] ---
-                  // Logika Optimistic Update untuk cache 'globalGuruList'
                   if (response.newData) {
-                    const newData = response.newData; // {email, nama, nip, mapelKelas}
-                    
+                    const newData = response.newData;
                     if (mode === 'add') {
-                      // Tambahkan data baru ke cache global
                       globalGuruList.push(newData);
                     } else {
-                      // Cari dan perbarui data di cache global
                       const emailToFind = (originalEmail || newData.email);
                       const indexToUpdate = globalGuruList.findIndex(g => g.email === emailToFind);
-                      
                       if (indexToUpdate > -1) {
-                        // Perbarui data di cache
                         globalGuruList[indexToUpdate] = newData;
                       } else {
-                        // Tidak ketemu (aneh, mungkin email berubah), coba cari berdasarkan nama
+                         // Fallback update cache
                          const indexToUpdateByName = globalGuruList.findIndex(g => g.nama === newData.nama);
-                         if(indexToUpdateByName > -1) {
-                           globalGuruList[indexToUpdateByName] = newData;
-                         } else {
-                           globalGuruList.push(newData); // Fallback: tambahkan saja
-                         }
+                         if(indexToUpdateByName > -1) globalGuruList[indexToUpdateByName] = newData;
+                         else globalGuruList.push(newData); 
                       }
                     }
                   } else {
-                    // Jika backend tidak mengembalikan newData (versi lama),
-                    // kita paksa bersihkan cache agar dimuat ulang
-                    globalGuruList = [];
+                    globalGuruList = []; 
                   }
-                  // --- [PERBAIKAN SELESAI] ---
 
-                  bukaHalamanGuru(); // Panggil ini SETELAH cache diperbarui
+                  bukaHalamanGuru(); 
               } else {
                   showMessage('modal-guru-error', response.message, true);
               }
@@ -10043,24 +10061,27 @@
     return ids;
   }
 
-  /**
-   * [BARU] Helper untuk UI Multi-Kelas: Render baris baru (Mapel + Pilihan Kelas)
-   * VERSI REVISI: Menggunakan <select> tunggal, bukan multiple.
-   */
-  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "") { // Terima string, bukan array
+  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "") { 
     const container = document.getElementById('modal-guru-mapel-kelas-list');
     
     // Buat opsi <select>
-    let classOptions = '<option value="">-- Pilih Kelas --</option>'; // Tambah opsi default
+    let classOptions = '<option value="">-- Pilih Kelas --</option>';
+    
+    // --- [MODIFIKASI] Tambahkan Opsi "Semua Kelas" ---
+    const isAllSelected = (selectedKelas === "*");
+    classOptions += `<option value="*" ${isAllSelected ? 'selected' : ''} style="font-weight:bold; color:var(--primary-color);">-- Semua Kelas --</option>`;
+    // --- [AKHIR MODIFIKASI] ---
     
     if (globalKelasListCache.length > 0) {
-      classOptions += globalKelasListCache.map(kelas => {
-        // Cek apakah kelas ini yang terpilih
+      // Urutkan kelas agar rapi
+      globalKelasListCache.sort((a, b) => compareKelas(a.nama, b.nama));
+      
+      globalKelasListCache.forEach(kelas => {
         const isSelected = (selectedKelas === kelas.nama) ? 'selected' : '';
-        return `<option value="${kelas.nama}" ${isSelected}>${kelas.nama}</option>`;
-      }).join('');
+        classOptions += `<option value="${kelas.nama}" ${isSelected}>${kelas.nama}</option>`;
+      });
     } else {
-      classOptions = '<option value="">-- Tidak ada kelas --</option>';
+      classOptions += '<option value="" disabled>Data kelas kosong</option>';
     }
 
     const rowHtml = `
@@ -10079,7 +10100,7 @@
     
     container.innerHTML += rowHtml;
 
-    // Reset input pencarian (ini penting untuk UI)
+    // Reset input pencarian
     const searchInput = document.getElementById('modal-guru-mapel-kelas-search');
     const suggestionsContainer = document.getElementById('modal-guru-mapel-kelas-suggestions');
     searchInput.value = "";
@@ -10088,16 +10109,11 @@
     searchInput.focus();
   }
 
-  /**
-   * [BARU] Helper untuk UI Multi-Kelas: Merender seluruh daftar saat edit
-   * VERSI REVISI: Membuat satu baris untuk setiap pasangan mapel-kelas.
-   */
   function renderMapelKelasList(mapelKelasData) {
     const container = document.getElementById('modal-guru-mapel-kelas-list');
     container.innerHTML = ''; // Kosongkan dulu
     
     if (!globalMapelList || globalMapelList.length === 0) {
-      // Coba lagi jika mapel belum termuat
       setTimeout(() => renderMapelKelasList(mapelKelasData), 100);
       return;
     }
@@ -10105,22 +10121,19 @@
     for (const mapelId in mapelKelasData) {
       const mapel = globalMapelList.find(m => m.id === mapelId);
       if (mapel) {
-        const selectedKelas = mapelKelasData[mapelId]; // Ini array, misal: ["VI", "VI.B"] or ["*"]
+        const selectedKelas = mapelKelasData[mapelId]; // Array, misal: ["VI A"] atau ["*"]
         let kelasArray = Array.isArray(selectedKelas) ? selectedKelas : [];
         
-        if (kelasArray.includes("*")) {
-          // Jika datanya ["*"] (Semua Kelas), buat satu baris untuk setiap kelas yang ada
-          kelasArray = globalKelasListCache.map(k => k.nama);
-        }
-
+        // --- [MODIFIKASI PENTING] ---
+        // DULU: Kita expand "*" menjadi list semua nama kelas.
+        // SEKARANG: Kita biarkan apa adanya. Jika ["*"], loop di bawah akan merender 1 baris dengan value "*"
+        
         if (kelasArray.length > 0) {
-          // --- PERUBAHAN LOGIKA INTI ---
-          // Buat satu baris untuk SETIAP kelas dalam array
           kelasArray.forEach(namaKelas => {
             addMapelKelasRow(mapel.id, mapel.nama, namaKelas);
           });
-          // --- AKHIR PERUBAHAN ---
         }
+        // --- [AKHIR MODIFIKASI] ---
       }
     }
   }
@@ -13937,6 +13950,27 @@
           })
           .withFailureHandler(onGagal)
           .saveSiswaEnrollment(getToken(), taId, enrollmentData);
+  }
+
+  /**
+   * [HELPER BARU] Langkah 2 dari Loading Guru: Memuat Kelas lalu Guru.
+   */
+  function _loadKelasForGuruPage() {
+      // LANGKAH 2: Cek Cache Kelas
+      if (globalKelasListCache && globalKelasListCache.length > 0) {
+          console.log("Cache Kelas ditemukan, lanjut memuat Guru...");
+          // Jika kelas ada di cache, panggil handler sukses secara manual
+          // Parameter 'true' menandakan data dari cache
+          onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
+      } else {
+          console.log("Cache Kelas kosong, memuat dari server...");
+          setLoading(true, 'Memuat data kelas...', false, false);
+          // Ambil Kelas dari server
+          google.script.run
+              .withSuccessHandler(onKelasLoadedForGuruPage) 
+              .withFailureHandler(onGagal)
+              .getKelas(getToken());
+      }
   }
 
 </script>
