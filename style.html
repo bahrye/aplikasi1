@@ -3745,37 +3745,48 @@
 
   /* --- PERBAIKAN KOLOM AKSI (Data Guru) --- */
   
-  /* 1. Pastikan sel tabel (TD) mengatur konten ke tengah */
+  /* 1. Reset perilaku sel tabel agar kembali ke standar (tengah) */
   .guru-table td:last-child {
-    vertical-align: middle !important; /* Rata tengah vertikal terhadap baris */
+    display: table-cell !important;    /* TIMPA display:flex dari .siswa-table */
+    vertical-align: middle !important; /* Rata tengah vertikal */
     text-align: center !important;     /* Rata tengah horizontal */
-    padding: 5px !important;           /* Padding minimal */
+    padding: 8px 5px !important;       /* Padding yang pas */
+    width: 120px !important;           /* Lebar kolom yang cukup */
   }
 
-  /* 2. Container tombol (Hilangkan border/kotak, set ke Flexbox) */
+  /* 2. Container tombol (Flexbox Vertikal Rata Tengah) */
   .guru-table .btn-grup-aksi {
     display: flex;
-    flex-direction: column;   /* Tombol disusun atas-bawah */
-    align-items: center;      /* Rata tengah horizontal (cross-axis) */
-    justify-content: center;  /* Rata tengah vertikal (main-axis) */
-    gap: 5px;                 /* Jarak antar tombol Edit dan Hapus */
+    flex-direction: column;   /* Susun tombol Atas-Bawah */
+    align-items: center;      /* Rata tengah secara horizontal */
+    justify-content: center;  /* Rata tengah secara vertikal */
+    gap: 6px;                 /* Jarak antar tombol */
     
-    width: 100%;              /* Penuhi lebar sel agar centering akurat */
-    height: 100%;             /* Penuhi tinggi sel */
-    margin: 0 auto;           /* Pastikan tidak ada margin aneh */
+    width: 100%;              
+    margin: 0 auto;           /* Pastikan container ada di tengah sel */
     
-    /* Menghilangkan efek "kotak" */
+    /* Hilangkan style bawaan yang mengganggu */
     border: none !important;
     background-color: transparent !important;
     box-shadow: none !important;
   }
 
-  /* 3. Atur ukuran tombol agar seragam dan rapi */
+  /* 3. Atur ukuran tombol agar seragam, rapi, dan enak dilihat */
   .guru-table .btn-grup-aksi .btn-aksi {
-    width: 80px !important; /* Lebar tetap agar Edit & Hapus sama lebarnya */
-    margin: 0 !important;   /* Reset margin bawaan tombol */
+    width: 90px !important;   /* Lebar tetap agar tombol Edit & Hapus sama panjang */
+    margin: 0 !important;     /* Reset margin bawaan */
+    padding: 6px 0 !important;
+    font-size: 13px !important;
     display: inline-flex;
     justify-content: center;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Sedikit bayangan agar elegan */
+  }
+
+  /* Tambahan: Memastikan header kolom aksi juga rata tengah */
+  .guru-table th:last-child {
+    text-align: center !important;
+    width: 120px !important;
   }
 
   /* --- TAMBAHAN BARU: Pesan Info untuk Guru Tanpa Mapel --- */
