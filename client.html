@@ -2112,17 +2112,6 @@
     });
     // --- AKHIR TAMBAHAN ---
 
-    // --- TAMBAHKAN LISTENER BARU ---
-    document.getElementById('btn-buka-penempatan').addEventListener('click', () => {
-      handleNavigationConfirm(bukaHalamanPenempatan);
-    });
-
-    document.getElementById('btn-buka-penempatan').addEventListener('click', (e) => {
-        // MODIFIKASI: Selalu buka halaman penempatan.
-        // Logika read-only akan ditangani DI DALAM bukaHalamanPenempatan().
-        handleNavigationConfirm(bukaHalamanPenempatan);
-    });
-
     document.getElementById('btn-kembali-ke-dashboard-15').addEventListener('click', () => {
       handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
     });
@@ -8403,7 +8392,7 @@
       'btn-buka-input-rapor', 'btn-buka-validasi-nilai', 
       'btn-buka-nilai-ijazah', 'btn-buka-kelola-kelulusan',
       'btn-update-semua-data', 'btn-buka-guru',
-      'btn-buka-penempatan', 'btn-buka-tahun-ajaran', 'btn-buka-proses-kelulusan', 'btn-buka-pengaturan-cetak', 'btn-buka-donasi'
+      'btn-buka-tahun-ajaran', 'btn-buka-proses-kelulusan', 'btn-buka-pengaturan-cetak', 'btn-buka-donasi'
     ];
     
     menuAdminIds.forEach(id => {
@@ -10504,7 +10493,6 @@
     const tabSiswa = document.getElementById('tab-btn-siswa');
     const btnKelulusan = document.getElementById('btn-buka-kelola-kelulusan'); 
     const btnProsesKelulusan = document.getElementById('btn-buka-proses-kelulusan');
-    const btnPenempatan = document.getElementById('btn-buka-penempatan');
     const btnTahunAjaran = document.getElementById('btn-buka-tahun-ajaran');
     const btnCetakKartuSiswa = document.getElementById('btn-cetak-kartu-siswa');
     const btnPengaturanCetak = document.getElementById('btn-buka-pengaturan-cetak');
@@ -10539,17 +10527,6 @@
         if (stamp) stamp.style.display = 'none';
       } else {
         btnProsesKelulusan.classList.add('card-disabled');
-        if (stamp) stamp.style.display = 'block';
-      }
-    }
-
-    if (btnPenempatan) {
-      const stamp = btnPenempatan.querySelector('.premium-stamp');
-      if (isPremium) {
-        btnPenempatan.classList.remove('card-disabled');
-        if (stamp) stamp.style.display = 'none';
-      } else {
-        btnPenempatan.classList.add('card-disabled');
         if (stamp) stamp.style.display = 'block';
       }
     }
