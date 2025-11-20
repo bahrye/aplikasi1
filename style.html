@@ -3750,6 +3750,41 @@
     width: 110px;
   }
 
+  /* --- PERBAIKAN KOLOM AKSI (Data Guru) --- */
+  
+  /* 1. Pastikan sel tabel (TD) mengatur konten ke tengah */
+  .guru-table td:last-child {
+    vertical-align: middle !important; /* Rata tengah vertikal terhadap baris */
+    text-align: center !important;     /* Rata tengah horizontal */
+    padding: 5px !important;           /* Padding minimal */
+  }
+
+  /* 2. Container tombol (Hilangkan border/kotak, set ke Flexbox) */
+  .guru-table .btn-grup-aksi {
+    display: flex;
+    flex-direction: column;   /* Tombol disusun atas-bawah */
+    align-items: center;      /* Rata tengah horizontal (cross-axis) */
+    justify-content: center;  /* Rata tengah vertikal (main-axis) */
+    gap: 5px;                 /* Jarak antar tombol Edit dan Hapus */
+    
+    width: 100%;              /* Penuhi lebar sel agar centering akurat */
+    height: 100%;             /* Penuhi tinggi sel */
+    margin: 0 auto;           /* Pastikan tidak ada margin aneh */
+    
+    /* Menghilangkan efek "kotak" */
+    border: none !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* 3. Atur ukuran tombol agar seragam dan rapi */
+  .guru-table .btn-grup-aksi .btn-aksi {
+    width: 80px !important; /* Lebar tetap agar Edit & Hapus sama lebarnya */
+    margin: 0 !important;   /* Reset margin bawaan tombol */
+    display: inline-flex;
+    justify-content: center;
+  }
+
   /* --- TAMBAHAN BARU: Pesan Info untuk Guru Tanpa Mapel --- */
   .guru-no-mapel-message {
     grid-column: 1 / -1; /* Span semua kolom di grid */
@@ -6022,5 +6057,52 @@
 
   #set-ta-table-container tr:hover {
       background-color: #e9ecef;
+  }
+
+  /* Style untuk kolom Mapel - Kelas */
+  .mapel-list-badge {
+    display: inline-block;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    margin: 2px;
+    border: 1px solid #dee2e6;
+  }
+  .mapel-list-badge strong {
+    color: var(--primary-color);
+  }
+
+  /* Style untuk kolom Tahun Ajar (Vertikal) */
+  .ta-wrapper {
+    display: flex;
+    flex-direction: column; /* <-- Ubah jadi kolom agar vertikal */
+    align-items: center;    /* Rata tengah horizontal */
+    justify-content: center;
+    gap: 5px;               /* Jarak antara teks dan tombol */
+  }
+  
+  .ta-badge {
+    font-weight: 700;
+    color: var(--success-color); /* Warna hijau */
+    font-size: 14px;        /* Ukuran font sedikit diperbesar */
+  }
+  
+  .btn-atur-ta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;      /* Padding tombol */
+    font-size: 11px;        /* Ukuran font tombol */
+    background-color: var(--secondary-color);
+    color: white;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    width: auto;            /* Lebar menyesuaikan konten */
+    line-height: 1.2;
+  }
+  .btn-atur-ta:hover {
+    background-color: #5a6268;
   }
 </style>
