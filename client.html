@@ -1416,23 +1416,41 @@
       this.classList.toggle('fa-eye-slash');
     });
 
-    // Listener untuk tombol Edit/Hapus di tabel guru
+    // 1. Listener untuk tombol Edit/Hapus di tabel guru
+    // Listener untuk tombol Atur TA / Edit / Hapus di tabel guru
     document.getElementById('guru-table-container').addEventListener('click', (e) => {
         const target = e.target.closest('button');
         if (!target) return;
 
+        // --- [LOGIKA BARU] Tombol Atur Tahun Ajar ---
+        if (target.classList.contains('btn-atur-ta')) {
+            const email = target.dataset.email;
+            const nama = target.dataset.nama;
+            const currentTa = target.dataset.ta;
+            openSetGuruTAModal(email, nama, currentTa);
+            return;
+        }
+
+        // --- [LOGIKA LAMA] Tombol Edit Guru ---
         if (target.classList.contains('btn-edit-guru')) {
             const dataStr = target.dataset.guru;
             try {
-                const guruData = JSON.parse(dataStr); // Kita akan simpan data lengkap di atribut data-guru
+                const guruData = JSON.parse(dataStr);
                 showModalGuru('edit', guruData);
             } catch(e) { console.error("Gagal parse data guru", e); }
+        
+        // --- [LOGIKA LAMA] Tombol Hapus Guru ---
         } else if (target.classList.contains('btn-delete-guru')) {
             const email = target.dataset.email;
             const nama = target.dataset.nama;
             konfirmasiHapusGuru(email, nama);
         }
     });
+
+    // 2. Listener tombol di Modal
+    document.getElementById('btn-tutup-modal-guru-ta').addEventListener('click', closeSetGuruTAModal);
+    document.getElementById('btn-batal-guru-ta').addEventListener('click', closeSetGuruTAModal);
+    document.getElementById('btn-simpan-guru-ta').addEventListener('click', saveGuruTA);
 
     // --- TAMBAHKAN BLOK BARU INI TEPAT SETELAHNYA ---
     // Listener untuk form pengaturan guru
@@ -9497,8 +9515,28 @@
       }
       // --- Akhir Logika UI Premium ---
       
-      // --- [PERBAIKAN UTAMA: LOADING BERANTAI MAPEL -> KELAS -> GURU] ---
-      console.log("Memulai sequence loading halaman Guru...");
+      // --- [OPTIMASI CACHE: CEK DATA LOKAL DULU] ---
+      // Cek apakah Guru, Mapel, dan Kelas sudah ada di cache klien
+      if (globalGuruList && globalGuruList.length > 0 && 
+          globalKelasListCache && globalKelasListCache.length > 0 && 
+          globalMapelList && globalMapelList.length > 0) {
+          
+          console.log("Memuat guru dari cache klien (Instan)...");
+          
+          // Panggil handler sukses secara manual dengan data dari memori
+          // Kita bungkus dalam setTimeout agar rendering UI terasa mulus
+          setTimeout(() => {
+              onGuruLoaded({ status: 'sukses', guru: globalGuruList });
+              // Panggil pengaturan guru di background agar toggle switch tetap sinkron
+              google.script.run.withSuccessHandler(onPengaturanGuruLoaded).getPengaturanGuru(getToken());
+          }, 10);
+          
+          return; // BERHENTI DI SINI, JANGAN PANGGIL SERVER LAGI
+      }
+      // --- [AKHIR OPTIMASI] ---
+
+      // --- [LOADING BIASA: JIKA CACHE KOSONG] ---
+      console.log("Memulai sequence loading halaman Guru dari Server...");
       setLoading(true, 'Memuat referensi data...', false, false);
       
       // Reset UI Tabel
@@ -9704,55 +9742,88 @@
     }
   }
 
-  /**
-   * VERSI REFACTOR (Cepat)
-   * Merender tabel guru menggunakan DocumentFragment.
-   */
   function renderGuruTable(guruList) {
       const container = document.getElementById('guru-table-container');
-      container.innerHTML = ""; // 1. Kosongkan
+      container.innerHTML = ""; 
 
       if (!guruList || guruList.length === 0) {
-          // [MODIFIKASI] Colspan diubah dari 4 menjadi 3
-          container.innerHTML = '<table class="siswa-table guru-table"><tbody><tr><td colspan="3" style="text-align: center;">Belum ada data guru.</td></tr></tbody></table>';
+          // Colspan jadi 5 karena ada kolom baru
+          container.innerHTML = '<table class="siswa-table guru-table"><tbody><tr><td colspan="5" style="text-align: center;">Belum ada data guru.</td></tr></tbody></table>';
           return;
       }
 
-      // Ambil data kelas yang valid dari cache
-      const validKelasNames = globalKelasListCache.map(k => k.nama);
-      const totalKelasCount = globalKelasListCache.length;
-
-      // 2. Buat elemen tabel
       const table = document.createElement('table');
       table.className = 'siswa-table guru-table';
 
-      // 3. Buat header
       const thead = table.createTHead();
       const headerRow = thead.insertRow();
-      // [MODIFIKASI] Menghilangkan header "MAPEL DIampu"
-      headerRow.innerHTML = '<thead><tr><th>Nama Guru</th><th>Email Login</th><th>Aksi</th></tr></thead>';
+      // Header Baru
+      headerRow.innerHTML = `
+        <thead>
+          <tr>
+            <th>Nama Guru</th>
+            <th>Email Login</th>
+            <th style="width: 30%;">Mapel - Kelas</th>
+            <th style="width: 150px;">Tahun Ajar</th>
+            <th style="width: 110px;">Aksi</th>
+          </tr>
+        </thead>
+      `;
 
-      // 4. Buat body dan DocumentFragment
       const tbody = table.createTBody();
       const fragment = document.createDocumentFragment();
       
+      // Helper untuk mencari deskripsi TA berdasarkan ID
+      const getTaDeskripsi = (id) => {
+        if (!globalTaList || globalTaList.length === 0) return id;
+        const ta = globalTaList.find(t => t.id === id);
+        return ta ? ta.deskripsi : id;
+      };
+
       guruList.forEach(guru => {
-          // [MODIFIKASI] Logika untuk 'mapelBadges' dihapus semua
-          
           const guruDataJson = JSON.stringify({
               email: guru.email,
               nama: guru.nama,
-              nip: guru.nip, // <-- BARIS INI DIMODIFIKASI
-              mapelKelas: guru.mapelKelas // Data ini tetap disimpan di tombol untuk modal
+              nip: guru.nip,
+              mapelKelas: guru.mapelKelas
           }).replace(/"/g, '&quot;');
 
-          // 5. Buat <tr> baru di memori
+          // --- 1. Format Mapel - Kelas ---
+          let mapelHtml = '';
+          if (guru.mapelKelas && Object.keys(guru.mapelKelas).length > 0) {
+            for (const [mapelId, kelasArr] of Object.entries(guru.mapelKelas)) {
+                // Cari nama mapel dari global list jika ada
+                const mapelObj = globalMapelList.find(m => m.id === mapelId);
+                const mapelName = mapelObj ? mapelObj.nama : mapelId;
+                
+                // Format kelas (misal: "7A, 7B" atau "Semua")
+                let kelasStr = Array.isArray(kelasArr) ? kelasArr.join(', ') : '';
+                if (kelasStr.includes('*')) kelasStr = 'Semua Kelas';
+                
+                mapelHtml += `<span class="mapel-list-badge"><strong>${mapelName}</strong> (${kelasStr})</span> `;
+            }
+          } else {
+            mapelHtml = '<span class="text-muted">-</span>';
+          }
+
+          // --- 2. Format Tahun Ajar ---
+          const activeTAId = guru.activeTA || '';
+          const activeTADesc = activeTAId ? getTaDeskripsi(activeTAId) : '-';
+
           const tr = document.createElement('tr');
-          
-          // 6. [MODIFIKASI] Isi <td> (menambahkan premium-stamp dan wrapper)
           tr.innerHTML = `
-              <td><strong>${guru.nama}</strong></td>
+              <td><strong>${guru.nama}</strong><br><small class="text-muted">${guru.nip || '-'}</small></td>
               <td>${guru.email}</td>
+              <td>${mapelHtml}</td>
+              <td>
+                <div class="ta-wrapper">
+                  <span class="ta-badge">${activeTADesc}</span>
+                  
+                  <button class="btn-atur-ta" data-email="${guru.email}" data-nama="${guru.nama}" data-ta="${activeTAId}">
+                      <i class="fas fa-cog"></i> Atur
+                  </button>
+                </div>
+              </td>
               <td>
                 <div class="btn-grup-aksi">
                       <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
@@ -9766,15 +9837,10 @@
                 </div>
               </td>
           `;
-          
-          // 7. Tambahkan <tr> ke fragment
           fragment.appendChild(tr);
       });
 
-      // 8. Tambahkan fragment ke tbody
       tbody.appendChild(fragment);
-
-      // 9. Tambahkan tabel ke container
       container.appendChild(table);
   }
 
@@ -13971,6 +14037,83 @@
               .withFailureHandler(onGagal)
               .getKelas(getToken());
       }
+  }
+
+  // --- FUNGSI LOGIKA MODAL ---
+
+  function openSetGuruTAModal(email, nama, currentTaId) {
+      document.getElementById('target-guru-email').value = email;
+      document.getElementById('target-guru-nama').innerText = nama;
+      
+      const select = document.getElementById('select-guru-ta');
+      select.innerHTML = '<option value="">-- Pilih Tahun Ajar --</option>';
+      
+      // Gunakan globalTaList yang sudah ada (dari halaman TA)
+      // Jika kosong, kita coba ambil dari cache atau server
+      if (globalTaList && globalTaList.length > 0) {
+          populateTaSelect(globalTaList, currentTaId);
+          document.getElementById('modal-set-guru-ta').classList.add('show');
+      } else {
+          // Fetch on demand jika list kosong
+          setLoading(true, 'Memuat data Tahun Ajaran...');
+          google.script.run.withSuccessHandler((response) => {
+              setLoading(false);
+              if(response.status === 'sukses') {
+                globalTaList = response.data; // Update global cache
+                populateTaSelect(globalTaList, currentTaId);
+                document.getElementById('modal-set-guru-ta').classList.add('show');
+              } else {
+                showToast("Gagal memuat Tahun Ajaran.", "gagal");
+              }
+          }).withFailureHandler(onGagal).getTahunAjaran(getToken());
+      }
+  }
+
+  function populateTaSelect(taList, selectedId) {
+      const select = document.getElementById('select-guru-ta');
+      // Urutkan terbaru di atas
+      taList.sort((a,b) => b.deskripsi.localeCompare(a.deskripsi));
+      
+      taList.forEach(ta => {
+          const option = document.createElement('option');
+          option.value = ta.id;
+          option.text = ta.deskripsi + (ta.isLocked ? ' (Terkunci)' : '');
+          if (ta.id === selectedId) option.selected = true;
+          select.appendChild(option);
+      });
+  }
+
+  function closeSetGuruTAModal() {
+      document.getElementById('modal-set-guru-ta').classList.remove('show');
+  }
+
+  function saveGuruTA() {
+      const email = document.getElementById('target-guru-email').value;
+      const taId = document.getElementById('select-guru-ta').value;
+      
+      if (!email) return;
+      
+      setLoading(true, 'Menyimpan Tahun Ajar Guru...');
+      
+      google.script.run
+          .withSuccessHandler((response) => {
+              setLoading(false);
+              if (response.status === 'sukses') {
+                  showToast("Tahun Ajar berhasil diatur!", "sukses");
+                  closeSetGuruTAModal();
+                  
+                  // Update data lokal & re-render tabel tanpa reload server
+                  const guru = globalGuruList.find(g => g.email === email);
+                  if (guru) {
+                    guru.activeTA = taId;
+                    renderGuruTable(globalGuruList);
+                  }
+              } else {
+                  showToast("Gagal menyimpan: " + response.message, "gagal");
+              }
+          })
+          .withFailureHandler(onGagal)
+          .saveGuruActiveTA(getToken(), email, taId);
   }
 
 </script>
