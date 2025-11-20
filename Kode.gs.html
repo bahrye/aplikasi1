@@ -5428,7 +5428,9 @@ function saveGuru(token, guruData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    // [MODIFIKASI] Ambil spreadsheetID (ID DB App 1) dari sesi
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token);
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
@@ -5462,61 +5464,50 @@ function saveGuru(token, guruData) {
     if (guruData.mode === 'add') {
       if (!guruData.password) return { status: "gagal", message: "Password wajib untuk guru baru." };
       
-      // --- [MODIFIKASI] Buat hash dan salt untuk data LOKAL ---
       const newSalt = generateSalt();
       const newHash = hashPassword(guruData.password, newSalt);
-      // Simpan HASH dan SALT (bukan plain text)
       sheet.appendRow([guruData.email, guruData.nama, formattedNip, newHash, newSalt, mapelKelasJSON]);
-      // --- [AKHIR MODIFIKASI] ---
       
-      addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru', nip);
+      // [MODIFIKASI] Kirim spreadsheetID (App 1) juga
+      addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru', nip, guruData.mapelKelas, app2DbId, spreadsheetID);
       
     } else {
       // Mode Edit
       const originalEmail = guruData.originalEmail;
       const newEmail = guruData.email;
       
-      // Simpan Nama, NIP, Mapel
       sheet.getRange(rowIndex, 1).setValue(newEmail);
       sheet.getRange(rowIndex, 2).setValue(guruData.nama);
       sheet.getRange(rowIndex, 3).setValue(formattedNip); 
       sheet.getRange(rowIndex, 6).setValue(mapelKelasJSON);
       
-      let passwordToSync = null; // Default: Jangan sinkronisasi password
+      let passwordToSync = null;
 
       if (guruData.password) {
-        // --- [MODIFIKASI] User memasukkan password BARU ---
         const newSalt = generateSalt();
         const newHash = hashPassword(guruData.password, newSalt);
-        sheet.getRange(rowIndex, 4).setValue(newHash); // Kolom D (Hash)
-        sheet.getRange(rowIndex, 5).setValue(newSalt); // Kolom E (Salt)
-        passwordToSync = guruData.password; // Kirim plain text ke App 2 untuk di-hash di sana
-        // --- [AKHIR MODIFIKASI] ---
+        sheet.getRange(rowIndex, 4).setValue(newHash); 
+        sheet.getRange(rowIndex, 5).setValue(newSalt); 
+        passwordToSync = guruData.password; 
       } else {
-        // --- [MODIFIKASI] User TIDAK memasukkan password baru ---
-        // Cek apakah data lama (di sheet) perlu dimigrasi (jika salt kosong)
-        const oldSalt = data[rowIndex-1][4]; // Kolom E (index 4)
+        const oldSalt = data[rowIndex-1][4]; 
         if (!oldSalt) {
-          // INI DATA LAMA (PLAIN TEXT)! Lakukan migrasi
-          const oldPlainTextPass = data[rowIndex-1][3]; // Kolom D (plain text lama)
-          if (oldPlainTextPass) { // Pastikan tidak kosong
+          const oldPlainTextPass = data[rowIndex-1][3]; 
+          if (oldPlainTextPass) { 
             const newSalt = generateSalt();
             const newHash = hashPassword(oldPlainTextPass, newSalt);
-            sheet.getRange(rowIndex, 4).setValue(newHash); // Update Hash
-            sheet.getRange(rowIndex, 5).setValue(newSalt); // Update Salt
-            passwordToSync = oldPlainTextPass; // Kirim plain text ini ke App 2 agar sama
-            Logger.log(`Migrasi runtime password untuk ${newEmail}`);
+            sheet.getRange(rowIndex, 4).setValue(newHash); 
+            sheet.getRange(rowIndex, 5).setValue(newSalt); 
+            passwordToSync = oldPlainTextPass; 
           }
         }
-        // Jika oldSalt sudah ada, passwordToSync tetap null (tidak ada perubahan)
-        // --- [AKHIR MODIFIKASI] ---
       }
 
-      // Sinkronisasi ke App 2
       if (originalEmail.toLowerCase() !== newEmail.toLowerCase()) {
         deleteGuruFromApp2(originalEmail);
       }
-      addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru', nip);
+      // [MODIFIKASI] Kirim spreadsheetID (App 1) juga
+      addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru', nip, guruData.mapelKelas, app2DbId, spreadsheetID);
     }
 
     return { status: "sukses", message: "Data guru berhasil disimpan.", newData: newGuruData };
@@ -7432,77 +7423,57 @@ function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword)
   }
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
-
 /**
- * [MODIFIKASI] Helper: Menambah/Memperbarui guru di db_guru global (Aplikasi 2)
- * Sekarang menyimpan HASH, SALT, dan NIP.
+ * [MODIFIKASI] Helper: 
+ * 1. Update Akun di DB GLOBAL
+ * 2. Update Mapel di DB LOKAL SEKOLAH (dengan membaca status isUS/isUP dari App 1)
  */
-function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip) { // <-- TAMBAHKAN 'nip'
+function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip, mapelKelasData, app2DbId, app1DbId) { // <-- Tambah app1DbId
   try {
-    const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
-    const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
-    if (!sheetGuru_app2) throw new Error("db_guru global tidak ditemukan.");
+    // A. UPDATE DB GLOBAL (Untuk Login)
+    const ss_global = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
+    const sheetGuru_global = ss_global.getSheetByName('db_guru');
     
-    const data = sheetGuru_app2.getDataRange().getValues();
+    const data = sheetGuru_global.getDataRange().getValues();
     const emailLower = email.toLowerCase();
     let foundRowIndex = -1;
 
-    // Cari baris berdasarkan email
     for (let i = 1; i < data.length; i++) {
       if (data[i][0].toLowerCase() === emailLower) {
-        foundRowIndex = i + 1; // 1-based index
+        foundRowIndex = i + 1; 
         break;
       }
     }
     
-    // --- PERUBAHAN LOGIKA PENYIMPANAN ---
-    // Selalu buat hash baru. Jika password tidak berubah, hash-nya akan sama.
-    // Jika password di-reset (misal admin lupa), hash-nya akan jadi baru.
-    // Jika plainPassword kosong (misal edit nama saja), kita harus ambil hash lama.
-    
     let hashToSave, saltToSave;
 
     if (plainPassword) {
-      // Jika password DIKIRIM (saat tambah baru atau reset)
       saltToSave = generateSalt();
       hashToSave = hashPassword(plainPassword, saltToSave);
     } else if (foundRowIndex > -1) {
-      // Jika password TIDAK dikirim (edit nama) DAN guru sudah ada
-      // Ambil hash & salt LAMA agar tidak terhapus
-      hashToSave = data[foundRowIndex - 1][1]; // Kolom B
-      saltToSave = data[foundRowIndex - 1][5]; // Kolom F
+      hashToSave = data[foundRowIndex - 1][1]; 
+      saltToSave = data[foundRowIndex - 1][5]; 
     } else {
-      // Skenario aneh: tambah baru tanpa password. Buat password dummy.
-      Logger.log(`Peringatan: addOrUpdateGuruInApp2 dipanggil untuk ${email} tanpa password. Membuat hash dummy.`);
       saltToSave = generateSalt();
       hashToSave = hashPassword("PasswordDefault123!", saltToSave);
     }
 
-    // [MODIFIKASI] Siapkan data baris (7 kolom: A-G)
-    const rowData = [
-      email,
-      hashToSave,            // Kolom B (HashedPassword)
-      nama,                 // Kolom C (Nama)
-      sekolahID,          // Kolom D (id_sekolah)
-      role,                 // Kolom E (role)
-      saltToSave,           // Kolom F (Salt)
-      nip || ""             // <-- TAMBAHKAN NIP (Kolom G)
-    ];
-    // --- AKHIR PERUBAHAN ---
+    const rowData = [email, hashToSave, nama, sekolahID, role, saltToSave, nip || ""];
 
     if (foundRowIndex > -1) {
-      // Ditemukan -> Update baris yang ada (Kolom A-G)
-      sheetGuru_app2.getRange(foundRowIndex, 1, 1, 7).setValues([rowData]); // <-- UBAH KE 7
-      Logger.log(`Sinkronisasi Update (App 2): Guru ${emailLower} diperbarui.`);
+      sheetGuru_global.getRange(foundRowIndex, 1, 1, 7).setValues([rowData]); 
     } else {
-      // Tidak ditemukan -> Tambah baris baru
-      sheetGuru_app2.appendRow(rowData); // appendRow akan otomatis menangani 7 kolom
-      Logger.log(`Sinkronisasi Tambah (App 2): Guru ${emailLower} ditambahkan.`);
+      sheetGuru_global.appendRow(rowData); 
     }
+
+    // B. UPDATE DB LOKAL SEKOLAH (Untuk Mapel & Kelas)
+    if (mapelKelasData && app2DbId && app1DbId) {
+       // [MODIFIKASI] Kirim app1DbId untuk lookup isUS/isUP
+       _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId);
+    }
+
   } catch (e) {
-    // Catat error tapi jangan gagalkan operasi utama
-    Logger.log(`Peringatan: Gagal sinkronisasi 'addOrUpdateGuruInApp2' (App 2) untuk ${email}: ${e.message}`);
+    Logger.log(`Peringatan: Gagal sinkronisasi 'addOrUpdateGuruInApp2' untuk ${email}: ${e.message}`);
   }
 }
 
@@ -9169,5 +9140,125 @@ function formatNamaGelar(namaLengkap) {
     return nama.toUpperCase() + ', ' + properCaseGelar(gelar);
   } else {
     return nama.toUpperCase();
+  }
+}
+
+/**
+ * [BARU] Mencari ID Tahun Ajaran Terbaru (paling besar secara deskripsi) dari DB LOKAL.
+ */
+function _getLatestTahunAjaranId(ss_local) {
+  try {
+    const sheet = getTahunAjaranSheet(ss_local); // Baca dari SS Lokal
+    if (sheet.getLastRow() <= 1) return null;
+
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues(); // Ambil ID dan Deskripsi
+    
+    // Urutkan Descending berdasarkan Deskripsi (Misal: 2024/2025 > 2023/2024)
+    // Kita asumsikan format deskripsi konsisten (YYYY/YYYY)
+    data.sort((a, b) => b[1].localeCompare(a[1]));
+    
+    // Ambil ID dari yang paling atas (Terbaru)
+    const latestId = data[0][0];
+    Logger.log(`Tahun Ajaran Terbaru ditemukan: ${data[0][1]} (${latestId})`);
+    return latestId; 
+
+  } catch (e) {
+    Logger.log("Gagal mendapatkan T.A. terbaru: " + e.message);
+    return null;
+  }
+}
+
+/**
+ * [BARU - FIX isUS/isUP] Menyinkronkan Mapel & Kelas Guru ke db_mapel di DB LOKAL SEKOLAH.
+ * Membaca status Ujian/Praktek dari DB Aplikasi 1 agar sinkron.
+ */
+function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
+  try {
+    // 1. Buka DB Lokal Sekolah (App 2)
+    const ss_local = SpreadsheetApp.openById(app2DbId);
+    
+    // 2. Cari T.A. Terbaru di DB Lokal ini
+    const latestTA = _getLatestTahunAjaranId(ss_local);
+    if (!latestTA) {
+      Logger.log("Sinkronisasi Mapel Gagal: Tidak ada Tahun Ajaran di Database Sekolah.");
+      return;
+    }
+
+    // --- [PERBAIKAN UTAMA] BACA MASTER MAPEL DARI APP 1 ---
+    // Tujuannya: Mendapatkan status isUS dan isUP yang benar
+    const ss_app1 = SpreadsheetApp.openById(app1DbId);
+    const sheetMapelMaster = getMapelSheet(ss_app1); // Helper bawaan App 1
+    const dataMaster = sheetMapelMaster.getDataRange().getValues();
+    
+    // Buat Peta: MapelID -> { isUS, isUP }
+    const masterMapelInfo = {};
+    for (let i = 1; i < dataMaster.length; i++) {
+       // Kolom A=ID, B=Nama, C=isUS, D=isUP
+       const mId = dataMaster[i][0];
+       const mUS = dataMaster[i][2] === true;
+       const mUP = dataMaster[i][3] === true;
+       masterMapelInfo[mId] = { isUS: mUS, isUP: mUP };
+    }
+    // --- [AKHIR PERBAIKAN] ---
+
+    const sheetMapel = getMapelSheet_App2(ss_local); 
+    const dataMapel = sheetMapel.getDataRange().getValues();
+    
+    const emailLower = email.toLowerCase();
+    const rowsToKeep = [];
+    
+    // 3. Ambil data lama (Headers & data guru lain/TA lain)
+    if (dataMapel.length > 0) rowsToKeep.push(dataMapel[0]);
+    else rowsToKeep.push(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json", "isUS", "isUP"]);
+
+    // 4. Simpan Singkatan Lama (opsional, agar singkatan custom tidak hilang)
+    const existingAbbreviations = new Map();
+
+    for (let i = 1; i < dataMapel.length; i++) {
+      const row = dataMapel[i];
+      const rowEmail = String(row[0]).toLowerCase();
+      const rowTA = String(row[2]);
+      
+      // Jika baris ini milik guru ini DAN di T.A. terbaru, kita akan TIMPA (jangan simpan barisnya)
+      // Tapi kita simpan singkatannya kalau ada
+      if (rowEmail === emailLower && rowTA === latestTA) {
+         const mapelId = row[1];
+         if (row[3]) existingAbbreviations.set(mapelId, row[3]);
+      } else {
+         // Baris guru lain atau T.A. lain tetap disimpan
+         rowsToKeep.push(row);
+      }
+    }
+
+    // 5. Buat Baris Baru dari mapelKelasData
+    for (const [mapelId, kelasList] of Object.entries(mapelKelasData)) {
+       const kelasJson = JSON.stringify(kelasList);
+       
+       // Ambil singkatan lama atau default ke ID
+       const singkatan = existingAbbreviations.get(mapelId) || mapelId;
+       
+       // [FIX] Ambil status isUS/isUP dari Master App 1
+       // Jika tidak ada di master, default ke false
+       const info = masterMapelInfo[mapelId] || { isUS: false, isUP: false };
+
+       rowsToKeep.push([
+         email,       // A: email_guru
+         mapelId,     // B: mapel
+         latestTA,    // C: id_tahun_ajaran
+         singkatan,   // D: singkatan
+         kelasJson,   // E: kelas_json
+         info.isUS,   // F: isUS (TRUE/FALSE dari App 1)
+         info.isUP    // G: isUP (TRUE/FALSE dari App 1)
+       ]);
+    }
+
+    // 6. Tulis Ulang Sheet db_mapel di DB Lokal
+    sheetMapel.clearContents();
+    sheetMapel.getRange(1, 1, rowsToKeep.length, 7).setValues(rowsToKeep);
+    
+    Logger.log(`Sukses sinkronisasi mapel guru ${email} ke T.A. ${latestTA} di DB Lokal dengan status US/UP yang benar.`);
+
+  } catch (e) {
+    Logger.log(`Gagal _syncGuruMapelToLocalApp2: ${e.message}`);
   }
 }
