@@ -6525,6 +6525,17 @@ function hapusSemuaDataSiswaDanNilai(token) {
     const session = validateAdminSession(token);
     spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
+
+    // === TAMBAHAN: JALANKAN PENGARSIPAN OTOMATIS ===
+    try {
+       // Ini akan mengirim data ke Spreadsheet Arsip (App 3)
+       processArchivingToApp3(token); 
+    } catch (archiveError) {
+       // Opsional: Lempar error jika arsip gagal agar data tidak terhapus
+       // Atau log saja jika ingin tetap lanjut hapus
+       throw new Error("Gagal mengarsipkan data: " + archiveError.message + ". Data BELUM dihapus.");
+    }
+    // === AKHIR TAMBAHAN ===
     
     const ss = SpreadsheetApp.openById(spreadsheetID);
     
@@ -9305,4 +9316,128 @@ function saveGuruActiveTA(token, emailGuru, taId) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * [BARU] Membuat/Mendapatkan ID Database Arsip untuk sekolah.
+ * Jika belum ada, buat baru dan simpan ID-nya ke Master Sheet Kolom V.
+ */
+function getOrCreateArsipDB(token) {
+  const { sessionData } = validateAdminSession(token);
+  const sekolahID = sessionData.sekolahID;
+  const namaSekolah = sessionData.namaSekolah;
+  
+  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+  const data = sheetSekolah.getDataRange().getValues();
+  
+  let targetRowIndex = -1;
+  let arsipDbId = null;
+  let mainFolderId = null;
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] == sekolahID) {
+      targetRowIndex = i + 1;
+      arsipDbId = data[i][21]; // Kolom V (Index 21)
+      mainFolderId = data[i][13]; // Kolom N (Folder Sekolah)
+      break;
+    }
+  }
+
+  if (arsipDbId) return arsipDbId; // Sudah ada
+
+  // Jika belum ada, buat baru
+  if (!mainFolderId) mainFolderId = TARGET_FOLDER_ID; // Fallback
+  const folder = DriveApp.getFolderById(mainFolderId);
+  
+  const newSS = SpreadsheetApp.create(`ARSIP NILAI - ${namaSekolah}`);
+  arsipDbId = newSS.getId();
+  
+  // Pindahkan file ke folder sekolah
+  const file = DriveApp.getFileById(arsipDbId);
+  folder.addFile(file);
+  DriveApp.getRootFolder().removeFile(file);
+  
+  // Buat Sheet Template di Arsip
+  const sheet = newSS.getSheets()[0];
+  sheet.setName('Log_Arsip');
+  sheet.appendRow(['Timestamp_Arsip', 'Tahun_Ajaran', 'Jumlah_Siswa']);
+  
+  // Simpan ID ke Master Sheet
+  sheetSekolah.getRange(targetRowIndex, 22).setValue(arsipDbId); // Kolom V
+  
+  return arsipDbId;
+}
+
+function processArchivingToApp3(token) {
+  const { sessionData } = validateAdminSession(token); 
+  const arsipId = getOrCreateArsipDB(token);
+  const ssArsip = SpreadsheetApp.openById(arsipId);
+  
+  // 1. Hitung Ulang & Ambil Data
+  recalculateIjazahData(token); 
+  const ijazahResponse = getNilaiIjazahData(token);
+  
+  if (ijazahResponse.status !== 'sukses') throw new Error(ijazahResponse.message);
+  
+  const { siswaList, mapelList, dataIjazah, dataUjianOriginal, dataRaporOriginal, kkm } = ijazahResponse.data;
+  if (!siswaList || siswaList.length === 0) return;
+
+  // 2. Tentukan Nama Sheet (Tahun Ajaran)
+  const app2Id = getApp2DatabaseId(token);
+  const taData = SpreadsheetApp.openById(app2Id).getSheetByName('db_tahun_ajaran').getDataRange().getValues();
+  let latestTA = taData.length > 1 ? taData[taData.length - 1][1] : "Tahun_Ajaran";
+  
+  const sheetName = `Arsip ${latestTA.replace('/', '-')}`;
+  let targetSheet = ssArsip.getSheetByName(sheetName);
+  if (targetSheet) targetSheet.clear();
+  else targetSheet = ssArsip.insertSheet(sheetName);
+  
+  // 3. SUSUN HEADER DENGAN URUTAN YANG BENAR
+  const headers = ['No', 'Nama Siswa', 'NISN', 'Kelas'];
+  
+  mapelList.forEach(m => {
+    headers.push(`${m.id}_Ujian`);
+    headers.push(`${m.id}_Rapor`);
+    headers.push(`${m.id}_Ijazah`);
+  });
+  
+  // KOLOM JUMLAH & RATA-RATA
+  headers.push('Jumlah_Ujian', 'Jumlah_Rapor', 'Jumlah_Ijazah');
+  headers.push('Rata_Ujian', 'Rata_Rapor', 'Rata_Ijazah');
+  headers.push('Status');
+  
+  const rowsToSave = [headers];
+  const kkmValue = kkm || 75;
+
+  // 4. ISI DATA
+  siswaList.forEach((siswa, index) => {
+    const row = [index + 1, siswa.nama, "'" + (siswa.nisn||'-'), siswa.kelas];
+    let sumU=0, cU=0, sumR=0, cR=0, sumI=0, cI=0;
+    
+    mapelList.forEach(mapelId => {
+      const key = `${siswa.id}_${mapelId.id}`;
+      const vU = dataUjianOriginal[key];
+      const vR = dataRaporOriginal[key];
+      const vI = dataIjazah[key];
+      
+      if(vU!=null){ row.push(vU); sumU+=Number(vU); cU++; } else row.push("");
+      if(vR!=null){ row.push(vR); sumR+=Number(vR); cR++; } else row.push("");
+      if(vI!=null){ const bI=Math.round(vI); row.push(bI); sumI+=bI; cI++; } else row.push("");
+    });
+    
+    // Push Jumlah
+    row.push(sumU||""); row.push(sumR||""); row.push(sumI||"");
+    // Push Rata
+    const avgI = cI>0 ? (sumI/cI).toFixed(2) : "0";
+    row.push(cU>0?(sumU/cU).toFixed(2):""); row.push(cR>0?(sumR/cR).toFixed(2):""); row.push(avgI);
+    // Push Status
+    row.push(parseFloat(avgI) >= kkmValue ? "LULUS" : "TIDAK LULUS");
+    
+    rowsToSave.push(row);
+  });
+  
+  targetSheet.getRange(1, 1, rowsToSave.length, headers.length).setValues(rowsToSave);
+  // Formatting Header Gelap
+  targetSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#212529').setFontColor('#ffffff');
 }
