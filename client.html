@@ -3399,55 +3399,60 @@
           return;
       }
 
-      showToast("Login berhasil. Mengalihkan...", 'sukses', 3000);
-
-      // --- PERBAIKAN UTAMA DI SINI ---
+      // --- [MODIFIKASI: BUKA TAB BARU & DISABLE TOMBOL] ---
       
-      // 1. Siapkan fungsi pembatal timer
-      // Ini akan dipanggil jika browser berhasil mulai memuat halaman baru
-      const cancelFallback = () => {
-          if (window.redirectTimer) {
-              clearTimeout(window.redirectTimer);
-              console.log("Redirect berhasil dimulai, timer fallback dibatalkan.");
+      // 1. Beri notifikasi visual
+      showToast("Login berhasil! Membuka Dashboard...", 'sukses', 3000);
+
+      // 2. Siapkan Tombol Login sebagai akses manual (jika popup diblokir)
+      const loginBtn = document.getElementById('btn-login-guru');
+      
+      // Fungsi untuk mematikan tombol setelah berhasil dibuka
+      const disableButtonAfterOpen = () => {
+          if (loginBtn) {
+              loginBtn.innerHTML = '<i class="fas fa-check-circle"></i> Dashboard Terbuka di Tab Baru';
+              loginBtn.disabled = true; // KUNCI: Matikan tombol agar tidak bisa diklik lagi
+              loginBtn.style.backgroundColor = '#6c757d'; // Ubah warna jadi abu-abu
+              loginBtn.style.borderColor = '#6c757d';
+              loginBtn.style.cursor = 'default';
+              loginBtn.title = "Sesi telah aktif di tab baru";
           }
       };
 
-      // 2. Pasang pendengar event (listener)
-      // 'beforeunload' memicu saat halaman mulai ditinggalkan
-      window.addEventListener('beforeunload', cancelFallback);
-      window.addEventListener('pagehide', cancelFallback);
-
-      // 3. Lakukan pengalihan SEGERA
-      window.top.location.href = targetUrl;
-
-      // 4. Timer Fallback (Diperpanjang ke 10 detik)
-      // Hanya jalan jika dalam 10 detik halaman masih belum 'unload' (macet/koneksi putus)
-      window.redirectTimer = setTimeout(() => {
-         const loginBtn = document.getElementById('btn-login-guru');
-         const errorP = document.getElementById('login-guru-error');
+      if (loginBtn) {
+         resetButtonLoading(loginBtn);
          
-         // Pastikan elemen masih ada di DOM
-         if (loginBtn) {
-             // Ubah tombol menjadi tombol manual
-             loginBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> KLIK DI SINI';
-             loginBtn.style.backgroundColor = '#198754'; // Hijau
-             loginBtn.disabled = false; 
-             loginBtn.type = 'button';  
-             
-             // Hapus event listener lama (jika ada) dan pasang baru
-             loginBtn.onclick = function(e) {
-                 e.preventDefault();
-                 window.open(targetUrl, "_top");
-             };
-             
-             if (errorP) {
-                 errorP.innerHTML = `Jika tidak dialihkan otomatis, silakan klik tombol di atas.`;
-                 errorP.style.display = 'block';
-                 errorP.className = 'message'; 
-                 errorP.style.color = '#0d6efd';
-             }
-         }
-      }, 10000); // Ubah ke 10000 ms (10 detik)
+         // Tampilan awal tombol manual (Hijau)
+         loginBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> BUKA DASHBOARD (KLIK DISINI)';
+         loginBtn.style.backgroundColor = '#198754'; // Hijau
+         loginBtn.style.borderColor = '#198754';
+         loginBtn.disabled = false; 
+         loginBtn.type = 'button';  
+         
+         // Event listener untuk klik manual
+         loginBtn.onclick = function(e) {
+             e.preventDefault();
+             e.stopPropagation();
+             window.open(targetUrl, "_blank"); // Buka tab baru
+             disableButtonAfterOpen(); // Langsung matikan tombol setelah diklik
+         };
+      }
+
+      // 3. Coba Buka Tab Baru Secara Otomatis
+      try {
+        const newWindow = window.open(targetUrl, "_blank");
+        
+        if (!newWindow || newWindow.closed || typeof newWindow.closed == 'undefined') {
+            // Jika DIBLOKIR browser: Biarkan tombol hijau tetap aktif untuk diklik manual
+            showToast("Pop-up diblokir. Silakan klik tombol hijau di bawah.", 'gagal', 5000);
+        } else {
+             // Jika BERHASIL terbuka otomatis: Matikan tombol segera
+             disableButtonAfterOpen();
+        }
+      } catch (e) {
+        console.error("Gagal membuka tab otomatis:", e);
+      }
+      // --- [AKHIR MODIFIKASI] ---
 
     } else {
       // Logika 'gagal' tetap sama
