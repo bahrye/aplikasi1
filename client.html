@@ -81,6 +81,8 @@
     }
   };
 
+  const URL_WEB_APP_APLIKASI_3 = "https://script.google.com/macros/s/AKfycbyxn8gYIZuiH0EsssSCwx7yCCZLzaJydnjHLIOUxoPGz2Sx7v312_oJ-6ZHkv01qU-3bA/exec";
+
   let jenjangBaseCache = '';
   let jenjangPilihanCache = '';
   const LAST_PAGE_KEY = 'lastVisitedPageId';
@@ -645,7 +647,8 @@
       'halaman-login', 
       'halaman-registrasi',
       'halaman-login-siswa',
-      'halaman-login-guru' // <-- Pastikan ini ada
+      'halaman-login-guru',
+      'halaman-login-arsip' // <-- TAMBAHKAN INI
     ];
 
     allPages.forEach(id => {
@@ -1087,6 +1090,30 @@
     document.getElementById('tab-btn-siswa').addEventListener('click', () => activateAuthTab('siswa'));
 
     document.getElementById('tab-btn-guru').addEventListener('click', () => activateAuthTab('guru'));
+
+    // --- TAMBAHAN BARU ---
+    document.getElementById('tab-btn-arsip').addEventListener('click', () => activateAuthTab('arsip'));
+
+    document.getElementById('btn-buka-arsip').addEventListener('click', () => {
+        const npsnInput = document.getElementById('login-arsip-npsn');
+        const npsn = npsnInput.value.trim();
+        const errorMsg = document.getElementById('login-arsip-error');
+        
+        errorMsg.style.display = 'none';
+        
+        if (!npsn) {
+            errorMsg.innerText = "Silakan masukkan NPSN terlebih dahulu.";
+            errorMsg.style.display = 'block';
+            npsnInput.focus();
+            return;
+        }
+        
+        // --- PERBAIKAN DI SINI ---
+        // Kirim NPSN sebagai parameter di URL (contoh: .../exec?npsn=123456)
+        const targetUrl = `${URL_WEB_APP_APLIKASI_3}?npsn=${encodeURIComponent(npsn)}`;
+        window.open(targetUrl, '_blank');
+        // --- AKHIR PERBAIKAN ---
+    });
 
     document.getElementById('login-guru-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -8996,7 +9023,8 @@
     }
     hideMessage('login-error');
     hideMessage('login-siswa-error');
-    hideMessage('login-guru-error'); // Tambahkan ini
+    hideMessage('login-guru-error');
+    hideMessage('login-arsip-error');
   }
 
   function bukaHalamanKelolaKelulusan() {
