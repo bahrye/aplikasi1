@@ -7826,8 +7826,6 @@ function _getImageAsBase64DataUrl(fileId) {
   }
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
-
 function getPengaturanCetak(token) {
   try {
     const { sessionData } = validateAdminSession(token);
@@ -7835,24 +7833,13 @@ function getPengaturanCetak(token) {
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const data = sheetSekolah.getDataRange().getValues();
 
-    // --- [MODIFIKASI] Ambil Konfigurasi Default ---
-    const config = getMasterConfig();
-    // --- [AKHIR MODIFIKASI] ---
-
     let pengaturan = {
       tanggalCetak: "",
       kopSuratFileId: null,
       kopSuratUrl: null, 
       tempatTTD: "",
-      tanggalTtdMode: "otomatis",
-      // --- [MODIFIKASI] Tambahkan field baru ---
-      templateDocID: config.DEFAULT_TEMPLATE_DOC_ID || "",
-      templateRekapID: config.DEFAULT_TEMPLATE_REKAP_ID || "",
-      defaultTemplateDocID: config.DEFAULT_TEMPLATE_DOC_ID || "",
-      defaultTemplateRekapID: config.DEFAULT_TEMPLATE_REKAP_ID || "",
-      exampleLinkDoc: config.EXAMPLE_LINK_TEMPLATE_DOC || "#",
-      exampleLinkRekap: config.EXAMPLE_LINK_TEMPLATE_REKAP || "#"
-      // --- [AKHIR MODIFIKASI] ---
+      tanggalTtdMode: "otomatis"
+      // [DIHAPUS] templateDocID, dll.
     };
 
     // Cari baris sekolah
@@ -7867,10 +7854,7 @@ function getPengaturanCetak(token) {
         pengaturan.tempatTTD = data[i][19] || ""; // Kolom T
         pengaturan.tanggalTtdMode = data[i][20] || "otomatis"; // Kolom U
 
-        // --- [MODIFIKASI] Baca ID Template Kustom ---
-        pengaturan.templateDocID = data[i][17] || config.DEFAULT_TEMPLATE_DOC_ID || ""; // Kolom R
-        pengaturan.templateRekapID = data[i][18] || config.DEFAULT_TEMPLATE_REKAP_ID || ""; // Kolom S
-        // --- [AKHIR MODIFIKASI] ---
+        // [DIHAPUS] Pembacaan Kolom R dan S
 
         const fileId = data[i][15]; // Kolom P
         if (fileId) {
@@ -7890,9 +7874,7 @@ function getPengaturanCetak(token) {
   }
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
-
-function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode, templateDocID, templateRekapID) {
+function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTtdMode) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
@@ -7913,20 +7895,14 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const data = sheetSekolah.getDataRange().getValues();
 
-    // --- [MODIFIKASI] Ambil Konfigurasi Default ---
-    const config = getMasterConfig();
-    // --- [AKHIR MODIFIKASI] ---
-
     let rowToUpdate = -1;
     let mainFolderId = null;
     let oldFileId = null;
-    let donasiStatus = "NONE"; // <-- [BARU]
 
     // 1. Cari baris dan data folder
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sessionData.sekolahID) {
         rowToUpdate = i + 1;
-        donasiStatus = data[i][8] || "NONE"; // Kolom I <-- [BARU]
         mainFolderId = data[i][13]; // Kolom N
         oldFileId = data[i][15];   // Kolom P
         break;
@@ -7963,17 +7939,7 @@ function savePengaturanCetak(token, tanggalCetak, fileData, tempatTTD, tanggalTt
     // 3. Update Sheet_Sekolah
     const formattedDate = (tanggalTtdMode === 'manual' && tanggalCetak) ? new Date(tanggalCetak) : null;
     
-    // --- [MODIFIKASI] Validasi Status Donasi ---
-    if (donasiStatus === "APPROVED") {
-      // Premium: Simpan ID kustom (atau default jika dikosongkan)
-      sheetSekolah.getRange(rowToUpdate, 18).setValue(templateDocID || config.DEFAULT_TEMPLATE_DOC_ID);     // Kolom R (TemplateDocID)
-      sheetSekolah.getRange(rowToUpdate, 19).setValue(templateRekapID || config.DEFAULT_TEMPLATE_REKAP_ID); // Kolom S (TemplateRekapID)
-    } else {
-      // Non-Premium: Paksa simpan ID default, abaikan input user
-      sheetSekolah.getRange(rowToUpdate, 18).setValue(config.DEFAULT_TEMPLATE_DOC_ID);
-      sheetSekolah.getRange(rowToUpdate, 19).setValue(config.DEFAULT_TEMPLATE_REKAP_ID);
-    }
-    // --- [AKHIR MODIFIKASI] ---
+    // [DIHAPUS] Logika penyimpanan ke Kolom R dan S
     
     sheetSekolah.getRange(rowToUpdate, 16).setValue(newFileId);     // Kolom P (KopSuratFileID)
     sheetSekolah.getRange(rowToUpdate, 17).setValue(formattedDate); // Kolom Q (TanggalCetak)
