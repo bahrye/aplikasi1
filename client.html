@@ -13426,8 +13426,16 @@
     setLoading(false);
     if (response.status === 'sukses') {
       showToast(response.message, 'sukses');
-      setIjazahDirty(true); // <--- BARIS PENTING
-      bukaHalamanKelolaNilaiGuru(); // Refresh list
+      setIjazahDirty(true); 
+      
+      // --- [TAMBAHAN] Invalidasi Cache Input Nilai Ujian ---
+      // Kita kosongkan cache klien agar saat Admin kembali ke menu 
+      // "Input Nilai Ujian", aplikasi dipaksa mengambil data terbaru dari server.
+      globalNilaiGridCacheUM = null;
+      globalNilaiGridCachePraktek = null;
+      // --- [AKHIR TAMBAHAN] ---
+
+      bukaHalamanKelolaNilaiGuru(); // Refresh list di halaman Kelola Guru
     } else {
       onGagal(response);
     }
