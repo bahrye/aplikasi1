@@ -27,6 +27,7 @@
         <button id="tab-btn-admin" class="tab-link active" data-tab="admin">Login Admin</button>
         <button id="tab-btn-guru" class="tab-link" data-tab="guru">Login Guru</button>
         <button id="tab-btn-siswa" class="tab-link" data-tab="siswa">Cek Kelulusan</button>
+        <button id="tab-btn-arsip" class="tab-link" data-tab="arsip">Arsip Nilai</button>
       </div>
 
       <div id="halaman-login" class="page auth-tab-content active" data-content="admin">
@@ -74,6 +75,22 @@
         </form>
         <button id="btn-cek-kelulusan"><i class="fas fa-search"></i>Cek Status Kelulusan</button>
         <p id="login-siswa-error" class="message error"></p>
+      </div>
+
+      <div id="halaman-login-arsip" class="page auth-tab-content" style="display: none;" data-content="arsip">
+        <div class="text-center mb-3">
+          <i class="fas fa-archive" style="font-size: 48px; color: #6c757d;"></i>
+          <p class="text-muted mt-2">Akses Arsip Data Sekolah</p>
+        </div>
+        <form id="login-arsip-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="login-arsip-npsn">NPSN Sekolah</label>
+            <input type="text" id="login-arsip-npsn" placeholder="Masukkan NPSN" inputmode="numeric">
+            <small class="helper-text">Masukkan NPSN untuk membuka Aplikasi Arsip.</small>
+          </div>
+        </form>
+        <button id="btn-buka-arsip" style="background-color: #6c757d;"><i class="fas fa-external-link-alt"></i> Buka Aplikasi Arsip</button>
+        <p id="login-arsip-error" class="message error"></p>
       </div>
 
       <div id="halaman-registrasi" class="page" style="display: none;">
