@@ -9437,3 +9437,49 @@ function processArchivingToApp3(token) {
   // Formatting Header Gelap
   targetSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#212529').setFontColor('#ffffff');
 }
+
+/**
+ * [BARU] Memvalidasi NPSN untuk akses Arsip.
+ * Dipanggil oleh Client App 1 sebelum membuka tab baru.
+ */
+function cekValiditasNpsnArsip(npsn) {
+  try {
+    if (!npsn) return { valid: false, message: "NPSN tidak boleh kosong." };
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    
+    // Ambil data Kolom H (NPSN - Index 7) dan Kolom V (Arsip_DB_ID - Index 21)
+    // Kita ambil range secukupnya agar efisien
+    const data = sheetSekolah.getDataRange().getValues();
+    
+    let found = false;
+    let hasArsip = false;
+
+    // Loop mulai baris ke-2 (indeks 1)
+    for (let i = 1; i < data.length; i++) {
+      // Pastikan perbandingan string agar aman
+      if (String(data[i][7]).trim() === String(npsn).trim()) {
+        found = true;
+        // Cek apakah kolom V (Arsip DB ID) ada isinya
+        if (data[i][21]) {
+          hasArsip = true;
+        }
+        break;
+      }
+    }
+
+    if (!found) {
+      return { valid: false, message: "NPSN tidak ditemukan dalam database." };
+    }
+    
+    if (!hasArsip) {
+      return { valid: false, message: "Sekolah ini belum memiliki Arsip Nilai (Belum pernah tutup tahun ajaran)." };
+    }
+
+    return { valid: true };
+
+  } catch (e) {
+    return { valid: false, message: "Terjadi kesalahan server: " + e.message };
+  }
+}
