@@ -9107,8 +9107,9 @@ function _getLatestTahunAjaranId(ss_local) {
 }
 
 /**
- * [BARU - FIX isUS/isUP] Menyinkronkan Mapel & Kelas Guru ke db_mapel di DB LOKAL SEKOLAH.
- * Membaca status Ujian/Praktek dari DB Aplikasi 1 agar sinkron.
+ * [BARU - FIX isUS/isUP & NAMA MAPEL] 
+ * Menyinkronkan Mapel & Kelas Guru ke db_mapel di DB LOKAL SEKOLAH.
+ * Membaca status Ujian/Praktek DAN Nama Panjang dari DB Aplikasi 1.
  */
 function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
   try {
@@ -9123,19 +9124,23 @@ function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
     }
 
     // --- [PERBAIKAN UTAMA] BACA MASTER MAPEL DARI APP 1 ---
-    // Tujuannya: Mendapatkan status isUS dan isUP yang benar
+    // Tujuannya: Mendapatkan status isUS/isUP DAN NAMA MAPEL yang benar
     const ss_app1 = SpreadsheetApp.openById(app1DbId);
     const sheetMapelMaster = getMapelSheet(ss_app1); // Helper bawaan App 1
     const dataMaster = sheetMapelMaster.getDataRange().getValues();
     
-    // Buat Peta: MapelID -> { isUS, isUP }
+    // Buat Peta: MapelID -> { isUS, isUP, nama }
     const masterMapelInfo = {};
+    const masterMapelNames = {}; // Peta baru untuk Nama Mapel
+    
     for (let i = 1; i < dataMaster.length; i++) {
        // Kolom A=ID, B=Nama, C=isUS, D=isUP
        const mId = dataMaster[i][0];
+       const mName = dataMaster[i][1]; // Ambil Nama Panjang
        const mUS = dataMaster[i][2] === true;
        const mUP = dataMaster[i][3] === true;
        masterMapelInfo[mId] = { isUS: mUS, isUP: mUP };
+       masterMapelNames[mId] = mName; // Simpan Nama
     }
     // --- [AKHIR PERBAIKAN] ---
 
@@ -9149,52 +9154,49 @@ function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
     if (dataMapel.length > 0) rowsToKeep.push(dataMapel[0]);
     else rowsToKeep.push(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json", "isUS", "isUP"]);
 
-    // 4. Simpan Singkatan Lama (opsional, agar singkatan custom tidak hilang)
-    const existingAbbreviations = new Map();
-
     for (let i = 1; i < dataMapel.length; i++) {
       const row = dataMapel[i];
       const rowEmail = String(row[0]).toLowerCase();
       const rowTA = String(row[2]);
       
-      // Jika baris ini milik guru ini DAN di T.A. terbaru, kita akan TIMPA (jangan simpan barisnya)
-      // Tapi kita simpan singkatannya kalau ada
+      // Jika baris ini milik guru ini DAN di T.A. terbaru, kita akan TIMPA
       if (rowEmail === emailLower && rowTA === latestTA) {
-         const mapelId = row[1];
-         if (row[3]) existingAbbreviations.set(mapelId, row[3]);
+         // Skip (jangan simpan, karena akan diganti data baru)
       } else {
          // Baris guru lain atau T.A. lain tetap disimpan
          rowsToKeep.push(row);
       }
     }
 
-    // 5. Buat Baris Baru dari mapelKelasData
+    // 4. Buat Baris Baru dari mapelKelasData
     for (const [mapelId, kelasList] of Object.entries(mapelKelasData)) {
        const kelasJson = JSON.stringify(kelasList);
        
-       // Ambil singkatan lama atau default ke ID
-       const singkatan = existingAbbreviations.get(mapelId) || mapelId;
+       // [FIX] Gunakan Nama Panjang dari Master (jika ada), fallback ke ID
+       const realName = masterMapelNames[mapelId] || mapelId;
+       
+       // Gunakan ID sebagai Singkatan/Kode
+       const singkatan = mapelId; 
        
        // [FIX] Ambil status isUS/isUP dari Master App 1
-       // Jika tidak ada di master, default ke false
        const info = masterMapelInfo[mapelId] || { isUS: false, isUP: false };
 
        rowsToKeep.push([
          email,       // A: email_guru
-         mapelId,     // B: mapel
+         realName,    // B: mapel (SEKARANG NAMA PANJANG)
          latestTA,    // C: id_tahun_ajaran
-         singkatan,   // D: singkatan
+         singkatan,   // D: singkatan (SEKARANG KODE/ID)
          kelasJson,   // E: kelas_json
-         info.isUS,   // F: isUS (TRUE/FALSE dari App 1)
-         info.isUP    // G: isUP (TRUE/FALSE dari App 1)
+         info.isUS,   // F: isUS 
+         info.isUP    // G: isUP 
        ]);
     }
 
-    // 6. Tulis Ulang Sheet db_mapel di DB Lokal
+    // 5. Tulis Ulang Sheet db_mapel di DB Lokal
     sheetMapel.clearContents();
     sheetMapel.getRange(1, 1, rowsToKeep.length, 7).setValues(rowsToKeep);
     
-    Logger.log(`Sukses sinkronisasi mapel guru ${email} ke T.A. ${latestTA} di DB Lokal dengan status US/UP yang benar.`);
+    Logger.log(`Sukses sinkronisasi mapel guru ${email} ke T.A. ${latestTA}. Mapel: Nama Panjang, Singkatan: Kode.`);
 
   } catch (e) {
     Logger.log(`Gagal _syncGuruMapelToLocalApp2: ${e.message}`);
