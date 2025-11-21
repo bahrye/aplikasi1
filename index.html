@@ -1684,7 +1684,7 @@
             <i class="fas fa-hourglass-half"></i> Menunggu Persetujuan
           </button>
           <button class="tab-link" data-tab="riwayat">
-            <i class="fas fa-history"></i> Riwayat & Rekap
+            <i class="fas fa-history"></i> Riwayat & Status
           </button>
         </div>
 
@@ -1698,19 +1698,25 @@
         </div>
 
         <div id="tab-nilai-riwayat-content" class="tab-content">
-            <div class="filter-bar" style="margin-top: 15px;">
+            <div class="filter-bar" style="margin-top: 15px; align-items: flex-end;">
+              
               <div class="form-group">
                 <label for="riwayat-filter-ta">Tahun Ajaran</label>
-                <select id="riwayat-filter-ta">
+                <select id="riwayat-filter-ta" 
+                        style="padding: 13px 10px; font-size: 16px; height: auto; min-width: 150px; border: 1px solid #ccc; border-radius: 4px; background-color: #fff;">
                   <option value="">-- Memuat... --</option>
                 </select>
               </div>
-               <div class="form-group">
+
+               <div class="form-group" style="flex-grow: 1;">
                 <label for="riwayat-search">Cari Guru/Mapel</label>
-                <input type="text" id="riwayat-search" placeholder="Ketik nama guru atau mapel...">
+                <input type="text" id="riwayat-search" placeholder="Ketik nama guru atau mapel..."
+                       style="width: 100%; padding: 13px 10px; font-size: 16px; height: auto; border: 1px solid #ccc; border-radius: 4px;">
               </div>
-              <div class="form-group filter-bar-action" style="display: flex;">
-                 <button id="btn-tampilkan-riwayat" class="btn-aksi" style="background-color: var(--primary-color); width: auto; margin-top: auto;">
+
+              <div class="form-group filter-bar-action" style="display: flex; margin-bottom: 0;">
+                 <button id="btn-tampilkan-riwayat" class="btn-aksi" 
+                    style="background-color: var(--primary-color); width: auto; padding: 13px 25px; font-size: 16px; font-weight: 700;">
                    <i class="fas fa-search"></i> Tampilkan
                  </button>
               </div>
@@ -1938,48 +1944,11 @@
             <small class="helper-text">Tanggal ini akan digunakan oleh guru di Aplikasi 2.</small>
           </div>
 
-          <h3 class="form-section-header">Template Laporan Kustom</h3>
-        
-          <div class="form-group-toggle" title="Fitur Premium: Memerlukan Donasi untuk diaktifkan">
-            <label for="pengaturan-template-kustom-toggle">
-              Gunakan Template Sendiri (Premium)
-              <a href="#" id="btn-tutorial-dapat-id" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 10px; font-size: 13px;">(Cara Dapat ID?)</a>
-            </label>
-            <label class="switch">
-              <input type="checkbox" id="pengaturan-template-kustom-toggle" disabled>
-              <span class="slider round"></span>
-            </label>
-          </div>
-
-          <div id="pengaturan-template-kustom-container" style="display: none; padding-left: 10px; border-left: 3px solid var(--primary-color); margin-top: 15px;">
-
-            <div class="form-group">
-              <label for="pengaturan-template-doc-id">
-                ID Spreadsheet Template Laporan Nilai
-                <a href="#" id="btn-tutorial-template-doc" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 10px; font-size: 13px;">(Lihat Contoh & Petunjuk)</a>
-                <a href="#" id="pengaturan-reset-doc-id" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 8px; font-size: 13px; color: var(--danger-color);">(Reset ke Default)</a>
-              </label>
-              <input type="text" id="pengaturan-template-doc-id" placeholder="Masukkan ID Spreadsheet Google...">
-              <small class="helper-text">Digunakan untuk Laporan Nilai Ujian (App 2).</small>
-            </div>
-
-            <div class="form-group">
-              <label for="pengaturan-template-rekap-id">
-                ID Spreadsheet Template Rekapitulasi
-                <a href="#" id="btn-tutorial-template-rekap" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 10px; font-size: 13px;">(Lihat Contoh & Petunjuk)</a>
-                <a href="#" id="pengaturan-reset-rekap-id" class="nav-link" style="display: inline; padding: 0; margin: 0 0 0 8px; font-size: 13px; color: var(--danger-color);">(Reset ke Default)</a>
-              </label>
-              <input type="text" id="pengaturan-template-rekap-id" placeholder="Masukkan ID Spreadsheet Google...">
-              <small class="helper-text">Digunakan untuk Laporan Rekapitulasi Nilai (App 1).</small>
-            </div>
-            
-          </div>
-
           <h3 class="form-section-header">Kop Surat (Letterhead)</h3>
           <div class="form-group">
-            <label>Upload Kop Surat (Opsional)</label>
+            <label>Upload Kop Surat (Wajib Upload)</label>
             <small class="helper-text" style="margin-top: -5px; margin-bottom: 10px;">
-              Upload gambar kop surat sekolah Anda (format .PNG, .JPG, .GIF). Gambar ini akan disisipkan di bagian atas template PDF di Aplikasi 2 (jika template Anda memiliki placeholder `{{KOP_SURAT}}`).
+              Upload gambar kop surat sekolah Anda (format .PNG, .JPG, .GIF).
             </small>
 
             <div id="kop-surat-preview-container" style="display: none;">
