@@ -1204,6 +1204,22 @@
       }
     });
 
+    // Listener Modal PDF Admin
+    document.getElementById('btn-tutup-admin-pdf-modal').addEventListener('click', () => {
+        document.getElementById('admin-pdf-kelas-modal').classList.remove('show');
+    });
+    document.getElementById('btn-batal-admin-pdf').addEventListener('click', () => {
+        document.getElementById('admin-pdf-kelas-modal').classList.remove('show');
+    });
+
+    document.getElementById('btn-proses-admin-pdf').addEventListener('click', () => {
+        const key = document.getElementById('admin-pdf-key').value;
+        const kelas = document.getElementById('admin-pdf-select-kelas').value;
+        if(key && kelas) {
+            executePdfDownload(key, kelas);
+        }
+    });
+
     // --- [TAMBAHAN BARU] Event Listener Fase Capture untuk Halaman Guru ---
 
     document.getElementById('btn-buka-kelola-nilai-guru').addEventListener('click', (e) => {
@@ -13635,24 +13651,91 @@
       container.innerHTML = html;
   }
 
+  // 1. GANTI fungsi handleAdminDownloadPdf yang lama dengan yang ini:
   function handleAdminDownloadPdf(submissionKey, btnElement) {
-      setButtonLoading(btnElement, ""); // Spinner saja
-      showToast("Membuat PDF Laporan...", 'proses');
-      
+      // Simpan referensi tombol agar spinner bisa dimatikan nanti
+      const originalBtnContent = btnElement.innerHTML;
+      setButtonLoading(btnElement, ""); 
+
+      // Panggil server untuk cek daftar kelas
       google.script.run
-          .withSuccessHandler((res) => {
+          .withSuccessHandler((response) => {
               resetButtonLoading(btnElement);
-              if (res.status === 'sukses') {
-                  onDataExported(res, 'pdf'); // Reuse fungsi download yang ada
+              btnElement.innerHTML = originalBtnContent; // Balikin ikon
+
+              if (response.status === 'sukses') {
+                  const kelasList = response.kelasList;
+
+                  if (kelasList.length === 1) {
+                      // Jika cuma 1 kelas, langsung unduh
+                      executePdfDownload(submissionKey, kelasList[0]);
+                  } else if (kelasList.length > 1) {
+                      // Jika > 1 kelas, buka modal
+                      showAdminPdfModal(submissionKey, kelasList);
+                  } else {
+                      showToast("Tidak ada data siswa ditemukan untuk dicetak.", 'gagal');
+                  }
               } else {
-                  showToast(res.message, 'gagal');
+                  showToast(response.message, 'gagal');
               }
           })
           .withFailureHandler((e) => {
               resetButtonLoading(btnElement);
+              btnElement.innerHTML = originalBtnContent;
               onGagal(e);
           })
-          .generateGuruPdfAdmin(getToken(), submissionKey);
+          .getKelasForAdminPdf(getToken(), submissionKey);
+  }
+
+  // 2. FUNGSI BARU: Menampilkan Modal
+  function showAdminPdfModal(key, kelasList) {
+      const modal = document.getElementById('admin-pdf-kelas-modal');
+      const select = document.getElementById('admin-pdf-select-kelas');
+      
+      document.getElementById('admin-pdf-key').value = key;
+      document.getElementById('admin-pdf-error').style.display = 'none';
+      
+      select.innerHTML = '';
+      // Urutkan kelas
+      kelasList.sort(); 
+      kelasList.forEach(k => {
+          const opt = document.createElement('option');
+          opt.value = k;
+          opt.innerText = k;
+          select.appendChild(opt);
+      });
+
+      modal.classList.add('show');
+  }
+
+  // 3. FUNGSI BARU: Eksekusi Download (Dipanggil langsung atau dari modal)
+  function executePdfDownload(key, filterKelas) {
+      setLoading(true, "Membuat PDF Laporan...", false, true); // Tampilkan loading global
+      
+      google.script.run
+          .withSuccessHandler((res) => {
+              if (res.status === 'sukses') {
+                  onDataExported(res, 'pdf'); // Reuse fungsi download yang ada
+                  // Tutup modal jika terbuka
+                  document.getElementById('admin-pdf-kelas-modal').classList.remove('show');
+              } else {
+                  setLoading(false);
+                  // Jika modal terbuka, tampilkan error di modal
+                  const modal = document.getElementById('admin-pdf-kelas-modal');
+                  if (modal.classList.contains('show')) {
+                      const errEl = document.getElementById('admin-pdf-error');
+                      errEl.innerText = res.message;
+                      errEl.style.display = 'block';
+                  } else {
+                      showToast(res.message, 'gagal');
+                  }
+              }
+          })
+          .withFailureHandler((e) => {
+              setLoading(false);
+              onGagal(e);
+          })
+          .generateGuruPdfAdmin(getToken(), key, filterKelas); // <-- Kirim filterKelas
   }
 
   // --- FUNGSI LOGIKA MODAL SET TAHUN AJAR ---
