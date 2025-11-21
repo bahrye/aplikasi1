@@ -8218,7 +8218,7 @@ function approveTeacherScore(token, submissionKey) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); 
   
-  let app1DbId, app2DbId, sekolahID, spreadsheetID, namaSekolah; // Tambah namaSekolah
+  let app1DbId, app2DbId, sekolahID, spreadsheetID, namaSekolah; 
 
   try {
     const session = validateAdminSession(token);
@@ -8226,11 +8226,12 @@ function approveTeacherScore(token, submissionKey) {
     app2DbId = session.app2DbId;
     sekolahID = session.sekolahID;
     spreadsheetID = session.spreadsheetID;
-    namaSekolah = session.sessionData.namaSekolah; // Ambil nama sekolah
+    namaSekolah = session.sessionData.namaSekolah; 
     
     const ss_app1 = SpreadsheetApp.openById(app1DbId);
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
 
+    // 1. Validasi Status di App 2
     const statusSheetApp2 = getStatusKirimSheet(ss_app2);
     const statusDataApp2 = statusSheetApp2.getDataRange().getValues();
     
@@ -8254,6 +8255,7 @@ function approveTeacherScore(token, submissionKey) {
       throw new Error("Data pengiriman tidak ditemukan. Mungkin sudah diproses.");
     }
     
+    // 2. Ambil Info Mapel di App 1
     const sheetMapelApp1 = getMapelSheet(ss_app1);
     const dataMapelApp1 = sheetMapelApp1.getDataRange().getValues().slice(1);
     let mapelIdApp1 = null;
@@ -8268,22 +8270,50 @@ function approveTeacherScore(token, submissionKey) {
     }
     
     if (!mapelIdApp1) {
-      throw new Error(`Mata pelajaran "${nama_mapel_app2}" tidak ditemukan di 'Mapel' Aplikasi 1. Pastikan nama mapel sama persis.`);
+      throw new Error(`Mata pelajaran "${nama_mapel_app2}" tidak ditemukan di 'Mapel' Aplikasi 1.`);
     }
 
+    // 3. [PERBAIKAN UTAMA] Buat Peta NISN -> SiswaID dari App 1
+    // Kita harus mendapatkan SiswaID yang benar (misal: SIS-1) berdasarkan NISN
+    const sheetSiswaApp1 = getSiswaSheet(ss_app1);
+    const dataSiswaApp1 = sheetSiswaApp1.getDataRange().getValues().slice(1);
+    const nisnToSiswaIDMap = new Map();
+    
+    dataSiswaApp1.forEach(row => {
+      // row[0] = SiswaID, row[2] = NISN
+      if (row[2]) {
+        // Bersihkan NISN (hapus tanda petik ' jika ada)
+        const cleanNisn = String(row[2]).replace("'", "").trim();
+        nisnToSiswaIDMap.set(cleanNisn, row[0]);
+      }
+    });
+
+    // 4. Ambil Enrollment dari App 2 (Daftar Siswa yang dinilai)
     const enrollmentSheetApp2 = getEnrollmentSheet_App2(ss_app2);
     const enrollDataApp2 = enrollmentSheetApp2.getDataRange().getValues().slice(1);
-    const enrollmentMap = new Map();
+    const enrollmentList = []; // Gunakan Array, bukan Map ID Enrollment
+    
     enrollDataApp2.forEach(row => {
       if (row[3] === id_ta_app2) {
-        enrollmentMap.set(String(row[1]), row[0]);
+        // row[1] adalah Nomor Ujian (NISN) di App 2
+        const noUjianApp2 = String(row[1]).trim();
+        // Cari pasangan SiswaID yang sesuai di App 1
+        const realSiswaID = nisnToSiswaIDMap.get(noUjianApp2);
+        
+        if (realSiswaID) {
+          enrollmentList.push({
+            noUjian: noUjianApp2,
+            siswaID: realSiswaID
+          });
+        }
       }
     });
     
-    if (enrollmentMap.size === 0) {
-      throw new Error("Tidak ada siswa terdaftar (enrolled) di T.A. ini di Aplikasi 2.");
+    if (enrollmentList.length === 0) {
+      throw new Error("Tidak ada siswa yang cocok antara data Enrollment (App 2) dan Data Siswa (App 1). Periksa kesesuaian NISN/Nomor Ujian.");
     }
 
+    // 5. Ambil Nilai dari App 2
     const taSheet_App2 = getTahunAjaranSheet(ss_app2);
     const taData_App2 = taSheet_App2.getDataRange().getValues().slice(1);
     const taMap = new Map(taData_App2.map(row => [row[0], row[1]]));
@@ -8307,69 +8337,71 @@ function approveTeacherScore(token, submissionKey) {
       }
     });
     
-    // --- Modifikasi Batch Dimulai ---
-    
+    // 6. Simpan ke App 1 (Batch Update)
     const sheetNilaiApp1 = getNilaiUjianSheet(ss_app1);
     const rangeApp1 = sheetNilaiApp1.getDataRange();
-    const valuesApp1 = rangeApp1.getValues(); // Baca semua data App 1 SEKALI
+    const valuesApp1 = rangeApp1.getValues();
     
-    // Buat Peta: "SiswaID_MapelID" -> index baris 0-based
-    const nilaiApp1Map = new Map();
-    for (let i = 1; i < valuesApp1.length; i++) { // Mulai dari 1 (skip header)
+    // Peta: "SiswaID_MapelID" -> index baris 0-based
+    const nilaiApp1RowMap = new Map();
+    for (let i = 1; i < valuesApp1.length; i++) { 
       const key = `${valuesApp1[i][0]}_${valuesApp1[i][1]}`;
-      nilaiApp1Map.set(key, i); // Simpan 0-based index
+      nilaiApp1RowMap.set(key, i);
     }
     
     const rowsToAppendApp1 = [];
     let copyCount = 0;
     
-    for (const [nomor_ujian_app2, id_siswa_app1] of enrollmentMap.entries()) {
-      const scores_app2 = nilaiMapApp2.get(nomor_ujian_app2) || { ujian: null, praktek: null };
+    for (const item of enrollmentList) {
+      const scores_app2 = nilaiMapApp2.get(item.noUjian) || { ujian: null, praktek: null };
       
-      const umToSave = (mapelInfoApp1.isUS && scores_app2.ujian !== null && scores_app2.ujian !== undefined) ? scores_app2.ujian : null;
-      const upToSave = (mapelInfoApp1.isUP && scores_app2.praktek !== null && scores_app2.praktek !== undefined) ? scores_app2.praktek : null;
+      const umToSave = (mapelInfoApp1.isUS && scores_app2.ujian !== null && scores_app2.ujian !== "") ? scores_app2.ujian : null;
+      const upToSave = (mapelInfoApp1.isUP && scores_app2.praktek !== null && scores_app2.praktek !== "") ? scores_app2.praktek : null;
 
+      // Hanya simpan jika ada nilai
       if (umToSave !== null || upToSave !== null) {
         copyCount++;
         
-        const key = `${id_siswa_app1}_${mapelIdApp1}`;
-        const existingRowIndex_0based = nilaiApp1Map.get(key);
+        // Gunakan SiswaID yang benar (item.siswaID)
+        const key = `${item.siswaID}_${mapelIdApp1}`;
+        const existingRowIndex = nilaiApp1RowMap.get(key);
         
-        if (existingRowIndex_0based !== undefined) {
-          // === UPDATE ===
-          // Modifikasi array di memori
-          valuesApp1[existingRowIndex_0based][2] = umToSave; // Kolom C (UjianMadrasah)
-          valuesApp1[existingRowIndex_0based][3] = upToSave; // Kolom D (UjianPraktek)
+        if (existingRowIndex !== undefined) {
+          // UPDATE
+          if (umToSave !== null) valuesApp1[existingRowIndex][2] = umToSave; 
+          if (upToSave !== null) valuesApp1[existingRowIndex][3] = upToSave; 
         } else {
-          // === INSERT ===
-          // Kumpulkan di array baru
-          rowsToAppendApp1.push([id_siswa_app1, mapelIdApp1, umToSave, upToSave]);
-          // Tambahkan ke map agar tidak duplikat
-          nilaiApp1Map.set(key, valuesApp1.length + rowsToAppendApp1.length - 1);
+          // INSERT
+          rowsToAppendApp1.push([item.siswaID, mapelIdApp1, umToSave, upToSave]);
+          // Update map agar tidak duplikat jika ada data ganda di source (seharusnya tidak)
+          nilaiApp1RowMap.set(key, valuesApp1.length + rowsToAppendApp1.length - 1);
         }
       }
     }
 
-    // Tulis semua perubahan sekaligus
+    // Tulis ulang data yang diupdate
     rangeApp1.setValues(valuesApp1); 
     
+    // Tambahkan baris baru
     if (rowsToAppendApp1.length > 0) {
       sheetNilaiApp1.getRange(sheetNilaiApp1.getLastRow() + 1, 1, rowsToAppendApp1.length, 4)
                    .setValues(rowsToAppendApp1);
     }
-    // --- Akhir Modifikasi Batch ---
 
+    // 7. Update Status di App 2
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("APPROVED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue("");
     
+    // 8. Bersihkan Cache & Kirim Notifikasi
     clearNilaiUjianCache(sekolahID, spreadsheetID);
+    // Hapus cache rekap agar langsung terupdate di dashboard admin
+    clearRekapNilaiCache(sekolahID); 
+    
     CacheService.getScriptCache().put('IJAZAH_IS_DIRTY_' + sekolahID, 'true');
 
-    // --- [BARU] Kirim Email Notifikasi ---
     kirimNotifikasiKeGuru(email_guru, nama_mapel_app2, "APPROVED", "", namaSekolah);
-    // --- [AKHIR BARU] ---
 
-    return { status: "sukses", message: `Berhasil disetujui. ${copyCount} data nilai siswa disalin ke Nilai_Ujian.` };
+    return { status: "sukses", message: `Berhasil disetujui. ${copyCount} nilai siswa berhasil disalin.` };
 
   } catch (e) {
     Logger.log("approveTeacherScore Error: " + e.message + "\n" + e.stack);
