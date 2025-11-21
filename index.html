@@ -1785,6 +1785,30 @@
         </div>
       </div>
     </div>
+
+    <div id="admin-pdf-kelas-modal" class="modal">
+      <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+          <h2 style="margin:0; font-size:18px;">Pilih Kelas</h2>
+          <span class="close-button" id="btn-tutup-admin-pdf-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p>Mata pelajaran ini memiliki data siswa dari beberapa kelas. Silakan pilih kelas yang ingin dicetak.</p>
+          
+          <input type="hidden" id="admin-pdf-key">
+          <div class="form-group">
+            <label for="admin-pdf-select-kelas">Kelas</label>
+            <select id="admin-pdf-select-kelas" class="form-control" style="width:100%; padding:10px;">
+              </select>
+          </div>
+          <p id="admin-pdf-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-admin-pdf" style="background-color: var(--secondary-color);"><i class="fas fa-times"></i> Batal</button>
+          <button id="btn-proses-admin-pdf" style="background-color: var(--primary-color);"><i class="fas fa-print"></i> Unduh PDF</button>
+        </div>
+      </div>
+    </div>
     
     <div class="container" id="halaman-hasil-siswa" style="display: none;">
       <div class="app-header">
