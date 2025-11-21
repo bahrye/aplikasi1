@@ -1770,120 +1770,6 @@
       document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
     });
 
-    document.getElementById('pengaturan-reset-doc-id').addEventListener('click', (e) => {
-      e.preventDefault();
-      if (globalPengaturanCetakCache && globalPengaturanCetakCache.data) {
-        
-        // --- [MODIFIKASI PERBAIKAN] ---
-        const defaultId = globalPengaturanCetakCache.data.defaultTemplateDocID;
-        
-        if (defaultId) { // Cek jika defaultId ada isinya (tidak null, undefined, atau blank)
-          document.getElementById('pengaturan-template-doc-id').value = defaultId;
-          document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
-          showToast('ID Template Laporan Nilai telah direset ke default.', 'sukses', 2000);
-        } else {
-          // ID-nya KOSONG di cache. Ini adalah error dari Master_Config.
-          document.getElementById('pengaturan-template-doc-id').value = ''; // Set ke kosong (seperti yg terjadi)
-          document.getElementById('btn-simpan-pengaturan-cetak').disabled = false; // Tetap aktifkan simpan
-          // Tampilkan pesan error yang lebih spesifik
-          showToast('Reset gagal: ID Default Laporan Nilai tidak ditemukan di Master_Config.', 'gagal', 4000);
-        }
-        // --- [AKHIR MODIFIKASI] ---
-
-      } else {
-        showToast('Gagal me-reset. Data cache tidak ditemukan.', 'gagal');
-      }
-    });
-
-    document.getElementById('pengaturan-reset-rekap-id').addEventListener('click', (e) => {
-      e.preventDefault();
-      if (globalPengaturanCetakCache && globalPengaturanCetakCache.data) {
-        
-        // --- [MODIFIKASI PERBAIKAN] ---
-        const defaultId = globalPengaturanCetakCache.data.defaultTemplateRekapID;
-        
-        if (defaultId) { // Cek jika defaultId ada isinya
-          document.getElementById('pengaturan-template-rekap-id').value = defaultId;
-          document.getElementById('btn-simpan-pengaturan-cetak').disabled = false; 
-          showToast('ID Template Rekapitulasi telah direset ke default.', 'sukses', 2000);
-        } else {
-          // ID-nya KOSONG di cache.
-          document.getElementById('pengaturan-template-rekap-id').value = '';
-          document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
-          // Tampilkan pesan error yang lebih spesifik
-          showToast('Reset gagal: ID Default Rekapitulasi tidak ditemukan di Master_Config.', 'gagal', 4000);
-        }
-        // --- [AKHIR MODIFIKASI] ---
-        
-      } else {
-        showToast('Gagal me-reset. Data cache tidak ditemukan.', 'gagal');
-      }
-    });
-    // --- AKHIR TAMBAHAN BARU ---
-
-    // --- [BARU] Listener untuk Tutorial Template ---
-    document.getElementById('btn-tutorial-template-doc').addEventListener('click', (e) => {
-      e.preventDefault();
-      showTemplateTutorialModal('doc');
-    });
-    
-    document.getElementById('btn-tutorial-template-rekap').addEventListener('click', (e) => {
-      e.preventDefault();
-      showTemplateTutorialModal('rekap');
-    });
-    // --- AKHIR TAMBAHAN ---
-
-    // --- [BARU] Listener untuk Tutorial Dapat ID ---
-    document.getElementById('btn-tutorial-dapat-id').addEventListener('click', (e) => {
-      e.preventDefault();
-      
-      const title = "Cara Mendapatkan ID Spreadsheet";
-      const message = `
-        <div style="text-align: left; line-height: 1.6;">
-          <p>ID Spreadsheet adalah kode unik di dalam URL Google Sheet Anda.</p>
-          <ol style="padding-left: 20px; margin-top: 15px;">
-            <li style="margin-bottom: 10px;">Buka file Google Sheet template Anda (atau contoh dari kami).</li>
-            <li style="margin-bottom: 10px;">Lihat pada <strong>address bar (URL)</strong> browser Anda.</li>
-            <li style="margin-bottom: 10px;">URL akan terlihat seperti ini:<br>
-              <code style="font-size: 12px; background: #eee; padding: 2px 4px; border-radius: 4px;">.../spreadsheets/d/</code><strong style="color: var(--danger-color); background: #fdeeee; padding: 2px 0;">1muEmaMfisM4T...GL4NzwUS17w</strong><code style="font-size: 12px; background: #eee; padding: 2px 4px; border-radius: 4px;">/edit</code>
-            </li>
-            <li>Salin (copy) kode panjang yang berada di antara <strong>/d/</strong> dan <strong>/edit</strong>. Itulah ID Spreadsheet Anda.</li>
-          </ol>
-        </div>
-      `;
-      
-      // Panggil modal info yang sudah ada di index.html
-      const modal = document.getElementById('info-modal');
-      document.getElementById('info-modal-title').innerText = title;
-      document.getElementById('info-modal-body').innerHTML = message;
-      document.getElementById('info-modal-body').classList.remove('error');
-      
-      modal.onOk = null; // Tidak ada aksi khusus saat OK
-      modal.classList.add('show'); // Tampilkan modal
-    });
-    // --- [AKHIR TAMBAHAN BARU] ---
-
-    document.getElementById('pengaturan-template-kustom-toggle').addEventListener('change', (e) => {
-      const container = document.getElementById('pengaturan-template-kustom-container');
-      if (e.target.checked) {
-        container.style.display = 'block';
-      } else {
-        container.style.display = 'none';
-      }
-      document.getElementById('btn-simpan-pengaturan-cetak').disabled = false; // Aktifkan simpan
-    });
-
-    document.getElementById('pengaturan-template-doc-id').addEventListener('input', () => {
-      document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
-      document.getElementById('pengaturan-template-doc-id').classList.remove('input-error');
-    });
-
-    document.getElementById('pengaturan-template-rekap-id').addEventListener('input', () => {
-      document.getElementById('btn-simpan-pengaturan-cetak').disabled = false;
-      document.getElementById('pengaturan-template-rekap-id').classList.remove('input-error');
-    });
-    // --- AKHIR LISTENER BARU ---
-
     // Listener dinamis untuk tombol verifikasi Superadmin
     document.getElementById('superadmin-donasi-list').addEventListener('click', (e) => {
       const target = e.target.closest('button');
@@ -12891,7 +12777,7 @@
     setLoading(true, 'Memuat pengaturan...', false, true);
     hideMessage('pengaturan-cetak-message');
 
-    // (Sisa fungsi ini adalah logika reset form, tetap sama)
+    // Logika reset form
     document.getElementById('form-pengaturan-cetak').reset();
     document.getElementById('pengaturan-tempat-ttd').value = '';
     document.getElementById('pengaturan-tanggal-mode').value = 'otomatis';
@@ -12902,11 +12788,8 @@
     document.getElementById('kop-surat-preview').src = '';
     document.getElementById('file-upload-zone-kop').style.display = 'flex';
     document.getElementById('file-upload-text-kop').innerText = 'Klik untuk memilih gambar...';
-    document.getElementById('pengaturan-template-kustom-toggle').checked = false;
-    document.getElementById('pengaturan-template-kustom-toggle').disabled = true; 
-    document.getElementById('pengaturan-template-kustom-container').style.display = 'none';
-    document.getElementById('pengaturan-template-doc-id').value = '';
-    document.getElementById('pengaturan-template-rekap-id').value = '';
+    
+    // [DIHAPUS] Baris-baris yang menyebabkan error (pengaturan-template-kustom-toggle, dll) telah dihapus dari sini.
 
     const formInputs = document.querySelectorAll('#form-pengaturan-cetak input, #form-pengaturan-cetak select, #form-pengaturan-cetak button');
     formInputs.forEach(input => {
@@ -12935,7 +12818,7 @@
     // Aktifkan form HANYA jika tidak read-only
     if (!isReadOnly) {
       formInputs.forEach(input => {
-        if(input.id !== 'btn-simpan-pengaturan-cetak' && input.id !== 'pengaturan-template-kustom-toggle') { 
+        if(input.id !== 'btn-simpan-pengaturan-cetak') { 
             input.disabled = false;
         }
       });
@@ -12945,10 +12828,9 @@
     document.getElementById('file-upload-kop').value = null;
 
     if (response.status === 'sukses') {
-      
       globalPengaturanCetakCache = response;
-
       const data = response.data;
+
       document.getElementById('pengaturan-tanggal-cetak').value = data.tanggalCetak || '';
       document.getElementById('pengaturan-tempat-ttd').value = data.tempatTTD || '';
 
@@ -12966,37 +12848,7 @@
         document.getElementById('file-upload-zone-kop').style.display = 'none';
       }
 
-      const toggle = document.getElementById('pengaturan-template-kustom-toggle');
-      const container = document.getElementById('pengaturan-template-kustom-container');
-      const docIdInput = document.getElementById('pengaturan-template-doc-id');
-      const rekapIdInput = document.getElementById('pengaturan-template-rekap-id');
-
-      docIdInput.value = data.templateDocID || data.defaultTemplateDocID || '';
-      rekapIdInput.value = data.templateRekapID || data.defaultTemplateRekapID || '';
-
-      if (globalDonasiStatus === "APPROVED") {
-        // --- [MODIFIKASI] ---
-        // Aktifkan toggle HANYA jika tidak read-only
-        if (!isReadOnly) {
-          toggle.disabled = false;
-        }
-        // --- [AKHIR MODIFIKASI] ---
-        
-        const isCustomDoc = data.templateDocID && (data.templateDocID !== data.defaultTemplateDocID);
-        const isCustomRekap = data.templateRekapID && (data.templateRekapID !== data.defaultTemplateRekapID);
-
-        if (isCustomDoc || isCustomRekap) {
-          toggle.checked = true;
-          container.style.display = 'block';
-        } else {
-          toggle.checked = false;
-          container.style.display = 'none';
-        }
-      } else {
-        toggle.disabled = true;
-        toggle.checked = false;
-        container.style.display = 'none';
-      }
+      // [DIHAPUS] Logika pengisian Template ID dihapus dari sini
 
       document.getElementById('btn-simpan-pengaturan-cetak').disabled = true;
 
@@ -13033,11 +12885,6 @@
     document.getElementById('pengaturan-tempat-ttd').classList.remove('input-error');
     document.getElementById('pengaturan-tanggal-cetak').classList.remove('input-error');
     
-    // --- [MODIFIKASI] Hapus error class dari input baru ---
-    document.getElementById('pengaturan-template-doc-id').classList.remove('input-error');
-    document.getElementById('pengaturan-template-rekap-id').classList.remove('input-error');
-    // --- [AKHIR MODIFIKASI] ---
-
     const tempatTTD = document.getElementById('pengaturan-tempat-ttd').value.trim();
     const tanggalTtdMode = document.getElementById('pengaturan-tanggal-mode').value;
     const tanggalCetak = document.getElementById('pengaturan-tanggal-cetak').value;
@@ -13046,11 +12893,7 @@
     const file = fileInput.files[0];
     const status = document.getElementById('kop-surat-status').value;
 
-    // --- [MODIFIKASI] Baca data dari input baru ---
-    const isKustom = document.getElementById('pengaturan-template-kustom-toggle').checked;
-    const templateDocID = document.getElementById('pengaturan-template-doc-id').value.trim();
-    const templateRekapID = document.getElementById('pengaturan-template-rekap-id').value.trim();
-    // --- [AKHIR MODIFIKASI] ---
+    // [DIHAPUS] Logika pengambilan Template ID
 
     // --- Validasi ---
     if (!tempatTTD) {
@@ -13068,25 +12911,7 @@
       return;
     }
     
-    // --- [MODIFIKASI] Validasi input baru ---
-    // Validasi hanya jika checkbox (yang sudah di-unlock) dicentang
-    if (globalDonasiStatus === "APPROVED" && isKustom) {
-      let errorTemplate = false;
-      if (!templateDocID) {
-        document.getElementById('pengaturan-template-doc-id').classList.add('input-error');
-        errorTemplate = true;
-      }
-      if (!templateRekapID) {
-        document.getElementById('pengaturan-template-rekap-id').classList.add('input-error');
-        errorTemplate = true;
-      }
-      if (errorTemplate) {
-        resetButtonLoading(btn);
-        showMessage('pengaturan-cetak-message', 'Jika "Gunakan Template Sendiri" dicentang, kedua ID Spreadsheet wajib diisi.', true);
-        return;
-      }
-    }
-    // --- [AKHIR MODIFIKASI] ---
+    // [DIHAPUS] Validasi Template ID
 
     let fileData = null;
 
@@ -13100,9 +12925,8 @@
           tanggalCetak, 
           fileDataPayload, 
           tempatTTD, 
-          tanggalTtdMode,
-          templateDocID,    // <-- Argumen BARU
-          templateRekapID   // <-- Argumen BARU
+          tanggalTtdMode
+          // [DIHAPUS] templateDocID, templateRekapID
         );
     };
 
