@@ -79,7 +79,7 @@
 
       <div id="halaman-login-arsip" class="page auth-tab-content" style="display: none;" data-content="arsip">
         <div class="text-center mb-3" style="text-align: center; margin-bottom: 15px;">
-          <i class="fas fa-archive" style="font-size: 48px; color: #6c757d;"></i>
+          <i class="fas fa-archive" style="font-size: 48px; background: linear-gradient(to right, #833ab4, #fd1d1d, #fcb045); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
           <p class="text-muted mt-2" style="margin-top: 10px; color: #6c757d;">Akses Arsip Data Sekolah</p>
         </div>
         
@@ -90,7 +90,13 @@
             <small class="helper-text">Masukkan NPSN untuk membuka Aplikasi Arsip.</small>
           </div>
         </form>
-        <button id="btn-buka-arsip" style="background-color: #6c757d;"><i class="fas fa-external-link-alt"></i> Buka Aplikasi Arsip</button>
+        
+        <button id="btn-buka-arsip" 
+                style="background-color: #ffc107; color: #212529; border: none;"
+                onmouseover="this.style.backgroundColor='#e0a800'" 
+                onmouseout="this.style.backgroundColor='#ffc107'">
+            <i class="fas fa-external-link-alt"></i> Buka Aplikasi Arsip
+        </button>
         <p id="login-arsip-error" class="message error"></p>
       </div>
 
