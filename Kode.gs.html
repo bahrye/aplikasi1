@@ -8246,8 +8246,9 @@ function approveTeacherScore(token, submissionKey) {
       throw new Error(`Mata pelajaran "${nama_mapel_app2}" tidak ditemukan di 'Mapel' Aplikasi 1.`);
     }
 
-    // 3. [PERBAIKAN UTAMA] Buat Peta NISN -> SiswaID dari App 1
-    // Kita harus mendapatkan SiswaID yang benar (misal: SIS-1) berdasarkan NISN
+    // ---------------------------------------------------------------------
+    // 3. [PERBAIKAN TOTAL] Buat Peta NISN -> SiswaID dari App 1
+    // ---------------------------------------------------------------------
     const sheetSiswaApp1 = getSiswaSheet(ss_app1);
     const dataSiswaApp1 = sheetSiswaApp1.getDataRange().getValues().slice(1);
     const nisnToSiswaIDMap = new Map();
@@ -8255,35 +8256,53 @@ function approveTeacherScore(token, submissionKey) {
     dataSiswaApp1.forEach(row => {
       // row[0] = SiswaID, row[2] = NISN
       if (row[2]) {
-        // Bersihkan NISN (hapus tanda petik ' jika ada)
-        const cleanNisn = String(row[2]).replace("'", "").trim();
-        nisnToSiswaIDMap.set(cleanNisn, row[0]);
+        // [FIX] Ubah ke String, hapus spasi, hapus tanda petik tunggal/ganda
+        const cleanNisn = String(row[2]).replace(/['"]/g, "").trim();
+        if (cleanNisn) {
+           nisnToSiswaIDMap.set(cleanNisn, row[0]);
+        }
       }
     });
 
-    // 4. Ambil Enrollment dari App 2 (Daftar Siswa yang dinilai)
+    // ---------------------------------------------------------------------
+    // 4. [PERBAIKAN TOTAL] Ambil Enrollment dari App 2 dan Cocokkan
+    // ---------------------------------------------------------------------
     const enrollmentSheetApp2 = getEnrollmentSheet_App2(ss_app2);
     const enrollDataApp2 = enrollmentSheetApp2.getDataRange().getValues().slice(1);
-    const enrollmentList = []; // Gunakan Array, bukan Map ID Enrollment
+    const enrollmentList = []; 
+    
+    // Variabel Diagnostik
+    let countEnrollmentTA = 0;
     
     enrollDataApp2.forEach(row => {
-      if (row[3] === id_ta_app2) {
+      // row[3] adalah ID Tahun Ajaran di db_enrollment
+      // [FIX] Bandingkan sebagai String agar "2024" (text) == 2024 (number)
+      if (String(row[3]).trim() === String(id_ta_app2).trim()) {
+        countEnrollmentTA++;
+        
         // row[1] adalah Nomor Ujian (NISN) di App 2
-        const noUjianApp2 = String(row[1]).trim();
-        // Cari pasangan SiswaID yang sesuai di App 1
-        const realSiswaID = nisnToSiswaIDMap.get(noUjianApp2);
+        const rawNoUjian = String(row[1]);
+        // [FIX] Bersihkan sama persis seperti data App 1 (hapus petik/spasi)
+        const cleanNoUjian = rawNoUjian.replace(/['"]/g, "").trim();
+        
+        // Cari pasangan SiswaID di App 1
+        const realSiswaID = nisnToSiswaIDMap.get(cleanNoUjian);
         
         if (realSiswaID) {
           enrollmentList.push({
-            noUjian: noUjianApp2,
+            noUjian: rawNoUjian, // Simpan raw untuk lookup nilai nanti (sesuai DB Nilai)
             siswaID: realSiswaID
           });
+        } else {
+           // Log ini akan muncul di Executions jika Anda perlu debugging
+           Logger.log(`Mismatch: Siswa App 2 (NISN: ${cleanNoUjian}) tidak ditemukan di Data Siswa App 1.`);
         }
       }
     });
     
     if (enrollmentList.length === 0) {
-      throw new Error("Tidak ada siswa yang cocok antara data Enrollment (App 2) dan Data Siswa (App 1). Periksa kesesuaian NISN/Nomor Ujian.");
+      // Pesan error yang lebih detail untuk membantu diagnosa
+      throw new Error(`Gagal Validasi: Ditemukan ${countEnrollmentTA} siswa di Penempatan (App 2) untuk T.A. ini, tetapi TIDAK ADA yang NISN-nya cocok dengan Data Siswa (App 1). Pastikan NISN di kedua aplikasi sama persis.`);
     }
 
     // 5. Ambil Nilai dari App 2
