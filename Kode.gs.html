@@ -1918,64 +1918,9 @@ function getSiswa(token) {
     const sekolahID = sessionData.sekolahID;
     
     // 2. Ambil Data Master Siswa (dari Cache/Sheet App 1)
+    // [OPTIMASI] Kita hanya mengambil data master siswa lokal.
+    // Tidak perlu lagi mengambil data tahun ajar dari App 2.
     const siswaList = _getSiswaInternal(spreadsheetID, sekolahID);
-    
-    // --- TAMBAHAN: AMBIL DATA TAHUN AJAR DARI APP 2 ---
-    try {
-      const app2DbId = getApp2DatabaseId(token);
-      const ss_app2 = SpreadsheetApp.openById(app2DbId);
-      
-      // A. Ambil Kamus Tahun Ajaran (ID -> Deskripsi)
-      const sheetTA = getTahunAjaranSheet(ss_app2);
-      const dataTA = sheetTA.getDataRange().getValues();
-      const taMap = new Map(); // Map<id_ta, deskripsi>
-      // Mulai baris 2 (index 1)
-      for(let i=1; i<dataTA.length; i++) {
-        if(dataTA[i][0]) taMap.set(dataTA[i][0], dataTA[i][1]); 
-      }
-
-      // B. Ambil Data Enrollment
-      const sheetEnroll = getEnrollmentSheet_App2(ss_app2);
-      const dataEnroll = sheetEnroll.getDataRange().getValues();
-      
-      // Map<NISN, Set<nama_ta>>
-      const siswaTaMap = new Map();
-      
-      // Mulai baris 2 (index 1)
-      for(let i=1; i<dataEnroll.length; i++) {
-        // Col B (Index 1) = nomor_ujian (NISN) <-- PERBAIKAN UTAMA DI SINI
-        // Col D (Index 3) = id_tahun_ajaran
-        const nisnEnroll = String(dataEnroll[i][1]).trim(); 
-        const idTA = dataEnroll[i][3];
-        
-        if (nisnEnroll) {
-           if (!siswaTaMap.has(nisnEnroll)) {
-             siswaTaMap.set(nisnEnroll, new Set());
-           }
-           const namaTa = taMap.get(idTA) || idTA;
-           siswaTaMap.get(nisnEnroll).add(namaTa);
-        }
-      }
-
-      // C. Gabungkan ke object siswaList berdasarkan NISN
-      siswaList.forEach(siswa => {
-        const siswaNisn = String(siswa.nisn).trim(); // Pastikan format string
-        
-        if (siswaNisn && siswaTaMap.has(siswaNisn)) {
-          // Ubah Set menjadi Array, urutkan (terbaru), lalu gabung koma
-          const taArray = Array.from(siswaTaMap.get(siswaNisn)).sort().reverse();
-          siswa.tahun_ajar = taArray.join(', ');
-        } else {
-          siswa.tahun_ajar = '-';
-        }
-      });
-
-    } catch (err) {
-      Logger.log("Gagal mengambil info Tahun Ajar untuk tabel siswa: " + err.message);
-      // Jika gagal koneksi ke App 2, beri tanda '-' tapi jangan gagalkan load siswa
-      siswaList.forEach(s => s.tahun_ajar = '-');
-    }
-    // --- AKHIR TAMBAHAN ---
 
     return { status: "sukses", siswa: siswaList };
   } catch (e) {
@@ -1984,21 +1929,23 @@ function getSiswa(token) {
 }
 
 function createSiswa(token, dataSiswa) {
-  // --- PERBAIKAN: Tambahkan LockService ---
   const lock = LockService.getDocumentLock();
-  lock.waitLock(15000); // Tunggu 15 detik
-  // --- AKHIR PERBAIKAN ---
+  lock.waitLock(15000); 
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    // [MODIFIKASI] Ambil app2DbId dari validasi sesi
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token);
+    
     if (!dataSiswa.nama || !dataSiswa.nisn || !dataSiswa.jk || !dataSiswa.kelas) {
       return { status: "gagal", message: "Data wajib diisi." };
     }
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getSiswaSheet(ss);
     const lastRow = sheet.getLastRow();
     const nisnSet = new Set();
     let maxIdNum = 0;
     let maxUrutan = 0;
+    
     if (lastRow > 1) {
       const dataRange = sheet.getRange("A2:I" + lastRow).getValues();
       dataRange.forEach(row => {
@@ -2009,14 +1956,18 @@ function createSiswa(token, dataSiswa) {
         if (urutanNum > maxUrutan) maxUrutan = urutanNum;
       });
     }
+    
     if (nisnSet.has(String(dataSiswa.nisn))) {
       return { status: "gagal", message: "NISN sudah terdaftar." };
     }
+    
     const newIdNum = maxIdNum + 1;
     const newUrutan = maxUrutan + 1;
     const newSiswaID = "SIS-" + newIdNum;
     const formattedNisn = dataSiswa.nisn ? "'" + dataSiswa.nisn : null;
     const formattedNisLokal = dataSiswa.nisLokal ? "'" + dataSiswa.nisLokal : null;
+    
+    // 1. Simpan ke App 1 (Lokal)
     sheet.appendRow([
       newSiswaID, dataSiswa.nama, formattedNisn, formattedNisLokal,
       dataSiswa.jk, dataSiswa.tempatLahir, dataSiswa.tglLahir || null,
@@ -2025,23 +1976,27 @@ function createSiswa(token, dataSiswa) {
 
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
 
-    // --- PERUBAHAN DI SINI ---
-    // Buat objek siswa baru untuk dikirim kembali ke klien
+    // --- [BARU] SINKRONISASI OTOMATIS KE APP 2 ---
+    if (app2DbId) {
+       // Panggil helper baru untuk insert db_siswa & db_enrollment
+       _syncCreateSiswaToApp2(app2DbId, dataSiswa, sessionData.sekolahID);
+    }
+    // ---------------------------------------------
+
     const newSiswaObject = {
       id: newSiswaID,
       nama: dataSiswa.nama,
-      nisn: dataSiswa.nisn, // Kirim nilai mentah
+      nisn: dataSiswa.nisn, 
       nisLokal: dataSiswa.nisLokal || '',
       jk: dataSiswa.jk || '',
       tempatLahir: dataSiswa.tempatLahir || '',
       tglLahir: dataSiswa.tglLahir || '',
       kelas: dataSiswa.kelas || '',
       urutan: newUrutan,
-      originalUrutan: newUrutan // Penting untuk logika 'dirty check'
+      originalUrutan: newUrutan 
     };
 
     return { status: "sukses", newData: newSiswaObject };
-    // --- AKHIR PERUBAHAN ---
 
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2050,9 +2005,91 @@ function createSiswa(token, dataSiswa) {
   }
 }
 
+/**
+ * [BARU] Helper untuk menyinkronkan siswa baru ke Aplikasi 2.
+ * Melakukan:
+ * 1. Insert ke 'db_siswa' (jika belum ada).
+ * 2. Cari Tahun Ajaran Terbaru (Default).
+ * 3. Insert ke 'db_enrollment' (dengan ruang ujian kosong).
+ */
+function _syncCreateSiswaToApp2(app2DbId, dataSiswa, id_sekolah) {
+  try {
+    const ss = SpreadsheetApp.openById(app2DbId);
+    const sheetSiswa = getSiswaSheet_App2(ss);     // Helper existing
+    const sheetEnroll = getEnrollmentSheet_App2(ss); // Helper existing
+    
+    const nomorUjian = String(dataSiswa.nisn).trim();
+    if (!nomorUjian) return;
+
+    // --- BAGIAN 1: UPDATE DB_SISWA ---
+    // Cek apakah siswa sudah ada (berdasarkan Nomor Ujian/NISN)
+    let siswaExists = false;
+    const dataSiswaApp2 = sheetSiswa.getDataRange().getValues();
+    
+    // Loop cek duplikat manual (lebih akurat)
+    for (let i = 1; i < dataSiswaApp2.length; i++) {
+      if (String(dataSiswaApp2[i][0]) === nomorUjian) {
+        siswaExists = true;
+        // Jika sudah ada, update data (nama/kelas) biar sinkron
+        sheetSiswa.getRange(i + 1, 2).setValue(dataSiswa.nama);
+        sheetSiswa.getRange(i + 1, 4).setValue(dataSiswa.kelas);
+        break;
+      }
+    }
+    
+    if (!siswaExists) {
+      sheetSiswa.appendRow([
+        "'" + nomorUjian, // A: nomor_ujian
+        dataSiswa.nama,   // B: nama
+        "'" + nomorUjian, // C: nisn (disamakan dengan no ujian)
+        dataSiswa.kelas   // D: kelas
+      ]);
+    }
+
+    // --- BAGIAN 2: UPDATE DB_ENROLLMENT ---
+    // Cari Tahun Ajaran Terbaru (Default)
+    const latestTaId = _getLatestTahunAjaranId(ss); // Helper existing
+    
+    if (latestTaId) {
+      // Cek apakah sudah terdaftar di enrollment TA ini?
+      const dataEnroll = sheetEnroll.getDataRange().getValues();
+      let isEnrolled = false;
+      
+      for (let i = 1; i < dataEnroll.length; i++) {
+         // Cek No Ujian (Col B), Sekolah (Col C), TA (Col D)
+         if (String(dataEnroll[i][1]) === nomorUjian && 
+             String(dataEnroll[i][2]) === id_sekolah && 
+             String(dataEnroll[i][3]) === latestTaId) {
+             isEnrolled = true;
+             break;
+         }
+      }
+      
+      // Jika belum enroll, tambahkan sekarang
+      if (!isEnrolled) {
+        const newIdEnroll = `enroll-${new Date().getTime()}-${Math.random().toString(36).substring(2, 7)}`;
+        sheetEnroll.appendRow([
+          newIdEnroll,      // A: id_enrollment
+          "'" + nomorUjian, // B: nomor_ujian
+          id_sekolah,       // C: id_sekolah
+          latestTaId,       // D: id_tahun_ajaran
+          ""                // E: ruang_ujian (DIKOSONGKAN)
+        ]);
+        Logger.log(`Siswa ${dataSiswa.nama} otomatis didaftarkan ke TA ${latestTaId}`);
+      }
+    }
+
+    // Update timestamp agar cache di App 2 segar
+    _touchApp2DataVersion(app2DbId);
+
+  } catch (e) {
+    Logger.log("Gagal sync create siswa ke App 2: " + e.message);
+  }
+}
+
 function updateSiswa(token, dataSiswa) {
   try {
-    // [MODIFIKASI] Ambil app2DbId juga dari validasi sesi
+    // Ambil app2DbId juga dari validasi sesi
     const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token); 
     
     if (!dataSiswa.id) return { status: "gagal", message: "ID Siswa hilang." };
@@ -2060,12 +2097,18 @@ function updateSiswa(token, dataSiswa) {
     const sheet = getSiswaSheet(ss);
     const data = sheet.getDataRange().getValues();
     let rowToUpdate = -1;
+    let oldNisn = ""; // [BARU] Variabel untuk menyimpan NISN lama
     
     for (let i = 1; i < data.length; i++) {
-      if (data[i][2] == dataSiswa.nisn && data[i][0] != dataSiswa.id) {
-        return { status: "gagal", message: "NISN sudah digunakan." };
+      // Cek duplikat NISN (jika berubah)
+      if (String(data[i][2]) == String(dataSiswa.nisn) && data[i][0] != dataSiswa.id) {
+        return { status: "gagal", message: "NISN sudah digunakan oleh siswa lain." };
       }
-      if (data[i][0] == dataSiswa.id) rowToUpdate = i + 1;
+      // Cari baris siswa yang mau diedit
+      if (data[i][0] == dataSiswa.id) {
+        rowToUpdate = i + 1;
+        oldNisn = String(data[i][2]); // [BARU] Ambil NISN lama sebelum di-timpa
+      }
     }
     
     if (rowToUpdate === -1) return { status: "gagal", message: "Siswa tidak ditemukan." };
@@ -2081,9 +2124,10 @@ function updateSiswa(token, dataSiswa) {
     sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
 
-    // --- [BARU] SINKRONISASI KE APP 2 SECARA REALTIME ---
+    // --- [MODIFIKASI] SINKRONISASI KE APP 2 SECARA REALTIME ---
     if (app2DbId) {
-       _syncUpdateSiswaToApp2(app2DbId, dataSiswa);
+       // Kirim oldNisn agar App 2 bisa mencari data yang tepat
+       _syncUpdateSiswaToApp2(app2DbId, dataSiswa, oldNisn);
     }
     // ----------------------------------------------------
 
@@ -2737,7 +2781,9 @@ function prosesImportExcelSiswa(token, fileData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); // Tunggu 30 detik untuk impor
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    // [MODIFIKASI] Ambil app2DbId dari validasi sesi
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token);
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheetSiswa = getSiswaSheet(ss);
     const sheetKelas = getKelasSheet(ss);
@@ -2769,6 +2815,10 @@ function prosesImportExcelSiswa(token, fileData) {
     const existingKelasSet = new Set(dataKelas);
     const gagalList = [];
     const rowsToAppend = [];
+    
+    // [BARU] Array untuk menampung data yang akan disinkronkan ke App 2
+    const studentsForApp2 = [];
+
     const existingData = sheetSiswa.getDataRange().getValues();
     let maxIdNum = 0;
     let maxUrutan = 0;
@@ -2819,6 +2869,10 @@ function prosesImportExcelSiswa(token, fileData) {
         tempatLahir, (tglLahir || null), kelas, nextUrutan
       ];
       rowsToAppend.push(newRow);
+      
+      // [BARU] Tambahkan ke list sinkronisasi
+      studentsForApp2.push({ nisn: nisn, nama: nama, kelas: kelas });
+
       existingNisnSet.add(nisn);
       nextIdNum++;
       nextUrutan++;
@@ -2826,13 +2880,17 @@ function prosesImportExcelSiswa(token, fileData) {
     if (rowsToAppend.length > 0) {
       sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length)
         .setValues(rowsToAppend);
+        
+      // --- [BARU] SINKRONISASI BATCH KE APP 2 ---
+      if (app2DbId && studentsForApp2.length > 0) {
+          _syncBatchImportSiswaToApp2(app2DbId, studentsForApp2, sessionData.sekolahID);
+      }
+      // ------------------------------------------
     }
     DriveApp.getFileById(tempExcelFileId).setTrashed(true);
     DriveApp.getFileById(tempConvertedSheetId).setTrashed(true);
     
-    // --- PERBAIKAN DI SINI ---
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
-    // --- AKHIR PERBAIKAN ---
 
     return {
       status: "sukses",
@@ -2842,11 +2900,101 @@ function prosesImportExcelSiswa(token, fileData) {
       dataGagal: gagalList
     };
   } catch (e) {
-    if (tempExcelFileId) { DriveApp.getFileById(tempExcelFileId).setTrashed(true); }
-    if (tempConvertedSheetId) { DriveApp.getFileById(tempConvertedSheetId).setTrashed(true); }
+    if (tempExcelFileId) { try { DriveApp.getFileById(tempExcelFileId).setTrashed(true); } catch (err) {} }
+    if (tempConvertedSheetId) { try { DriveApp.getFileById(tempConvertedSheetId).setTrashed(true); } catch (err) {} }
     return { status: "gagal", message: "Terjadi error: " + e.message };
   } finally {
     if (lock) lock.releaseLock();
+  }
+}
+
+/**
+ * [BARU] Helper untuk sinkronisasi MASSAL siswa impor ke Aplikasi 2.
+ * Menghindari pembacaan berulang dengan melakukan operasi batch.
+ */
+function _syncBatchImportSiswaToApp2(app2DbId, studentsList, id_sekolah) {
+  try {
+    const ss = SpreadsheetApp.openById(app2DbId);
+    const sheetSiswa = getSiswaSheet_App2(ss);
+    const sheetEnroll = getEnrollmentSheet_App2(ss);
+    
+    // 1. Dapatkan ID Tahun Ajaran Terbaru
+    const latestTaId = _getLatestTahunAjaranId(ss);
+    
+    // 2. Baca data eksisting untuk mencegah duplikat (Batch Read)
+    const existingSiswaData = sheetSiswa.getDataRange().getValues();
+    const existingNisnSet = new Set();
+    // Mulai index 1 untuk skip header
+    for(let i=1; i<existingSiswaData.length; i++) {
+        existingNisnSet.add(String(existingSiswaData[i][2]).trim()); // Kolom C = NISN (di App 2 biasanya kolom C, atau cek header)
+        // Fallback: cek kolom A (no_ujian) jika C kosong
+        if(!existingSiswaData[i][2]) existingNisnSet.add(String(existingSiswaData[i][0]).trim());
+    }
+    
+    const existingEnrollSet = new Set();
+    if (latestTaId) {
+        const existingEnrollData = sheetEnroll.getDataRange().getValues();
+        for(let i=1; i<existingEnrollData.length; i++) {
+            // Key unik: nisn_idsekolah_idta
+            const key = `${String(existingEnrollData[i][1]).trim()}_${String(existingEnrollData[i][2]).trim()}_${latestTaId}`;
+            existingEnrollSet.add(key);
+        }
+    }
+    
+    const newSiswaRows = [];
+    const newEnrollRows = [];
+    const timestamp = new Date().getTime();
+    
+    // 3. Proses data baru
+    studentsList.forEach(s => {
+        const nisn = String(s.nisn).trim();
+        if (!nisn) return;
+        
+        // Persiapan data db_siswa
+        if (!existingNisnSet.has(nisn)) {
+            newSiswaRows.push([
+                "'" + nisn, // A: nomor_ujian
+                s.nama,     // B: nama
+                "'" + nisn, // C: nisn
+                s.kelas     // D: kelas
+            ]);
+            // Tambahkan ke set lokal agar tidak duplikat jika file excel punya nisn ganda
+            existingNisnSet.add(nisn); 
+        }
+        
+        // Persiapan data db_enrollment (Auto Enroll ke TA Terbaru)
+        if (latestTaId) {
+            const enrollKey = `${nisn}_${id_sekolah}_${latestTaId}`;
+            if (!existingEnrollSet.has(enrollKey)) {
+                const newIdEnroll = `enroll-${timestamp}-${Math.random().toString(36).substring(2, 7)}`;
+                newEnrollRows.push([
+                    newIdEnroll,      // A: id_enrollment
+                    "'" + nisn,       // B: nomor_ujian
+                    id_sekolah,       // C: id_sekolah
+                    latestTaId,       // D: id_tahun_ajaran
+                    ""                // E: ruang_ujian (DIKOSONGKAN)
+                ]);
+                existingEnrollSet.add(enrollKey);
+            }
+        }
+    });
+    
+    // 4. Tulis ke Sheet (Batch Write)
+    if (newSiswaRows.length > 0) {
+        sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, newSiswaRows.length, 4).setValues(newSiswaRows);
+    }
+    
+    if (newEnrollRows.length > 0) {
+        sheetEnroll.getRange(sheetEnroll.getLastRow() + 1, 1, newEnrollRows.length, 5).setValues(newEnrollRows);
+    }
+    
+    // Update timestamp untuk refresh cache
+    _touchApp2DataVersion(app2DbId);
+    
+    Logger.log(`Batch Sync App 2: ${newSiswaRows.length} siswa baru, ${newEnrollRows.length} enrollment baru.`);
+
+  } catch (e) {
+    Logger.log("Gagal sync batch import ke App 2: " + e.message);
   }
 }
 
@@ -4514,6 +4662,11 @@ function clearAllCaches(token) {
     clearSiswaCache(sessionData.sekolahID);
     clearMapelCache(sessionData.sekolahID);
     clearMasterSheetCache();
+    
+    // --- TAMBAHKAN BARIS INI ---
+    clearGuruCache(sessionData.sekolahID);
+    // ---------------------------
+    
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -5364,33 +5517,41 @@ function getGuruSheet(ss) {
 
 function getGuru(token) {
   try {
-    const { spreadsheetID } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const sekolahID = sessionData.sekolahID;
+
+    // --- Cek Cache ---
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'GURU_DATA_CACHE_' + sekolahID;
+    const cachedData = cache.get(cacheKey);
+
+    if (cachedData != null) {
+      return { status: "sukses", guru: JSON.parse(cachedData) };
+    }
+
+    // --- Baca Spreadsheet ---
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
     data.shift(); // Hapus header
 
     const guruList = data.map(row => {
-      const email = row[0]; // Kolom A
-      const nama = row[1];  // Kolom B
-      const nip = row[2] || ''; // Kolom C (NIP)
+      const email = row[0]; 
+      const nama = row[1];  
+      const nip = row[2] || ''; 
       
-      // Kolom F (Index 5) adalah MapelKelasJSON
       const dataMapel = row[5]; 
       let mapelKelasData = {};
 
       if (dataMapel) {
         try {
-          // Coba parse sebagai JSON (Format baru)
           mapelKelasData = JSON.parse(dataMapel);
         } catch (e) {
-          // Fallback jika format lama (string koma)
+          // Fallback format lama
           mapelKelasData = {};
           const mapelArray = String(dataMapel).split(',').map(s => s.trim());
           mapelArray.forEach(mapelId => {
-            if (mapelId) {
-              mapelKelasData[mapelId] = ["*"]; // "*" berarti "Semua Kelas"
-            }
+            if (mapelId) mapelKelasData[mapelId] = ["*"];
           });
         }
       }
@@ -5399,14 +5560,30 @@ function getGuru(token) {
         email: email,
         nama: nama,
         nip: nip,
-        mapelKelas: mapelKelasData,
-        activeTA: row[6] || '' // <-- TAMBAHAN: Ambil kolom G (ActiveTA)
+        mapelKelas: mapelKelasData
+        // [MODIFIKASI] activeTA dihapus karena tidak lagi digunakan
       };
-    }).filter(g => g.email); // Hanya ambil yang emailnya ada
+    }).filter(g => g.email); 
+
+    // --- Simpan Cache ---
+    try {
+      cache.put(cacheKey, JSON.stringify(guruList), 21600); 
+    } catch (e) {
+      Logger.log("Data guru terlalu besar untuk cache: " + e.message);
+    }
 
     return { status: "sukses", guru: guruList };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  }
+}
+
+function clearGuruCache(sekolahID) {
+  try {
+    const cacheKey = 'GURU_DATA_CACHE_' + sekolahID;
+    CacheService.getScriptCache().remove(cacheKey);
+  } catch (e) {
+    Logger.log("Gagal membersihkan cache guru: " + e.message);
   }
 }
 
@@ -5454,7 +5631,7 @@ function saveGuru(token, guruData) {
       const newHash = hashPassword(guruData.password, newSalt);
       sheet.appendRow([guruData.email, guruData.nama, formattedNip, newHash, newSalt, mapelKelasJSON]);
       
-      // [MODIFIKASI] Kirim spreadsheetID (App 1) juga
+      // [MODIFIKASI] Kirim spreadsheetID (App 1) juga untuk sinkronisasi ke App 2
       addOrUpdateGuruInApp2(guruData.email, guruData.password, guruData.nama, sessionData.sekolahID, 'guru', nip, guruData.mapelKelas, app2DbId, spreadsheetID);
       
     } else {
@@ -5496,6 +5673,11 @@ function saveGuru(token, guruData) {
       addOrUpdateGuruInApp2(newEmail, passwordToSync, guruData.nama, sessionData.sekolahID, 'guru', nip, guruData.mapelKelas, app2DbId, spreadsheetID);
     }
 
+    // --- [PENTING] MEMBERSIHKAN CACHE GURU AGAR DATA UPDATE ---
+    // Baris ini memastikan saat halaman di-refresh, data diambil ulang dari spreadsheet, bukan cache lama.
+    clearGuruCache(sessionData.sekolahID); 
+    // ---------------------------------------------------------
+
     return { status: "sukses", message: "Data guru berhasil disimpan.", newData: newGuruData };
 
   } catch (e) {
@@ -5509,19 +5691,19 @@ function deleteGuru(token, emailGuru) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    const { spreadsheetID } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token); // Ambil sessionData
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === emailGuru) {
-        // 1. Hapus dari sheet LOKAL
         sheet.deleteRow(i + 1);
-        
-        // --- [PERBAIKAN] Sinkronisasi hapus ke GLOBAL (App 2) ---
         deleteGuruFromApp2(emailGuru);
-        // --- [AKHIR PERBAIKAN] ---
+        
+        // --- TAMBAHKAN BARIS INI ---
+        clearGuruCache(sessionData.sekolahID);
+        // ---------------------------
         
         return { status: "sukses", message: "Guru berhasil dihapus." };
       }
@@ -9384,6 +9566,10 @@ function saveGuruActiveTA(token, emailGuru, taId) {
       }
     }
 
+    // --- TAMBAHKAN BARIS INI DI AKHIR (SEBELUM RETURN SUKSES) ---
+    clearGuruCache(sessionData.sekolahID);
+    // ------------------------------------------------------------
+
     return { status: "sukses" };
     
   } catch (e) {
@@ -9627,30 +9813,44 @@ function _touchApp2DataVersion(app2DbId) {
 
 /**
  * [BARU] Sinkronisasi Update Siswa ke App 2 (db_siswa)
+ * Memperbarui Nama, Kelas, dan NISN agar sinkron dengan App 1.
  */
-function _syncUpdateSiswaToApp2(app2DbId, dataSiswa) {
+function _syncUpdateSiswaToApp2(app2DbId, dataSiswa, oldNisn) {
   try {
     const ss = SpreadsheetApp.openById(app2DbId);
-    const sheetSiswa = ss.getSheetByName('db_siswa'); // Kolom: no_ujian, nama, nisn, kelas
+    const sheetSiswa = ss.getSheetByName('db_siswa'); // Kolom: no_ujian (A), nama (B), nisn (C), kelas (D)
     
     if (!sheetSiswa) return;
 
     const data = sheetSiswa.getDataRange().getValues();
-    const nisnTarget = String(dataSiswa.nisn).trim();
     
-    // Cari siswa berdasarkan NISN di App 2
+    // Gunakan NISN lama untuk mencari record (karena NISN di dataSiswa adalah yang baru)
+    // Jika oldNisn kosong (jarang terjadi), fallback ke dataSiswa.nisn
+    const targetNisnSearch = String(oldNisn || dataSiswa.nisn).trim();
+    
+    // Cari siswa berdasarkan NISN (Kolom C / Index 2) di App 2
     for (let i = 1; i < data.length; i++) {
-      // Cek NISN (Kolom C / Index 2)
-      if (String(data[i][2]).trim() === nisnTarget) {
-        // Update Nama (Kolom B / Index 1)
+      const currentNisnInDb = String(data[i][2]).trim(); // Kolom C = NISN
+      
+      if (currentNisnInDb === targetNisnSearch) {
+        // DITEMUKAN! Lakukan Update
+        
+        // 1. Update Nama (Kolom B / Index 1)
         sheetSiswa.getRange(i + 1, 2).setValue(dataSiswa.nama);
-        // Update Kelas (Kolom D / Index 3)
+        
+        // 2. Update NISN Baru (Kolom C / Index 2)
+        // Beri tanda kutip satu (') agar dianggap teks
+        sheetSiswa.getRange(i + 1, 3).setValue("'" + dataSiswa.nisn); 
+        
+        // 3. Update Kelas (Kolom D / Index 3)
         sheetSiswa.getRange(i + 1, 4).setValue(dataSiswa.kelas);
+        
+        Logger.log(`Sync App 2 Sukses: Siswa ${dataSiswa.nama} (NISN Lama: ${targetNisnSearch} -> Baru: ${dataSiswa.nisn}) berhasil diupdate.`);
         break;
       }
     }
     
-    // Beri sinyal refresh cache
+    // Beri sinyal refresh cache agar guru di App 2 melihat data terbaru
     _touchApp2DataVersion(app2DbId);
     
   } catch (e) {
