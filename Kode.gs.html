@@ -1792,7 +1792,6 @@ function saveMapelTipeUjianBatch(token, tipeUjianData) {
       Logger.log("Perubahan Tipe Ujian terdeteksi, menyinkronkan ke Aplikasi 2 (db_mapel)...");
       
       const ss_app2 = SpreadsheetApp.openById(app2DbId);
-      // Panggil helper yang tadi Anda salin
       const sheetMapelApp2 = getMapelSheet_App2(ss_app2); 
       
       const app2DataRange = sheetMapelApp2.getDataRange();
@@ -1801,8 +1800,13 @@ function saveMapelTipeUjianBatch(token, tipeUjianData) {
       
       // Loop data di App 2 (mulai dari baris 2, index 1)
       for (let i = 1; i < app2Data.length; i++) {
-        const mapelId = app2Data[i][1]; // Kolom B = mapel
-        const newData = dataMap.get(mapelId); // Cek apakah mapel ini ada di data yang di-submit
+        
+        // [PERBAIKAN DISINI]
+        // Ganti index [1] (Nama Mapel) menjadi [3] (Singkatan/Kode Mapel)
+        // Karena 'dataMap' kuncinya adalah Kode Mapel (misal: BINDO)
+        const mapelId = app2Data[i][3]; // Kolom D = Singkatan/ID
+        
+        const newData = dataMap.get(mapelId); 
         
         if (newData) {
           // Mapel ini ada di daftar yang diubah.
@@ -1821,6 +1825,8 @@ function saveMapelTipeUjianBatch(token, tipeUjianData) {
       // Tulis kembali data ke App 2 jika ada perubahan
       if (app2ChangesMade) {
         app2DataRange.setValues(app2Data);
+        // [PENTING] Update timestamp agar cache guru fresh
+        _touchApp2DataVersion(app2DbId);
         Logger.log("Sinkronisasi Tipe Ujian ke Aplikasi 2 Selesai.");
       }
     }
@@ -2489,13 +2495,12 @@ function getKelas(token) {
 
 function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName}, ... ]
   let spreadsheetID, sessionData;
-  let app2DbId = null; // ID Database Aplikasi 2
+  let app2DbId = null; 
   
   try {
     const session = validateAdminSession(token);
     spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
-    // Dapatkan ID App 2 di awal untuk cascade
     app2DbId = getApp2DatabaseId(token); 
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2507,75 +2512,89 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
   try {
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getKelasSheet(ss);
-    // Kita tetap memerlukan lockedKelasSet untuk validasi HAPUS
-    // Ini sekarang akan memanggil getLockedKelasSet versi BARU (berbasis siswa)
     const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID); 
     
     const renameMap = new Map();
     const newClassListStrings = [];
     const newClassSet = new Set();
 
+    // --- [MODIFIKASI VALIDASI KETAT] ---
     for (const item of kelasList) {
       const newName = (item.newName || "").trim();
-      if (!newName) continue; // Lewati baris kosong
-
       const oldName = (item.oldName || "").trim();
-      
-      // 1. Cek duplikat di input baru
+
+      // 1. VALIDASI: Nama Kelas Tidak Boleh Kosong
+      // (Kode lama menggunakan 'continue', sekarang 'throw Error')
+      if (newName === "") {
+        throw new Error("Nama kelas tidak boleh dikosongkan. Silakan isi nama kelas atau hapus baris tersebut.");
+      }
+
+      // 2. VALIDASI: Cek Duplikat (Case Insensitive)
+      // Mencegah input ganda seperti "VII A" dan "VII A"
       const newNameUpper = newName.toUpperCase();
       if (newClassSet.has(newNameUpper)) {
-        throw new Error(`Nama kelas duplikat: '${newName}'.`);
+        throw new Error(`Nama kelas duplikat terdeteksi: '${newName}'. Nama kelas harus unik.`);
       }
+      
       newClassSet.add(newNameUpper);
-      newClassListStrings.push(newName); // Kumpulkan nama baru untuk disimpan
+      newClassListStrings.push(newName);
 
-      // 2. Buat Peta Penggantian Nama (Rename Map)
+      // 3. Buat Peta Penggantian Nama (Rename Map) untuk Cascade
       if (oldName && newName !== oldName) { 
         renameMap.set(oldName, newName);
       }
     }
+    // --- [AKHIR MODIFIKASI VALIDASI] ---
     
-    // 3. Validasi Hapus (Logika Asli DIPERTAHANKAN)
+    // 4. Validasi Hapus (Cek apakah kelas yang hilang dari list terkunci?)
     const oldData = sheet.getDataRange().getValues();
-    oldData.shift();
+    oldData.shift(); // Hapus header
     
-    // Filter dengan lebih aman
     const oldClassList = oldData.map(row => row[0]).filter(nama => (nama !== null && nama !== undefined && nama !== ""));
     
     for (const item of oldClassList) { 
-      // Paksa 'item' (yang bisa jadi angka) menjadi string
       const oldClass = String(item); 
-      const oldClassUpper = oldClass.toUpperCase(); // <-- Panggil .toUpperCase() pada string
+      const oldClassUpper = oldClass.toUpperCase(); 
 
+      // Jika kelas lama ada di daftar terkunci (ada siswanya)
       if (lockedKelasSet.has(oldClassUpper)) { 
-        
-        // --- PERBAIKAN LOGIKA RENAME (DI SINI) ---
-        // Cek apakah kelas ini ada di daftar rename (sebagai 'oldName')
         const isBeingRenamed = renameMap.has(oldClass);
 
-        // HANYA blokir jika:
-        // 1. Kelas ini TIDAK ada di daftar NAMA BARU (newClassSet)
-        // 2. DAN kelas ini TIDAK sedang di-rename (isBeingRenamed)
+        // Jika TIDAK ada di daftar baru DAN TIDAK sedang direname (artinya dihapus)
         if (!newClassSet.has(oldClassUpper) && !isBeingRenamed) {
-          // Ini adalah upaya PENGHAPUSAN murni pada kelas yang terkunci.
           return { status: "gagal", message: `Kelas '${oldClass}' tidak dapat dihapus karena sudah ada siswa yang terdaftar di kelas tersebut.` };
         }
-        // Jika isBeingRenamed = true, biarkan lolos.
-        // Cascade akan ditangani di langkah berikutnya.
-        // --- AKHIR PERBAIKAN ---
       }
     }
     
-    // --- TINDAKAN CASCADE ---
-    if (renameMap.size > 0 && app2DbId) {
+    // --- TINDAKAN CASCADE (Sinkronisasi Perubahan Nama) ---
+    if (renameMap.size > 0) {
       Logger.log(`Mendeteksi ${renameMap.size} penggantian nama kelas. Memulai cascade...`);
+      
       // Update Siswa di Aplikasi 1
       _cascadeKelasRename_App1(ss, renameMap, sessionData.sekolahID, spreadsheetID);
-      // Update db_siswa di Aplikasi 2
-      _cascadeKelasRename_App2(app2DbId, renameMap);
+      
+      // Update Data Guru di Aplikasi 1 (Akun_Guru)
+      _cascadeKelasRename_Guru_App1(ss, renameMap);
+
+      if (app2DbId) {
+          // Update db_siswa di Aplikasi 2
+          _cascadeKelasRename_App2(app2DbId, renameMap);
+          
+          // Update db_mapel (Kelas Guru) di Aplikasi 2
+          if (typeof _cascadeKelasRename_Mapel_App2 === 'function') {
+             _cascadeKelasRename_Mapel_App2(app2DbId, renameMap);
+          }
+          
+          // Segarkan timestamp App 2 agar cache guru diperbarui
+          if (typeof _touchApp2DataVersion === 'function') {
+             _touchApp2DataVersion(app2DbId);
+          }
+      }
     }
     // --- AKHIR TINDAKAN CASCADE ---
 
+    // 5. Simpan Data Baru
     // Hapus data lama dari sheet Kelas
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
@@ -2588,9 +2607,10 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
       sheet.getRange(2, 1, dataToSave.length, 1).setValues(dataToSave);
     }
     
-    // Bersihkan cache
+    // 6. Bersihkan Cache
     clearSiswaCache(sessionData.sekolahID, spreadsheetID); 
     clearLockedKelasCache(sessionData.sekolahID);
+    clearGuruCache(sessionData.sekolahID); // Bersihkan cache guru agar perubahan nama kelas ter-load
     
     return { status: "sukses" };
     
@@ -2598,6 +2618,67 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
     return { status: "gagal", message: e.message };
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * [HELPER BARU] Melakukan cascade update nama kelas di Akun_Guru (Aplikasi 1).
+ * Memperbaiki JSON kelas guru lokal (misal: {"MTK":["X A"]} menjadi {"MTK":["X 1"]}).
+ */
+function _cascadeKelasRename_Guru_App1(ss, renameMap) {
+  try {
+    const sheet = getGuruSheet(ss);
+    if (sheet.getLastRow() <= 1) return;
+    
+    // Kolom F = MapelKelasJSON (Index 6, 1-based)
+    // Ambil data kolom F
+    const range = sheet.getRange(2, 6, sheet.getLastRow() - 1, 1);
+    const values = range.getValues();
+    let changes = false;
+    
+    for (let i = 0; i < values.length; i++) {
+      const jsonStr = String(values[i][0]);
+      
+      if (!jsonStr || jsonStr === "" || jsonStr === "{}") continue;
+      
+      try {
+        let data = JSON.parse(jsonStr);
+        let rowModified = false;
+        
+        // data contoh: { "BINDO": ["X A", "X B"], "MTK": ["*"] }
+        for (const mapelId in data) {
+          const kelasArr = data[mapelId];
+          
+          if (Array.isArray(kelasArr)) {
+            // Buat array baru dengan nama kelas yang sudah diganti
+            const newArr = kelasArr.map(k => {
+              // Jika kelas ada di map rename, ganti. Jika tidak, biarkan.
+              return renameMap.has(k) ? renameMap.get(k) : k;
+            });
+            
+            // Cek apakah ada perubahan isi array
+            if (JSON.stringify(newArr) !== JSON.stringify(kelasArr)) {
+              data[mapelId] = newArr; // Simpan array baru
+              rowModified = true;
+            }
+          }
+        }
+        
+        if (rowModified) {
+          values[i][0] = JSON.stringify(data); // Update nilai di array values
+          changes = true;
+        }
+      } catch (e) {
+        // Abaikan jika JSON rusak
+      }
+    }
+    
+    if (changes) {
+      range.setValues(values); // Tulis kembali ke sheet sekaligus
+      Logger.log("Cascade Rename: Akun_Guru (App 1) berhasil diperbarui.");
+    }
+  } catch (e) {
+    Logger.log("Error cascade guru app 1: " + e.message);
   }
 }
 
@@ -2631,6 +2712,61 @@ function _cascadeKelasRename_App2(app2DbId, renameMap) {
   } catch (e) {
     Logger.log(`ERROR GAGAL cascade rename (App 2): ${e.message}`);
     // Jangan lempar error agar proses simpan utama tidak gagal
+  }
+}
+
+/**
+ * [HELPER BARU] Melakukan cascade update nama kelas di db_mapel (Aplikasi 2).
+ * Memperbaiki JSON kelas guru (misal: ["X A"] menjadi ["X 1"]).
+ */
+function _cascadeKelasRename_Mapel_App2(app2DbId, renameMap) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const sheetMapel = getMapelSheet_App2(ss_app2);
+    
+    if (sheetMapel.getLastRow() <= 1) return;
+
+    // Ambil kolom E (kelas_json), index kolom = 4 (0-based) di array values, tapi range kolom 5
+    const dataRange = sheetMapel.getRange(2, 5, sheetMapel.getLastRow() - 1, 1); 
+    const values = dataRange.getValues();
+    let changesMade = false;
+
+    for (let i = 0; i < values.length; i++) {
+      const jsonStr = String(values[i][0]);
+      
+      // Skip jika kosong atau "Semua Kelas" (*)
+      if (!jsonStr || jsonStr.includes('*')) continue;
+
+      try {
+        let kelasArray = JSON.parse(jsonStr);
+        let rowModified = false;
+
+        if (Array.isArray(kelasArray)) {
+          // Loop setiap kelas dalam array guru tersebut
+          const newArray = kelasArray.map(namaKelas => {
+            if (renameMap.has(namaKelas)) {
+              rowModified = true;
+              return renameMap.get(namaKelas); // Ganti dengan nama baru
+            }
+            return namaKelas; // Tetap
+          });
+
+          if (rowModified) {
+            values[i][0] = JSON.stringify(newArray); // Update JSON
+            changesMade = true;
+          }
+        }
+      } catch (e) {
+        // Abaikan jika JSON rusak
+      }
+    }
+
+    if (changesMade) {
+      dataRange.setValues(values);
+      Logger.log(`Cascade rename (App 2 - Mapel Guru) berhasil. Update kelas guru.`);
+    }
+  } catch (e) {
+    Logger.log(`ERROR GAGAL cascade rename (App 2 - Mapel): ${e.message}`);
   }
 }
 
