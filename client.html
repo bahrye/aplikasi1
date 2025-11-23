@@ -4408,28 +4408,63 @@
     setLoading(true, 'Menyimpan data kelas...');
     hideMessage('kelas-message');
     
-    // --- PERBAIKAN DI SINI ---
-    // Hapus .map(n => String(n).trim()).filter(n => n.length > 0);
-    // Kita ingin mengirim array objek [ {oldName, newName}, ... ] secara langsung.
+    // Ambil data list dan prefix (Romawi) saat ini
     const list = getCurrentKelasList(); 
-    // --- AKHIR PERBAIKAN ---
-
-    const uniqueList = new Set(list.map(n => n.newName.trim().toUpperCase()));
+    const prefix = getPrefixKelas(); 
     
-    // Filter dulu nama yang tidak kosong sebelum cek duplikat
+    // === [VALIDASI BARU] ===
+    // 1. Validasi: Jika kelas lebih dari 1, suffix (nama tambahan) tidak boleh kosong.
+    // Mencegah tersimpannya "VII" saja padahal maksudnya "VII A"
+    if (list.length > 1) {
+      let hasEmptySuffix = false;
+      
+      // Loop untuk mengecek setiap item
+      for (const item of list) {
+        // Jika nama lengkap SAMA PERSIS dengan prefix
+        // Artinya user membiarkan kotak input kosong
+        if (item.newName === prefix) {
+          hasEmptySuffix = true;
+          break;
+        }
+      }
+      
+      if (hasEmptySuffix) {
+        setLoading(false);
+        
+        // Beri efek merah pada input yang kosong
+        const allInputs = document.querySelectorAll('#kelas-list-container .kelas-suffix-input');
+        allInputs.forEach(input => {
+          if (input.value.trim() === "") {
+            input.classList.add('input-error');
+            // Hapus merah saat user mulai mengetik
+            input.addEventListener('input', function() { 
+              this.classList.remove('input-error'); 
+            }, {once: true});
+          }
+        });
+
+        showMessage('kelas-message', `Nama kelas tidak boleh dikosongkan jika jumlah kelas lebih dari satu. Silakan isi nama (misal: "A", "B") atau hapus baris yang tidak perlu.`, true);
+        return; // Hentikan proses simpan
+      }
+    }
+    // === [AKHIR VALIDASI BARU] ===
+
+    // 2. Validasi Duplikat (Logika Asli Dipertahankan & Diperketat)
+    const uniqueList = new Set(list.map(n => n.newName.trim().toUpperCase()));
     const filledNames = list.map(n => n.newName.trim()).filter(n => n.length > 0);
     const uniqueFilledNames = new Set(filledNames.map(n => n.toUpperCase()));
     
     if (uniqueFilledNames.size !== filledNames.length) {
       setLoading(false);
-      showMessage('kelas-message', 'Nama kelas duplikat.', true);
+      showMessage('kelas-message', 'Nama kelas duplikat terdeteksi. Pastikan setiap kelas memiliki nama unik.', true);
       return;
     }
     
+    // Jika lolos validasi, kirim ke server
     google.script.run
       .withSuccessHandler(onKelasSaved)
       .withFailureHandler(onGagal)
-      .saveKelas(getToken(), list); // Kirim 'list' (array objek)
+      .saveKelas(getToken(), list); 
   }
 
   function onKelasSaved(response) {
@@ -4446,6 +4481,12 @@
         globalSiswaList = []; 
         console.log("Cache Siswa (globalSiswaList) dibersihkan karena ada perubahan kelas.");
         // --- AKHIR TAMBAHAN BARU ---
+
+        // --- [TAMBAHAN BARU] ---
+        // Hapus cache guru agar memuat data kelas terbaru
+        globalGuruList = []; 
+        console.log("Cache Guru dibersihkan karena perubahan kelas.");
+        // --- [AKHIR TAMBAHAN] ---
         
         showMessage('kelas-message', 'Data kelas berhasil disimpan!', false);
         
@@ -4857,18 +4898,23 @@
   }
 
   function onSiswaSaved(response) {
-      // 1. Matikan toast spinner "Menyimpan..."
       setLoading(false);
 
       if (response.status === "sukses") {
         setIjazahDirty(true);
-        tutupModalSiswa(); // 2. Tutup modalnya
+        tutupModalSiswa(); 
 
-        // --- TAMBAHAN INVALIDASI CACHE ---
+        // --- TAMBAHAN INVALIDASI CACHE NILAI ---
         globalNilaiGridCacheUM = null;
         globalNilaiGridCachePraktek = null;
         globalNilaiRaporGridCache.clear();
-        // --- AKHIR TAMBAHAN ---
+        
+        // --- [TAMBAHAN BARU: CACHE KELAS] ---
+        // Bersihkan cache kelas agar status "Terkunci" diperbarui 
+        // (misal: kelas yang tadinya kosong sekarang ada isinya)
+        globalKelasListCache = [];
+        console.log("Cache Kelas dibersihkan karena perubahan data siswa.");
+        // --- [AKHIR TAMBAHAN] ---
         
         // --- LOGIKA OPTIMIS (Sudah ada dari langkah sebelumnya) ---
         if (response.newData) { 
@@ -4930,11 +4976,14 @@
       if (response.status === "sukses") {
           setIjazahDirty(true);
           
-          // --- TAMBAHAN INVALIDASI CACHE ---
+          // --- TAMBAHAN INVALIDASI CACHE NILAI ---
           globalNilaiGridCacheUM = null;
           globalNilaiGridCachePraktek = null;
           globalNilaiRaporGridCache.clear();
-          // --- AKHIR TAMBAHAN ---
+
+          // --- [TAMBAHAN BARU: CACHE KELAS] ---
+          globalKelasListCache = [];
+          // --- [AKHIR TAMBAHAN] ---
           
           // --- LOGIKA OPTIMIS ---
           const indexToDelete = globalSiswaList.findIndex(s => s.id === deletedSiswaID);
@@ -4970,11 +5019,15 @@
         setIjazahDirty(true);
         globalSiswaList = []; 
         
-        // --- TAMBAHAN INVALIDASI CACHE ---
+        // --- TAMBAHAN INVALIDASI CACHE NILAI ---
         globalNilaiGridCacheUM = null;
         globalNilaiGridCachePraktek = null;
         globalNilaiRaporGridCache.clear();
-        // --- AKHIR TAMBAHAN ---
+
+        // --- [TAMBAHAN BARU: CACHE KELAS] ---
+        // Semua siswa dihapus, berarti semua kelas harusnya terbuka (unlocked)
+        globalKelasListCache = [];
+        // --- [AKHIR TAMBAHAN] ---
         
         showInfoModal("Sukses", response.message, false, bukaHalamanSiswa);
       } else {
@@ -5074,11 +5127,14 @@
       siswaTelahDiImport = true;
       globalSiswaList = []; 
       
-      // --- TAMBAHAN INVALIDASI CACHE ---
+      // --- TAMBAHAN INVALIDASI CACHE NILAI ---
       globalNilaiGridCacheUM = null;
       globalNilaiGridCachePraktek = null;
       globalNilaiRaporGridCache.clear();
-      // --- AKHIR TAMBAHAN ---
+
+      // --- [TAMBAHAN BARU: CACHE KELAS] ---
+      globalKelasListCache = [];
+      // --- [AKHIR TAMBAHAN] ---
     }
 
     let html = '<h4><i class="fas fa-check-circle"></i>Proses Import Selesai</h4>';
