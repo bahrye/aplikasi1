@@ -2298,61 +2298,68 @@
       simpanKelas();
     });
     
-    
     document.getElementById('kelas-list-container').addEventListener('click', (e) => {
       const target = e.target;
 
-      if (target.classList.contains('btn-add-kelas') || target.classList.contains('btn-remove-kelas')) {
+      // Cek apakah tombol (atau ikon di dalam tombol) yang diklik
+      const btnAdd = target.closest('.btn-add-kelas');
+      const btnRemove = target.closest('.btn-remove-kelas');
+
+      if (btnAdd || btnRemove) {
         isFormDirty = true;
       }
       
-      if (target.classList.contains('btn-add-kelas')) {
-        
-        // --- PERBAIKAN DI SINI: Gunakan getCurrentKelasList() ---
-        // 1. Panggil fungsi yang sudah benar untuk mendapatkan data objek
+      if (btnAdd) {
+        // 1. Ambil data saat ini dari input
         const currentData = getCurrentKelasList();
         
-        // 2. Ubah kembali ke format yang diharapkan oleh renderKelasList
-        const currentList = currentData.map(item => {
-           const lockedStatus = globalKelasListCache.find(k => k.nama === item.oldName);
+        // 2. Format ulang data. [PENTING] Kita simpan oldName sebagai originalName
+        const listForRender = currentData.map(item => {
+           // Cek status kunci berdasarkan nama LAMA (database)
+           const cached = globalKelasListCache.find(k => k.nama === item.oldName);
            return {
-             nama: item.newName, // Kirim nama yang baru diedit (jika ada)
-             isLocked: lockedStatus ? lockedStatus.isLocked : false
+             nama: item.newName,          // Nilai input saat ini
+             originalName: item.oldName,  // [FIX] Pertahankan nama asli database
+             isLocked: cached ? cached.isLocked : false
            };
         });
-        // --- AKHIR PERBAIKAN ---
-
-        currentList.push({ nama: '', isLocked: false });
-        renderKelasList(currentList);
         
-        const lastInput = document.querySelector('#kelas-list-container .kelas-input-row:last-child input');
-        if (lastInput) {
-          lastInput.focus();
-        }
+        // 3. Tambah baris baru (tidak terkunci, tidak punya nama asli)
+        listForRender.push({ nama: '', originalName: '', isLocked: false });
+        
+        // 4. Render ulang
+        renderKelasList(listForRender);
+        
+        // Fokus ke input terakhir
+        setTimeout(() => {
+            const inputs = document.querySelectorAll('#kelas-list-container .kelas-suffix-input');
+            if (inputs.length > 0) {
+                const lastInput = inputs[inputs.length - 1];
+                if (lastInput.type === 'text') lastInput.focus();
+            }
+        }, 50);
       
       } 
-      else if (target.classList.contains('btn-remove-kelas')) {
-        
-        const rowToRemove = target.parentElement;
+      else if (btnRemove) {
+        const rowToRemove = btnRemove.closest('.kelas-input-row');
         const allRows = Array.from(document.querySelectorAll('#kelas-list-container .kelas-input-row'));
         const indexToRemove = allRows.indexOf(rowToRemove);
 
-        // --- PERBAIKAN DI SINI: Gunakan getCurrentKelasList() ---
         const currentData = getCurrentKelasList();
-        const currentList = currentData.map(item => {
-           const lockedStatus = globalKelasListCache.find(k => k.nama === item.oldName);
+        const listForRender = currentData.map(item => {
+           const cached = globalKelasListCache.find(k => k.nama === item.oldName);
            return {
              nama: item.newName,
-             isLocked: lockedStatus ? lockedStatus.isLocked : false
+             originalName: item.oldName, // [FIX] Pertahankan nama asli database
+             isLocked: cached ? cached.isLocked : false
            };
         });
-        // --- AKHIR PERBAIKAN ---
         
         if (indexToRemove > -1) {
-          currentList.splice(indexToRemove, 1);
+          listForRender.splice(indexToRemove, 1);
         }
         
-        renderKelasList(currentList);
+        renderKelasList(listForRender);
       }
     });
 
@@ -4210,35 +4217,40 @@
   function getCurrentKelasList() {
       const allRows = document.querySelectorAll('#kelas-list-container .kelas-input-row');
       const list = [];
+      const prefix = getPrefixKelas(); // Ambil prefix global (misal "XII")
       
       allRows.forEach(row => {
-        // 'lockedSpan' sudah tidak ada berkat renderKelasList baru,
-        // tapi kita biarkan sebagai fallback jika terjadi kesalahan render
-        const lockedSpan = row.querySelector('.kelas-input-locked'); 
-        const unlockedInput = row.querySelector('input[type="text"]');
+        // Cari input suffix (bisa text atau hidden)
+        const suffixInput = row.querySelector('.kelas-suffix-input');
 
-        if (lockedSpan) {
-          const nama = lockedSpan.textContent.trim();
-          list.push({ oldName: nama, newName: nama });
+        if (suffixInput) {
+          const suffix = suffixInput.value.trim();
           
-        } else if (unlockedInput) {
-          const newName = unlockedInput.value.trim();
+          // GABUNGKAN: Prefix + Spasi (jika ada suffix) + Suffix
+          // Jika suffix kosong (kelas tunggal), namanya hanya "XII"
+          // Jika suffix "IPA.1", namanya "XII IPA.1"
+          let newFullName = prefix;
+          if (suffix) {
+            newFullName = `${prefix} ${suffix}`;
+          }
           
-          // --- PERBAIKAN DI SINI ---
-          // 'oldName' HANYA diambil dari 'data-original-name'.
-          // Jika 'data-original-name' tidak ada (karena ini baris baru),
-          // 'oldName' akan menjadi 'undefined'.
-          const oldName = unlockedInput.dataset.originalName;
-          // --- AKHIR PERBAIKAN ---
+          const oldFullName = suffixInput.dataset.originalFullName;
           
-          list.push({ oldName: oldName, newName: newName });
+          list.push({ oldName: oldFullName, newName: newFullName });
         }
       });
       
       return list;
   }
 
-  function renderKelasList(kelasList) { // kelasList sekarang [ {nama, isLocked}, ... ]
+  /**
+   * Merender daftar kelas dengan logika:
+   * 1. Kolom Romawi (Tetap) + Kolom Suffix (Bisa Diedit).
+   * 2. Jika hanya 1 kelas, kolom Suffix disembunyikan.
+   * 3. Jika kelas ada isinya (siswa), tombol hapus DISABLED.
+   * 4. [FIX] Mempertahankan originalName agar status terkunci tidak hilang saat render ulang.
+   */
+  function renderKelasList(kelasList) {
     const container = document.getElementById('kelas-list-container');
     container.innerHTML = '';
 
@@ -4247,42 +4259,104 @@
       listToRender = [{ nama: '', isLocked: false }];
     }
 
+    const prefix = getPrefixKelas(); 
+    const showSuffixInput = listToRender.length > 1; 
+
     listToRender.forEach((kelas, index) => {
       const div = document.createElement('div');
       div.className = 'kelas-input-row';
       
-      const isLocked = kelas.isLocked || false; // <-- Status lock tetap dibaca
+      const isLocked = kelas.isLocked || false;
       
-      // Pesan title baru untuk menjelaskan hybrid logic
-      const titleAttr = isLocked ? 'Kelas ini memiliki nilai, sehingga tidak dapat dihapus. Nama kelas masih bisa diubah.' : '';
+      // [PENTING] Gunakan originalName jika ada (saat edit/tambah), 
+      // jika tidak ada (saat load awal), gunakan nama sebagai original.
+      const originalNameRef = (kelas.originalName !== undefined) ? kelas.originalName : kelas.nama;
+
+      const titleAttr = isLocked 
+        ? 'Terkunci: Tidak bisa dihapus karena ada siswa di kelas ini.' 
+        : 'Hapus Kelas';
+
+      // Pisahkan Nama Penuh menjadi Suffix
+      let suffix = "";
+      let fullName = kelas.nama || "";
+      
+      if (fullName.startsWith(prefix)) {
+        suffix = fullName.substring(prefix.length).trim(); 
+      } else if (fullName !== "") {
+        suffix = fullName; 
+      }
 
       let html = '';
 
-      // --- MODIFIKASI 1: Selalu render INPUT (tidak pernah disabled span) ---
-      html = `<input type="text" 
-                    placeholder="Nama Kelas (Contoh: VI A)" 
-                    value="${kelas.nama}"
-                    data-original-name="${kelas.nama}"
-                    title="${titleAttr}">`;
+      // 1. KOLOM KELAS UTAMA
+      html += `<div class="kelas-prefix-box" title="Kelas Utama">${prefix}</div>`;
 
-      // --- MODIFIKASI 2: Tombol Hapus ---
-      if (listToRender.length > 1) {
-        // Selalu render BUTTON, tapi tambahkan 'disabled' jika terkunci
-        const disabledAttr = isLocked ? 'disabled' : '';
-        html += `<button type="button" class="btn-aksi-kelas btn-remove-kelas" title="${titleAttr}" ${disabledAttr}>&times;</button>`;
+      // 2. KOLOM NAMA KELAS
+      if (showSuffixInput) {
+         // [FIX] data-original-full-name diisi dengan originalNameRef yang persisten
+         html += `<input type="text" 
+                    class="kelas-suffix-input"
+                    placeholder="Nama (Cth: IPA.1)" 
+                    value="${suffix}"
+                    data-original-full-name="${originalNameRef}" 
+                    oninput="handleKelasSuffixInput(this)"
+                    title="Nama Kelas (Spasi otomatis jadi titik)">`;
       } else {
-        // Jika hanya 1 baris, beri placeholder agar tombol Add tetap di kanan
+         html += `<input type="hidden" 
+                    class="kelas-suffix-input"
+                    value=""
+                    data-original-full-name="${originalNameRef}">`;
+         
+         html += `<span style="flex-grow:1; color:#6c757d; font-style:italic; font-size:14px; padding-left:10px;">
+                    (Kelas Tunggal)
+                  </span>`;
+      }
+
+      // 3. TOMBOL HAPUS
+      if (listToRender.length > 1) {
+        const disabledAttr = isLocked ? 'disabled' : '';
+        const style = isLocked 
+          ? 'background-color: #6c757d; opacity: 0.6; cursor: not-allowed;' 
+          : 'background-color: var(--danger-color); cursor: pointer;';
+
+        html += `<button type="button" 
+                    class="btn-aksi-kelas btn-remove-kelas" 
+                    style="${style}" 
+                    title="${titleAttr}" 
+                    ${disabledAttr}>
+                    &times;
+                 </button>`;
+      } else {
         html += '<span class="btn-aksi-kelas" style="width: 40px; display: inline-block;"></span>';
       }
 
-      // --- MODIFIKASI 3: Tombol Tambah (Logika tidak berubah) ---
+      // 4. TOMBOL TAMBAH
       if (index === listToRender.length - 1) {
-        html += '<button type="button" class="btn-aksi-kelas btn-add-kelas" title="Tambah Baris Baru">+</button>';
+        html += `<button type="button" 
+                    class="btn-aksi-kelas btn-add-kelas" 
+                    style="background-color: var(--success-color);"
+                    title="Tambah Kelas Baru">
+                    +
+                 </button>`;
       }
 
       div.innerHTML = html;
       container.appendChild(div);
     });
+  }
+
+  /**
+   * Mendapatkan angka romawi berdasarkan jenjang pilihan global.
+   */
+  function getPrefixKelas() {
+    // Pastikan jenjangPilihanCache sudah terisi (biasanya dari onTokenVerified atau onDataSekolahLoaded)
+    const jenjang = jenjangPilihanCache || ""; 
+    
+    if (jenjang === 'SD' || jenjang === 'MI') return 'VI';
+    if (jenjang === 'SMP' || jenjang === 'MTS') return 'IX';
+    if (jenjang === 'SMA' || jenjang === 'MA') return 'XII';
+    
+    return ''; // Default jika jenjang belum terdeteksi
   }
 
   function bukaHalamanKelas() {
@@ -13914,6 +13988,22 @@
           })
           .withFailureHandler(onGagal)
           .saveGuruActiveTA(getToken(), email, taId);
+  }
+
+  /**
+   * Mengubah spasi menjadi titik dan memaksa huruf besar.
+   */
+  function handleKelasSuffixInput(input) {
+    isFormDirty = true;
+    // Ganti spasi dengan titik, dan uppercase
+    let val = input.value;
+    val = val.replace(/\s+/g, '.'); 
+    val = val.toUpperCase();
+    
+    // Update nilai input jika berbeda
+    if (input.value !== val) {
+      input.value = val;
+    }
   }
 
 </script>
