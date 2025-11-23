@@ -81,8 +81,6 @@
     }
   };
 
-  const URL_WEB_APP_APLIKASI_3 = "https://script.google.com/macros/s/AKfycbxluxdi5pDlmXx8LHUM_UBsq9qj2NcsERtU8EzC7YnoAy6YxDOP7fOYQDGh50073EaY1Q/exec";
-
   let jenjangBaseCache = '';
   let jenjangPilihanCache = '';
   const LAST_PAGE_KEY = 'lastVisitedPageId';
@@ -1094,7 +1092,7 @@
     // --- TAMBAHAN BARU ---
     document.getElementById('tab-btn-arsip').addEventListener('click', () => activateAuthTab('arsip'));
 
-    // --- [MODIFIKASI] Validasi NPSN Server-side sebelum buka Arsip ---
+    // --- [MODIFIKASI] Validasi NPSN & Get URL Dinamis ---
     document.getElementById('btn-buka-arsip').addEventListener('click', () => {
         const npsnInput = document.getElementById('login-arsip-npsn');
         const btn = document.getElementById('btn-buka-arsip');
@@ -1115,18 +1113,19 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memeriksa...';
         
-        // Panggil fungsi server yang baru kita buat di Kode.gs
+        // Panggil fungsi server
         google.script.run
           .withSuccessHandler((response) => {
              btn.disabled = false;
              btn.innerHTML = originalText;
 
              if (response.valid) {
-                // JIKA VALID: Buka Aplikasi 3
-                const targetUrl = `${URL_WEB_APP_APLIKASI_3}?npsn=${encodeURIComponent(npsn)}`;
+                // JIKA VALID: Buka Aplikasi 3 menggunakan URL DARI SERVER
+                // response.url diambil dari Sheet Config!B2
+                const targetUrl = `${response.url}?npsn=${encodeURIComponent(npsn)}`;
                 window.open(targetUrl, '_blank');
              } else {
-                // JIKA TIDAK VALID: Tampilkan pesan error di App 1
+                // JIKA TIDAK VALID
                 errorMsg.innerText = response.message;
                 errorMsg.style.display = 'block';
              }
@@ -1139,7 +1138,6 @@
           })
           .cekValiditasNpsnArsip(npsn);
     });
-    // --- [AKHIR MODIFIKASI] ---
 
     document.getElementById('login-guru-form').addEventListener('submit', (e) => {
       e.preventDefault();
