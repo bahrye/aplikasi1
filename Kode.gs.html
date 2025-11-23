@@ -9543,9 +9543,8 @@ function _getLatestTahunAjaranId(ss_local) {
 }
 
 /**
- * [BARU - FIX isUS/isUP & NAMA MAPEL] 
- * Menyinkronkan Mapel & Kelas Guru ke db_mapel di DB LOKAL SEKOLAH.
- * Membaca status Ujian/Praktek DAN Nama Panjang dari DB Aplikasi 1.
+ * [DIPERBARUI] Menyinkronkan Mapel & Kelas Guru ke db_mapel di DB LOKAL SEKOLAH (App 2).
+ * [PERBAIKAN] Menambahkan update timestamp agar Cache Aplikasi 2 di-refresh otomatis.
  */
 function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
   try {
@@ -9559,34 +9558,30 @@ function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
       return;
     }
 
-    // --- [PERBAIKAN UTAMA] BACA MASTER MAPEL DARI APP 1 ---
-    // Tujuannya: Mendapatkan status isUS/isUP DAN NAMA MAPEL yang benar
+    // 3. BACA MASTER MAPEL DARI APP 1 (Untuk dapat Nama Panjang & Status Ujian)
     const ss_app1 = SpreadsheetApp.openById(app1DbId);
-    const sheetMapelMaster = getMapelSheet(ss_app1); // Helper bawaan App 1
+    const sheetMapelMaster = getMapelSheet(ss_app1);
     const dataMaster = sheetMapelMaster.getDataRange().getValues();
     
-    // Buat Peta: MapelID -> { isUS, isUP, nama }
     const masterMapelInfo = {};
-    const masterMapelNames = {}; // Peta baru untuk Nama Mapel
+    const masterMapelNames = {}; 
     
     for (let i = 1; i < dataMaster.length; i++) {
-       // Kolom A=ID, B=Nama, C=isUS, D=isUP
        const mId = dataMaster[i][0];
-       const mName = dataMaster[i][1]; // Ambil Nama Panjang
+       const mName = dataMaster[i][1]; 
        const mUS = dataMaster[i][2] === true;
        const mUP = dataMaster[i][3] === true;
        masterMapelInfo[mId] = { isUS: mUS, isUP: mUP };
-       masterMapelNames[mId] = mName; // Simpan Nama
+       masterMapelNames[mId] = mName;
     }
-    // --- [AKHIR PERBAIKAN] ---
 
+    // 4. Baca Data Lama di db_mapel App 2
     const sheetMapel = getMapelSheet_App2(ss_local); 
     const dataMapel = sheetMapel.getDataRange().getValues();
     
     const emailLower = email.toLowerCase();
     const rowsToKeep = [];
     
-    // 3. Ambil data lama (Headers & data guru lain/TA lain)
     if (dataMapel.length > 0) rowsToKeep.push(dataMapel[0]);
     else rowsToKeep.push(["email_guru", "mapel", "id_tahun_ajaran", "singkatan", "kelas_json", "isUS", "isUP"]);
 
@@ -9595,44 +9590,43 @@ function _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId) {
       const rowEmail = String(row[0]).toLowerCase();
       const rowTA = String(row[2]);
       
-      // Jika baris ini milik guru ini DAN di T.A. terbaru, kita akan TIMPA
+      // Hapus data lama milik guru ini di TA ini (karena akan kita timpa)
       if (rowEmail === emailLower && rowTA === latestTA) {
-         // Skip (jangan simpan, karena akan diganti data baru)
+         // Skip
       } else {
-         // Baris guru lain atau T.A. lain tetap disimpan
          rowsToKeep.push(row);
       }
     }
 
-    // 4. Buat Baris Baru dari mapelKelasData
+    // 5. Tambahkan Data Baru
     for (const [mapelId, kelasList] of Object.entries(mapelKelasData)) {
        const kelasJson = JSON.stringify(kelasList);
-       
-       // [FIX] Gunakan Nama Panjang dari Master (jika ada), fallback ke ID
        const realName = masterMapelNames[mapelId] || mapelId;
-       
-       // Gunakan ID sebagai Singkatan/Kode
        const singkatan = mapelId; 
-       
-       // [FIX] Ambil status isUS/isUP dari Master App 1
        const info = masterMapelInfo[mapelId] || { isUS: false, isUP: false };
 
        rowsToKeep.push([
          email,       // A: email_guru
-         realName,    // B: mapel (SEKARANG NAMA PANJANG)
+         realName,    // B: mapel (Nama Panjang)
          latestTA,    // C: id_tahun_ajaran
-         singkatan,   // D: singkatan (SEKARANG KODE/ID)
+         singkatan,   // D: singkatan (Kode)
          kelasJson,   // E: kelas_json
          info.isUS,   // F: isUS 
          info.isUP    // G: isUP 
        ]);
     }
 
-    // 5. Tulis Ulang Sheet db_mapel di DB Lokal
+    // 6. Tulis Ulang Sheet
     sheetMapel.clearContents();
     sheetMapel.getRange(1, 1, rowsToKeep.length, 7).setValues(rowsToKeep);
     
-    Logger.log(`Sukses sinkronisasi mapel guru ${email} ke T.A. ${latestTA}. Mapel: Nama Panjang, Singkatan: Kode.`);
+    // --- [PERBAIKAN UTAMA] ---
+    // Update penanda versi data di App 2 (db_sekolah!Z1).
+    // Ini akan memaksa Aplikasi 2 untuk menyadari ada perubahan dan memuat ulang data.
+    _touchApp2DataVersion(app2DbId);
+    // -------------------------
+    
+    Logger.log(`Sukses sinkronisasi mapel guru ${email} ke T.A. ${latestTA}. Cache App 2 di-refresh.`);
 
   } catch (e) {
     Logger.log(`Gagal _syncGuruMapelToLocalApp2: ${e.message}`);
