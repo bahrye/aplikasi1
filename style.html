@@ -805,12 +805,35 @@
     background-color: #157347;
   }
 
+  /* Update style untuk baris kelas */
   .kelas-input-row {
     display: flex;
     gap: 10px;
     margin-bottom: 10px;
     align-items: center;
   }
+
+  /* Kotak untuk Kelas Utama (Romawi) - Readonly */
+  .kelas-prefix-box {
+    width: 60px;
+    padding: 14px 5px;
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    background-color: #e9ecef;
+    color: var(--text-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Input Nama Kelas (Suffix) */
+  .kelas-suffix-input {
+    flex-grow: 1;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
   .kelas-input-row input {
     flex-grow: 1;
     margin: 0;
@@ -850,6 +873,7 @@
     cursor: pointer;
   }
 
+  /* Tombol aksi tetap sama */
   .btn-aksi-kelas {
     width: 40px;
     padding: 10px 0;
