@@ -1340,9 +1340,6 @@
     }, true); // <-- Gunakan fase CAPTURE (true)
     // --- [AKHIR TAMBAHAN BARU] ---
 
-    // Listener untuk Tombol Buka Modal
-    document.getElementById('btn-set-tahun-ajar-siswa').addEventListener('click', bukaModalSetTahunAjar);
-
     // Listener Modal Set TA
     document.getElementById('btn-tutup-modal-set-ta').addEventListener('click', tutupModalSetTahunAjar);
     document.getElementById('btn-batal-modal-set-ta').addEventListener('click', tutupModalSetTahunAjar);
@@ -1488,15 +1485,6 @@
     document.getElementById('guru-table-container').addEventListener('click', (e) => {
         const target = e.target.closest('button');
         if (!target) return;
-
-        // --- [LOGIKA BARU] Tombol Atur Tahun Ajar ---
-        if (target.classList.contains('btn-atur-ta')) {
-            const email = target.dataset.email;
-            const nama = target.dataset.nama;
-            const currentTa = target.dataset.ta;
-            openSetGuruTAModal(email, nama, currentTa);
-            return;
-        }
 
         // --- [LOGIKA LAMA] Tombol Edit Guru ---
         if (target.classList.contains('btn-edit-guru')) {
@@ -2011,51 +1999,6 @@
     document.getElementById('form-ta').addEventListener('submit', (e) => {
       e.preventDefault();
       simpanTahunAjaran();
-    });
-    
-    // Tambahkan listener dinamis untuk add/remove row T.A.
-    document.getElementById('ta-list-container').addEventListener('click', (e) => {
-      const target = e.target;
-
-      if (target.classList.contains('btn-add-ta-row') || target.classList.contains('btn-remove-ta-row')) {
-        isFormDirty = true;
-      }
-      
-      if (target.classList.contains('btn-add-ta-row')) {
-        const currentList = getCurrentTahunAjaranList();
-        currentList.push({ id: '', deskripsi: '', isLocked: false, isUsed: false }); // Tambah baris baru
-        renderTahunAjaranList(currentList);
-        
-        // Fokus ke input ID di baris terakhir
-        const lastInput = document.querySelector('#ta-list-container .ta-input-row:last-child input[type="text"]');
-        if (lastInput) {
-          lastInput.focus();
-        }
-      
-      } 
-      else if (target.classList.contains('btn-remove-ta-row')) {
-        
-        const rowToRemove = target.closest('.ta-input-row');
-        // 'allRows' menyertakan baris HEADER (yang juga punya kelas .ta-input-row)
-        const allRows = Array.from(document.querySelectorAll('#ta-list-container .ta-input-row')); 
-        const indexToRemoveInDOM = allRows.indexOf(rowToRemove);
-        
-        // 'currentList' HANYA berisi data (TIDAK termasuk header)
-        const currentList = getCurrentTahunAjaranList(); 
-        
-        // --- PERBAIKAN BUG DI SINI ---
-        // Kita harus mengonversi indeks DOM (yang ada header) 
-        // ke indeks data (tanpa header) dengan mengurangi 1.
-        const indexToRemoveInData = indexToRemoveInDOM - 1; 
-
-        // Pastikan indeksnya valid (bukan header (indeks -1) dan ada di dalam list)
-        if (indexToRemoveInData > -1 && indexToRemoveInData < currentList.length) { 
-          currentList.splice(indexToRemoveInData, 1); // Hapus item yang benar
-        }
-        // --- AKHIR PERBAIKAN ---
-        
-        renderTahunAjaranList(currentList); // Render ulang
-      }
     });
     
     document.getElementById('ta-list-container').addEventListener('input', (e) => {
@@ -4633,16 +4576,16 @@
       const thead = table.createTHead();
       const headerRow = thead.insertRow();
       
-      // --- [MODIFIKASI HEADER] Menambahkan kolom Tahun Ajar ---
-      headerRow.innerHTML = '<th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Tahun Ajar</th><th>Aksi</th>';
+      // [MODIFIKASI HEADER] Kolom "Tahun Ajar" telah DIHAPUS
+      headerRow.innerHTML = '<th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Aksi</th>';
 
       const tbody = table.createTBody();
       const fragment = document.createDocumentFragment(); 
 
       if (siswaList.length === 0) {
           const emptyRow = tbody.insertRow();
-          // Colspan jadi 5 karena tambah 1 kolom
-          emptyRow.innerHTML = '<td colspan="5" style="text-align: center;">Tidak ada data siswa yang sesuai dengan filter.</td>';
+          // Colspan jadi 4 (Nama, NISN, Kelas, Aksi)
+          emptyRow.innerHTML = '<td colspan="4" style="text-align: center;">Tidak ada data siswa yang sesuai dengan filter.</td>';
       } else {
           let currentKelas = null;
           const selectedSort = document.getElementById('siswa-sort-by').value;
@@ -4665,15 +4608,12 @@
               
               const tr = document.createElement('tr');
               
-              // --- [MODIFIKASI BODY] Menambahkan data Tahun Ajar ---
-              // Kita gunakan badge agar terlihat rapi jika ada banyak tahun
-              const tahunAjarDisplay = siswa.tahun_ajar ? `<span style="background:#e7f1ff; color:#0d6efd; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:500;">${siswa.tahun_ajar}</span>` : '-';
-
+              // [MODIFIKASI BODY] Data Tahun Ajar dihapus dari baris
               tr.innerHTML = `
                 <td><strong>${siswa.nama}</strong></td>
                 <td>${siswa.nisn}</td>
                 <td>${siswa.kelas}</td>
-                <td>${tahunAjarDisplay}</td> <td>
+                <td>
                   <div class="btn-grup-gerak">
                     ${moveButtonsHtml}
                   </div>
@@ -9463,94 +9403,43 @@
       }
       // --- Akhir Logika UI Premium ---
       
-      // --- [OPTIMASI CACHE: CEK DATA LOKAL DULU] ---
-      // Cek apakah Guru, Mapel, dan Kelas sudah ada di cache klien
-      if (globalGuruList && globalGuruList.length > 0 && 
-          globalKelasListCache && globalKelasListCache.length > 0 && 
-          globalMapelList && globalMapelList.length > 0) {
-          
+      // --- [OPTIMASI: HANYA MUAT GURU] ---
+      
+      // 1. Cek Cache Guru
+      if (globalGuruList && globalGuruList.length > 0) {
           console.log("Memuat guru dari cache klien (Instan)...");
-          
-          // Panggil handler sukses secara manual dengan data dari memori
-          // Kita bungkus dalam setTimeout agar rendering UI terasa mulus
+          // Render langsung
           setTimeout(() => {
               onGuruLoaded({ status: 'sukses', guru: globalGuruList });
-              // Panggil pengaturan guru di background agar toggle switch tetap sinkron
+              // Panggil pengaturan guru di background (non-blocking)
               google.script.run.withSuccessHandler(onPengaturanGuruLoaded).getPengaturanGuru(getToken());
           }, 10);
-          
-          return; // BERHENTI DI SINI, JANGAN PANGGIL SERVER LAGI
-      }
-      // --- [AKHIR OPTIMASI] ---
-
-      // --- [LOADING BIASA: JIKA CACHE KOSONG] ---
-      console.log("Memulai sequence loading halaman Guru dari Server...");
-      setLoading(true, 'Memuat referensi data...', false, false);
-      
-      // Reset UI Tabel
-      document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
-      
-      // Matikan tombol sementara
-      document.getElementById('btn-tambah-guru-baru').disabled = true;
-      document.getElementById('btn-import-guru').disabled = true;
-      document.getElementById('btn-cetak-kartu-guru').disabled = true;
-      document.getElementById('btn-sync-guru-kelas').disabled = true;
-      document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
-
-      // LANGKAH 1: Cek apakah Mapel sudah ada di cache?
-      if (globalMapelList && globalMapelList.length > 0) {
-          console.log("Cache Mapel ditemukan, lanjut ke Kelas...");
-          _loadKelasForGuruPage(); // Lanjut ke langkah 2
       } else {
-          console.log("Cache Mapel kosong, memuat dari server...");
-          // Ambil Mapel dari server
-          google.script.run
-              .withSuccessHandler((response) => {
-                  if (response.status === 'sukses') {
-                      // Simpan ke variabel global agar pencarian di modal berfungsi
-                      globalMapelList = response.mapel;
-                      // Setelah mapel siap, Lanjut ke langkah 2
-                      _loadKelasForGuruPage();
-                  } else {
-                      onGagal(response);
-                  }
-              })
-              .withFailureHandler(onGagal)
-              .getMapel(getToken());
-      }
-
-      // Panggil data Pengaturan Guru (jalan paralel karena independen)
-      google.script.run
-          .withSuccessHandler(onPengaturanGuruLoaded)
-          .withFailureHandler(onGagal) 
-          .getPengaturanGuru(getToken());
-  }
-
-  /**
-   * [BARU] Callback setelah kelas dimuat, SEBELUM memuat guru.
-   * VERSI REFACTOR: Menambahkan flag isFromCache
-   */
-  function onKelasLoadedForGuruPage(response, isFromCache = false) { // <-- TAMBAHKAN PARAMETER
-      if (response.status === 'sukses') {
-          globalKelasListCache = response.kelasList;
-
-          // --- PENAMBAHAN LOGIKA ---
-          // Jika data berasal dari cache, jangan panggil server lagi.
-          if (isFromCache) {
-              return; 
-          }
-          // --- AKHIR PENAMBAHAN ---
+          // 2. Jika Cache Kosong, Panggil Server
+          console.log("Cache Guru kosong, memuat dari server...");
+          setLoading(true, 'Memuat data guru...', false, false);
           
-          // 3. Setelah kelas dimuat (dari server), SEKARANG panggil getGuru (Logika Asli)
+          // Reset UI Tabel
+          document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
+          
+          // Matikan tombol sementara
+          document.getElementById('btn-tambah-guru-baru').disabled = true;
+          document.getElementById('btn-import-guru').disabled = true;
+          document.getElementById('btn-cetak-kartu-guru').disabled = true;
+          document.getElementById('btn-sync-guru-kelas').disabled = true;
+          document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
+
+          // HANYA PANGGIL DATA GURU (Tanpa Mapel/Kelas)
           google.script.run
               .withSuccessHandler(onGuruLoaded)
               .withFailureHandler(onGagal)
               .getGuru(getToken());
-              
-      } else {
-          // Gagal memuat kelas. Ini fatal. Hentikan loading dan tampilkan error.
-          globalKelasListCache = [];
-          onGagal(response); // Biarkan onGagal mematikan loading
+
+          // Panggil data Pengaturan Guru (Paralel)
+          google.script.run
+              .withSuccessHandler(onPengaturanGuruLoaded)
+              .withFailureHandler(onGagal) 
+              .getPengaturanGuru(getToken());
       }
   }
 
@@ -9695,8 +9584,8 @@
       container.innerHTML = ""; 
 
       if (!guruList || guruList.length === 0) {
-          // Colspan jadi 5 karena ada kolom baru
-          container.innerHTML = '<table class="siswa-table guru-table"><tbody><tr><td colspan="5" style="text-align: center;">Belum ada data guru.</td></tr></tbody></table>';
+          // Colspan 4 (Nama, Email, Mapel, Aksi)
+          container.innerHTML = '<table class="siswa-table guru-table"><tbody><tr><td colspan="4" style="text-align: center;">Belum ada data guru.</td></tr></tbody></table>';
           return;
       }
 
@@ -9705,14 +9594,13 @@
 
       const thead = table.createTHead();
       const headerRow = thead.insertRow();
-      // Header Baru
+      
       headerRow.innerHTML = `
         <thead>
           <tr>
             <th>Nama Guru</th>
             <th>Email Login</th>
-            <th style="width: 30%;">Mapel - Kelas</th>
-            <th style="width: 150px;">Tahun Ajar</th>
+            <th style="width: 40%;">Mapel - Kelas (Singkatan)</th>
             <th style="width: 110px;">Aksi</th>
           </tr>
         </thead>
@@ -9721,13 +9609,6 @@
       const tbody = table.createTBody();
       const fragment = document.createDocumentFragment();
       
-      // Helper untuk mencari deskripsi TA berdasarkan ID
-      const getTaDeskripsi = (id) => {
-        if (!globalTaList || globalTaList.length === 0) return id;
-        const ta = globalTaList.find(t => t.id === id);
-        return ta ? ta.deskripsi : id;
-      };
-
       guruList.forEach(guru => {
           const guruDataJson = JSON.stringify({
               email: guru.email,
@@ -9736,42 +9617,31 @@
               mapelKelas: guru.mapelKelas
           }).replace(/"/g, '&quot;');
 
-          // --- 1. Format Mapel - Kelas ---
+          // --- 1. Format Mapel - Kelas (DIPERBARUI) ---
           let mapelHtml = '';
           if (guru.mapelKelas && Object.keys(guru.mapelKelas).length > 0) {
             for (const [mapelId, kelasArr] of Object.entries(guru.mapelKelas)) {
-                // Cari nama mapel dari global list jika ada
+                // Cari objek mapel hanya untuk mendapatkan Nama Lengkap (untuk Tooltip saat dihover)
                 const mapelObj = globalMapelList.find(m => m.id === mapelId);
-                const mapelName = mapelObj ? mapelObj.nama : mapelId;
+                const mapelFullName = mapelObj ? mapelObj.nama : mapelId;
                 
-                // Format kelas (misal: "7A, 7B" atau "Semua")
                 let kelasStr = Array.isArray(kelasArr) ? kelasArr.join(', ') : '';
-                if (kelasStr.includes('*')) kelasStr = 'Semua Kelas';
                 
-                mapelHtml += `<span class="mapel-list-badge"><strong>${mapelName}</strong> (${kelasStr})</span> `;
+                // [OPSIONAL] Singkat "Semua Kelas" jadi "All" atau "Semua" agar lebih hemat tempat
+                if (kelasStr.includes('*')) kelasStr = 'Semua'; 
+                
+                // [MODIFIKASI] Tampilkan mapelId (Singkatan), Nama lengkap di 'title'
+                mapelHtml += `<span class="mapel-list-badge" title="${mapelFullName}"><strong>${mapelId}</strong> (${kelasStr})</span> `;
             }
           } else {
             mapelHtml = '<span class="text-muted">-</span>';
           }
-
-          // --- 2. Format Tahun Ajar ---
-          const activeTAId = guru.activeTA || '';
-          const activeTADesc = activeTAId ? getTaDeskripsi(activeTAId) : '-';
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
               <td><strong>${guru.nama}</strong><br><small class="text-muted">${guru.nip || '-'}</small></td>
               <td>${guru.email}</td>
               <td>${mapelHtml}</td>
-              <td>
-                <div class="ta-wrapper">
-                  <span class="ta-badge">${activeTADesc}</span>
-                  
-                  <button class="btn-atur-ta" data-email="${guru.email}" data-nama="${guru.nama}" data-ta="${activeTAId}">
-                      <i class="fas fa-cog"></i> Atur
-                  </button>
-                </div>
-              </td>
               <td>
                 <div class="btn-grup-aksi">
                       <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
@@ -9794,27 +9664,71 @@
 
   function showModalGuru(mode, guruData = null) {
       hideMessage('modal-guru-error');
+      
+      // --- [LOGIKA LAZY LOAD: MAPEL & KELAS] ---
+      // Cek apakah data referensi (Mapel & Kelas) sudah ada di memori?
+      if (!globalMapelList || globalMapelList.length === 0 || !globalKelasListCache || globalKelasListCache.length === 0) {
+          
+          // Jika belum ada, muat dulu (Hanya 1x)
+          setLoading(true, "Memuat referensi Mapel & Kelas...", true); // Blok UI
+          
+          // 1. Muat Mapel
+          google.script.run
+            .withSuccessHandler((responseMapel) => {
+                if (responseMapel.status === 'sukses') {
+                    globalMapelList = responseMapel.mapel; // Simpan ke global
+                    
+                    // 2. Muat Kelas (Setelah Mapel sukses)
+                    google.script.run
+                        .withSuccessHandler((responseKelas) => {
+                            setLoading(false); // Matikan loading
+                            
+                            if (responseKelas.status === 'sukses') {
+                                globalKelasListCache = responseKelas.kelasList; // Simpan ke global
+                                
+                                // 3. Panggil diri sendiri lagi (Rekursif)
+                                // Sekarang data sudah ada, jadi akan masuk ke blok 'else' di bawah
+                                showModalGuru(mode, guruData); 
+                            } else {
+                                showToast("Gagal memuat data Kelas: " + responseKelas.message, 'gagal');
+                            }
+                        })
+                        .withFailureHandler(onGagal)
+                        .getKelas(getToken());
+                        
+                } else {
+                    setLoading(false);
+                    showToast("Gagal memuat data Mapel: " + responseMapel.message, 'gagal');
+                }
+            })
+            .withFailureHandler(onGagal)
+            .getMapel(getToken());
+            
+          return; // BERHENTI DI SINI, tunggu callback selesai
+      }
+      // --- [AKHIR LOGIKA LAZY LOAD] ---
+
+
+      // --- LOGIKA PEMBUKAAN MODAL (Data sudah siap) ---
+      
       document.getElementById('modal-guru-mode').value = mode;
       const passLabel = document.getElementById('label-guru-password');
       const passInput = document.getElementById('modal-guru-password');
       
-      // --- [PEMULIHAN FITUR] ---
       // 1. Tampilkan Container Mapel
       const mapelContainer = document.querySelector('#form-guru .form-group[style*="display: none;"]');
       if (mapelContainer) mapelContainer.style.display = 'block';
 
-      // 2. Pastikan menggunakan UI Multi-Kelas (Mapel + Kelas)
+      // 2. Pastikan menggunakan UI Multi-Kelas
       document.getElementById('modal-guru-ui-single-class').style.display = 'none';
       document.getElementById('modal-guru-ui-multi-class').style.display = 'block';
       
-      // 3. Set mode di hidden input agar pencarian mapel tahu kita pakai mode multi-kelas
-      // Penting: set ke 'false' agar pencarian mengarah ke container yang benar
+      // 3. Set mode pencarian
       document.getElementById('modal-guru-mode').dataset.isSingleClassMode = "false"; 
       
-      // 4. Bersihkan list sebelumnya
+      // 4. Bersihkan list
       document.getElementById('modal-guru-mapel-kelas-list').innerHTML = '';
       document.getElementById('modal-guru-mapel-kelas-search').value = '';
-      // --- [AKHIR PEMULIHAN] ---
 
       if (mode === 'add') {
           document.getElementById('modal-guru-title').innerText = "Tambah Guru Baru";
@@ -9836,11 +9750,10 @@
           passLabel.innerText = "Password (Kosongkan jika tidak diubah)";
           passInput.placeholder = "---";
           
-          // --- [PEMULIHAN FITUR] Render data mapel yang sudah ada ---
+          // Render data mapel yang sudah ada (Sekarang aman karena globalKelasListCache sudah ada)
           if (guruData.mapelKelas) {
              renderMapelKelasList(guruData.mapelKelas);
           }
-          // --- [AKHIR PEMULIHAN] ---
       }
 
       document.getElementById('guru-modal').classList.add('show');
@@ -10075,16 +9988,16 @@
     return ids;
   }
 
-  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "") { 
+  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "*") { // [MODIFIKASI] Default ubah ke "*"
     const container = document.getElementById('modal-guru-mapel-kelas-list');
     
     // Buat opsi <select>
     let classOptions = '<option value="">-- Pilih Kelas --</option>';
     
-    // --- [MODIFIKASI] Tambahkan Opsi "Semua Kelas" ---
+    // Tambahkan Opsi "Semua Kelas"
+    // Jika selectedKelas adalah "*", maka opsi ini akan otomatis terpilih
     const isAllSelected = (selectedKelas === "*");
     classOptions += `<option value="*" ${isAllSelected ? 'selected' : ''} style="font-weight:bold; color:var(--primary-color);">-- Semua Kelas --</option>`;
-    // --- [AKHIR MODIFIKASI] ---
     
     if (globalKelasListCache.length > 0) {
       // Urutkan kelas agar rapi
@@ -11588,124 +11501,83 @@
   }
 
   /**
-   * [BARU] Membaca data T.A. saat ini dari DOM.
-   * [PERBAIKAN] Sekarang juga membaca status 'isUsed' dari 'dataset.isUsed'.
+   * [MODIFIKASI UI] Membaca data T.A. tunggal dari DOM.
+   * Mengembalikan array berisi 1 objek saja.
    */
   function getCurrentTahunAjaranList() {
-    const allRows = document.querySelectorAll('#ta-list-container .ta-input-row');
+    const container = document.getElementById('ta-list-container');
+    
+    // Cari input secara spesifik
+    const idInput = container.querySelector('.ta-id-input');
+    const deskripsiInput = container.querySelector('.ta-deskripsi-input');
+    
     const list = [];
     
-    allRows.forEach(row => {
-      const idInput = row.querySelector('.ta-id-input');
-      const deskripsiInput = row.querySelector('.ta-deskripsi-input');
-      const kunciInput = row.querySelector('.ta-kunci-input');
+    if (idInput && deskripsiInput) {
+      // Ambil isUsed dari parent div
+      const parentRow = idInput.closest('.ta-input-row');
+      const isUsed = (parentRow && parentRow.dataset.isUsed === 'true');
       
-      // Lewati header row
-      if (idInput && deskripsiInput && kunciInput) {
-        
-        // *** FIX 1: Read 'isUsed' state from the DOM ***
-        // Konversi string 'true'/'false' kembali ke boolean
-        const isUsed = (row.dataset.isUsed === 'true'); 
-        
-        list.push({
-          id: idInput.value,
-          deskripsi: deskripsiInput.value,
-          isLocked: kunciInput.checked,
-          isUsed: isUsed // <-- Masukkan kembali ke dalam data
-        });
-      }
-    });
+      list.push({
+        id: idInput.value,
+        deskripsi: deskripsiInput.value,
+        isLocked: false, // Default FALSE (Terbuka) karena tombol kunci dihapus
+        isUsed: isUsed
+      });
+    }
     
     return list;
   }
 
   /**
-   * [BARU] Merender list T.A. ke DOM.
-   * [PERBAIKAN] Menyimpan 'data-is-used' dan memperbaiki logika tombol Hapus/Tambah.
+   * [MODIFIKASI UI] Merender list T.A. menjadi SATU BARIS SAJA.
+   * Menghilangkan kolom Kunci dan Aksi.
    */
   function renderTahunAjaranList(taList) {
     const container = document.getElementById('ta-list-container');
     container.innerHTML = '';
 
-    let listToRender = taList;
-    if (listToRender.length === 0) {
-      // Jika kosong, tambahkan satu baris baru default
-      listToRender = [{ id: '', deskripsi: '', isLocked: false, isUsed: false }];
-    }
+    // Ambil data pertama saja, atau default kosong jika tidak ada data
+    const ta = (taList && taList.length > 0) ? taList[0] : { id: '', deskripsi: '', isLocked: false, isUsed: false };
 
-    // Buat header
+    // Override style grid agar menjadi 2 kolom saja
+    const gridStyle = "display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-bottom: 10px; align-items: center; min-width: 0;";
+
+    // 1. Buat Header Sederhana
     const headerDiv = document.createElement('div');
-    headerDiv.className = 'ta-input-row';
+    headerDiv.className = 'ta-input-row'; // Tetap pakai class asli untuk margin/gap
+    headerDiv.style.cssText = gridStyle;  // Timpa grid-columns
+    
     headerDiv.innerHTML = `
-      <label style="font-weight: 700;">ID Tahun Ajaran</label>
-      <label style="font-weight: 700;">Deskripsi (Cth: 2024/2025)</label>
-      <label style="font-weight: 700; text-align: center;">Kunci</label>
-      <label style="font-weight: 700;">Aksi</label>
+      <label style="font-weight: 700; margin:0;">ID Tahun Ajaran</label>
+      <label style="font-weight: 700; margin:0;">Deskripsi (Cth: 2024/2025)</label>
     `;
     container.appendChild(headerDiv);
 
-    listToRender.forEach((ta, index) => {
-      const div = document.createElement('div');
-      div.className = 'ta-input-row';
-      
-      const isUsed = ta.isUsed || false;
-      const isLocked = ta.isLocked || false;
-      
-      // *** FIX 1: Store isUsed state in the DOM ***
-      div.dataset.isUsed = String(isUsed); // Simpan sebagai string 'true'/'false'
-      
-      const titleAttr = isUsed ? 'ID tidak bisa diubah/dihapus karena T.A. sudah dipakai.' : '';
+    // 2. Buat Baris Input Tunggal
+    const div = document.createElement('div');
+    div.className = 'ta-input-row';
+    div.style.cssText = gridStyle; // Timpa grid-columns
+    
+    const isUsed = ta.isUsed || false;
+    // Kunci dihilangkan dari UI, jadi kita tidak merender checkbox.
+    // Status isUsed tetap dicek untuk readonly ID.
 
-      const idInputHtml = isUsed ? 
-        `<input type="text" class="ta-id-input" value="${ta.id}" readonly style="background-color: var(--bg-light); cursor: not-allowed;" title="${titleAttr}">` :
-        `<input type="text" class="ta-id-input" value="${ta.id}" placeholder="TA-2024-2025">`;
-        
-      const checkboxHtml = `<input type="checkbox" class="ta-kunci-input" id="kunci_${index}" ${isLocked ? 'checked' : ''} title="Kunci/Buka Kunci T.A.">`;
-      
-      // *** FIX 2: Logic for buttons ***
-      
-      // 1. Buat tombol Hapus.
-      // Selalu ada, kecuali jika ini satu-satunya baris.
-      const isOnlyRow = (listToRender.length === 1);
-      let removeButtonHtml;
-      
-      if (isOnlyRow) {
-        // Jika hanya 1 baris, buat placeholder non-fungsional
-         removeButtonHtml = `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" disabled style="opacity: 0; pointer-events: none;">&times;</button>`;
-      } else if (isUsed) {
-        // Jika 'isUsed' (terkunci), buat tombol non-fungsional
-        removeButtonHtml = `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" disabled title="${titleAttr}">&times;</button>`;
-      } else {
-        // Jika tidak terkunci, buat tombol fungsional
-        removeButtonHtml = `<button type="button" class="btn-aksi-kelas btn-remove-ta-row" title="Hapus Baris">&times;</button>`;
-      }
-          
-      // 2. Buat tombol Tambah (hanya untuk baris terakhir)
-      const addButtonHtml = (index === listToRender.length - 1) ?
-        `<button type="button" class="btn-aksi-kelas btn-add-ta-row btn-add-kelas" title="Tambah Baris Baru">+</button>` :
-        ''; // Kosong untuk semua baris lain
+    const titleAttr = isUsed ? 'ID tidak bisa diubah karena T.A. sudah memiliki data.' : '';
 
-      // 3. Gabungkan dalam wrapper (sesuai perbaikan CSS)
-      const actionsHtml = `
-        <div class="ta-action-buttons">
-          ${removeButtonHtml}
-          ${addButtonHtml}
-        </div>
-      `;
-      
-      // 4. Build final row
-      div.innerHTML = `
-        ${idInputHtml}
-        <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A.">
-        <div class="ta-lock-wrapper">
-          <label for="kunci_${index}">Kunci</label>
-          ${checkboxHtml}
-        </div>
-        ${actionsHtml} 
-      `;
-      
-      container.appendChild(div);
-    });
+    const idInputHtml = isUsed ? 
+      `<input type="text" class="ta-id-input" value="${ta.id}" readonly style="background-color: var(--bg-light); cursor: not-allowed; margin:0;" title="${titleAttr}">` :
+      `<input type="text" class="ta-id-input" value="${ta.id}" placeholder="TA-2024-2025" style="margin:0;">`;
+
+    div.innerHTML = `
+      ${idInputHtml}
+      <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A." style="margin:0;">
+    `;
+    
+    // Simpan state isUsed di dataset untuk referensi saat simpan
+    div.dataset.isUsed = String(isUsed);
+
+    container.appendChild(div);
   }
 
   /**
@@ -13965,27 +13837,6 @@
           })
           .withFailureHandler(onGagal)
           .saveSiswaEnrollment(getToken(), taId, enrollmentData);
-  }
-
-  /**
-   * [HELPER BARU] Langkah 2 dari Loading Guru: Memuat Kelas lalu Guru.
-   */
-  function _loadKelasForGuruPage() {
-      // LANGKAH 2: Cek Cache Kelas
-      if (globalKelasListCache && globalKelasListCache.length > 0) {
-          console.log("Cache Kelas ditemukan, lanjut memuat Guru...");
-          // Jika kelas ada di cache, panggil handler sukses secara manual
-          // Parameter 'true' menandakan data dari cache
-          onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
-      } else {
-          console.log("Cache Kelas kosong, memuat dari server...");
-          setLoading(true, 'Memuat data kelas...', false, false);
-          // Ambil Kelas dari server
-          google.script.run
-              .withSuccessHandler(onKelasLoadedForGuruPage) 
-              .withFailureHandler(onGagal)
-              .getKelas(getToken());
-      }
   }
 
   // --- FUNGSI LOGIKA MODAL ---
