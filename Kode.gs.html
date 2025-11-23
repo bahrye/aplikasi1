@@ -9518,8 +9518,7 @@ function processArchivingToApp3(token) {
 }
 
 /**
- * [BARU] Memvalidasi NPSN untuk akses Arsip.
- * Dipanggil oleh Client App 1 sebelum membuka tab baru.
+ * [MODIFIKASI] Memvalidasi NPSN dan Mengambil URL Dinamis App 3.
  */
 function cekValiditasNpsnArsip(npsn) {
   try {
@@ -9528,20 +9527,15 @@ function cekValiditasNpsnArsip(npsn) {
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     
-    // Ambil data Kolom H (NPSN - Index 7) dan Kolom V (Arsip_DB_ID - Index 21)
-    // Kita ambil range secukupnya agar efisien
+    // 1. Validasi NPSN
     const data = sheetSekolah.getDataRange().getValues();
-    
     let found = false;
     let hasArsip = false;
 
-    // Loop mulai baris ke-2 (indeks 1)
     for (let i = 1; i < data.length; i++) {
-      // Pastikan perbandingan string agar aman
-      if (String(data[i][7]).trim() === String(npsn).trim()) {
+      if (String(data[i][7]).trim() === String(npsn).trim()) { // Kolom H = NPSN
         found = true;
-        // Cek apakah kolom V (Arsip DB ID) ada isinya
-        if (data[i][21]) {
+        if (data[i][21]) { // Kolom V = Arsip_DB_ID
           hasArsip = true;
         }
         break;
@@ -9556,7 +9550,21 @@ function cekValiditasNpsnArsip(npsn) {
       return { valid: false, message: "Sekolah ini belum memiliki Arsip Nilai (Belum pernah tutup tahun ajaran)." };
     }
 
-    return { valid: true };
+    // 2. [BARU] Ambil URL Aplikasi 3 dari Sheet Config
+    const configSheet = masterSS.getSheetByName('Config');
+    if (!configSheet) {
+      return { valid: false, message: "Sheet Konfigurasi ('Config') tidak ditemukan di Master Sheet." };
+    }
+
+    // Asumsi: B1 = App 2, B2 = App 3
+    const urlApp3 = configSheet.getRange('B2').getValue(); 
+
+    if (!urlApp3 || urlApp3 === "") {
+      return { valid: false, message: "URL Aplikasi Arsip belum diatur di Master Sheet (Config!B2)." };
+    }
+
+    // Kembalikan URL ke client
+    return { valid: true, url: urlApp3 };
 
   } catch (e) {
     return { valid: false, message: "Terjadi kesalahan server: " + e.message };
