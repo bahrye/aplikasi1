@@ -2052,42 +2052,49 @@ function createSiswa(token, dataSiswa) {
 
 function updateSiswa(token, dataSiswa) {
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    // [MODIFIKASI] Ambil app2DbId juga dari validasi sesi
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token); 
+    
     if (!dataSiswa.id) return { status: "gagal", message: "ID Siswa hilang." };
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getSiswaSheet(ss);
     const data = sheet.getDataRange().getValues();
     let rowToUpdate = -1;
+    
     for (let i = 1; i < data.length; i++) {
       if (data[i][2] == dataSiswa.nisn && data[i][0] != dataSiswa.id) {
         return { status: "gagal", message: "NISN sudah digunakan." };
       }
       if (data[i][0] == dataSiswa.id) rowToUpdate = i + 1;
     }
+    
     if (rowToUpdate === -1) return { status: "gagal", message: "Siswa tidak ditemukan." };
+    
     const formattedNisn = dataSiswa.nisn ? "'" + dataSiswa.nisn : null;
     const formattedNisLokal = dataSiswa.nisLokal ? "'" + dataSiswa.nisLokal : null;
     const updatedRow = [
       dataSiswa.id, dataSiswa.nama, formattedNisn, formattedNisLokal,
       dataSiswa.jk, dataSiswa.tempatLahir, dataSiswa.tglLahir || null, dataSiswa.kelas
     ];
-    sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
     
+    // Update di App 1 (Lokal)
+    sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
 
-    // --- PERUBAHAN DI SINI ---
-    // Ambil 'urutan' asli dari data yang dibaca (data adalah array 0-indexed, rowToUpdate 1-indexed)
-    const urutanAsli = data[rowToUpdate - 1][8]; // Kolom I adalah index 8
-    
-    // Gabungkan dataSiswa dari klien dengan urutan dari server
+    // --- [BARU] SINKRONISASI KE APP 2 SECARA REALTIME ---
+    if (app2DbId) {
+       _syncUpdateSiswaToApp2(app2DbId, dataSiswa);
+    }
+    // ----------------------------------------------------
+
+    const urutanAsli = data[rowToUpdate - 1][8]; 
     const updatedSiswaObject = { 
-      ...dataSiswa, // Data dari form (id, nama, nisn, dll)
+      ...dataSiswa, 
       urutan: urutanAsli, 
       originalUrutan: urutanAsli 
     };
 
     return { status: "sukses", newData: updatedSiswaObject };
-    // --- AKHIR PERUBAHAN ---
 
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -7243,6 +7250,8 @@ function saveMapelAssignment(token, id_tahun_ajaran, assignmentsToSave) {
       // [MODIFIKASI] Mengubah jumlah kolom menjadi 7
       sheetMapel.getRange(2, 1, dataFinal.length, 7).setValues(dataFinal);
     }
+
+    _touchApp2DataVersion(app2DbId);
     
     return { status: "sukses" };
     
@@ -9588,5 +9597,55 @@ function getKelasForAdminPdf(token, submissionKey) {
 
   } catch (e) {
     return { status: 'gagal', message: e.message };
+  }
+}
+
+/**
+ * [BARU] Memperbarui Timestamp di DB App 2.
+ * Ini memberi sinyal ke Aplikasi 2 bahwa data telah berubah, sehingga cache harus dibersihkan.
+ */
+function _touchApp2DataVersion(app2DbId) {
+  try {
+    const ss = SpreadsheetApp.openById(app2DbId);
+    const sheet = ss.getSheetByName('db_sekolah');
+    if (sheet) {
+      // Kita gunakan sel Z1 sebagai penanda versi data
+      sheet.getRange('Z1').setValue(new Date().getTime());
+    }
+  } catch (e) {
+    Logger.log("Gagal update timestamp App 2: " + e.message);
+  }
+}
+
+/**
+ * [BARU] Sinkronisasi Update Siswa ke App 2 (db_siswa)
+ */
+function _syncUpdateSiswaToApp2(app2DbId, dataSiswa) {
+  try {
+    const ss = SpreadsheetApp.openById(app2DbId);
+    const sheetSiswa = ss.getSheetByName('db_siswa'); // Kolom: no_ujian, nama, nisn, kelas
+    
+    if (!sheetSiswa) return;
+
+    const data = sheetSiswa.getDataRange().getValues();
+    const nisnTarget = String(dataSiswa.nisn).trim();
+    
+    // Cari siswa berdasarkan NISN di App 2
+    for (let i = 1; i < data.length; i++) {
+      // Cek NISN (Kolom C / Index 2)
+      if (String(data[i][2]).trim() === nisnTarget) {
+        // Update Nama (Kolom B / Index 1)
+        sheetSiswa.getRange(i + 1, 2).setValue(dataSiswa.nama);
+        // Update Kelas (Kolom D / Index 3)
+        sheetSiswa.getRange(i + 1, 4).setValue(dataSiswa.kelas);
+        break;
+      }
+    }
+    
+    // Beri sinyal refresh cache
+    _touchApp2DataVersion(app2DbId);
+    
+  } catch (e) {
+    Logger.log("Gagal sync siswa ke App 2: " + e.message);
   }
 }
