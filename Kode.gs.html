@@ -2095,7 +2095,7 @@ function _syncCreateSiswaToApp2(app2DbId, dataSiswa, id_sekolah) {
 
 function updateSiswa(token, dataSiswa) {
   try {
-    // Ambil app2DbId juga dari validasi sesi
+    // Ambil app2DbId dan sekolahID dari validasi sesi
     const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token); 
     
     if (!dataSiswa.id) return { status: "gagal", message: "ID Siswa hilang." };
@@ -2103,7 +2103,7 @@ function updateSiswa(token, dataSiswa) {
     const sheet = getSiswaSheet(ss);
     const data = sheet.getDataRange().getValues();
     let rowToUpdate = -1;
-    let oldNisn = ""; // [BARU] Variabel untuk menyimpan NISN lama
+    let oldNisn = ""; 
     
     for (let i = 1; i < data.length; i++) {
       // Cek duplikat NISN (jika berubah)
@@ -2113,7 +2113,7 @@ function updateSiswa(token, dataSiswa) {
       // Cari baris siswa yang mau diedit
       if (data[i][0] == dataSiswa.id) {
         rowToUpdate = i + 1;
-        oldNisn = String(data[i][2]); // [BARU] Ambil NISN lama sebelum di-timpa
+        oldNisn = String(data[i][2]); // Ambil NISN lama
       }
     }
     
@@ -2130,10 +2130,10 @@ function updateSiswa(token, dataSiswa) {
     sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
 
-    // --- [MODIFIKASI] SINKRONISASI KE APP 2 SECARA REALTIME ---
+    // --- [MODIFIKASI] SINKRONISASI KE APP 2 ---
     if (app2DbId) {
-       // Kirim oldNisn agar App 2 bisa mencari data yang tepat
-       _syncUpdateSiswaToApp2(app2DbId, dataSiswa, oldNisn);
+       // PENTING: Kirim sessionData.sekolahID sebagai parameter ke-4
+       _syncUpdateSiswaToApp2(app2DbId, dataSiswa, oldNisn, sessionData.sekolahID);
     }
     // ----------------------------------------------------
 
@@ -9942,48 +9942,166 @@ function _touchApp2DataVersion(app2DbId) {
 }
 
 /**
- * [BARU] Sinkronisasi Update Siswa ke App 2 (db_siswa)
- * Memperbarui Nama, Kelas, dan NISN agar sinkron dengan App 1.
+ * [DIPERBAIKI TOTAL] Sinkronisasi Siswa ke App 2 (Update OR Insert).
+ * Menerima ID Sekolah secara eksplisit untuk memastikan data enrollment valid.
  */
-function _syncUpdateSiswaToApp2(app2DbId, dataSiswa, oldNisn) {
+function _syncUpdateSiswaToApp2(app2DbId, dataSiswa, oldNisn, id_sekolah_param) {
   try {
     const ss = SpreadsheetApp.openById(app2DbId);
-    const sheetSiswa = ss.getSheetByName('db_siswa'); // Kolom: no_ujian (A), nama (B), nisn (C), kelas (D)
+    const sheetSiswa = getSiswaSheet_App2(ss);
+    const sheetEnroll = getEnrollmentSheet_App2(ss);
     
-    if (!sheetSiswa) return;
+    if (!sheetSiswa || !sheetEnroll) return;
+
+    // 1. Pastikan ID Sekolah tersedia
+    let id_sekolah = id_sekolah_param;
+    if (!id_sekolah) {
+        // Fallback: Coba ambil dari db_sekolah jika param tidak dikirim
+        const sheetSekolah = ss.getSheetByName('db_sekolah');
+        if (sheetSekolah && sheetSekolah.getLastRow() > 1) {
+            id_sekolah = sheetSekolah.getRange("A2").getValue();
+        }
+    }
+
+    if (!id_sekolah) {
+        Logger.log("Sync Gagal: ID Sekolah tidak ditemukan. Enrollment tidak dapat diproses.");
+        return;
+    }
 
     const data = sheetSiswa.getDataRange().getValues();
     
-    // Gunakan NISN lama untuk mencari record (karena NISN di dataSiswa adalah yang baru)
-    // Jika oldNisn kosong (jarang terjadi), fallback ke dataSiswa.nisn
+    // Gunakan NISN lama untuk pencarian, atau NISN baru jika oldNisn kosong
     const targetNisnSearch = String(oldNisn || dataSiswa.nisn).trim();
+    const newNisn = String(dataSiswa.nisn).trim();
     
-    // Cari siswa berdasarkan NISN (Kolom C / Index 2) di App 2
+    let studentRowIndex = -1;
+
+    // --- LANGKAH A: Cari & Update/Insert Siswa ---
     for (let i = 1; i < data.length; i++) {
-      const currentNisnInDb = String(data[i][2]).trim(); // Kolom C = NISN
-      
-      if (currentNisnInDb === targetNisnSearch) {
-        // DITEMUKAN! Lakukan Update
-        
-        // 1. Update Nama (Kolom B / Index 1)
-        sheetSiswa.getRange(i + 1, 2).setValue(dataSiswa.nama);
-        
-        // 2. Update NISN Baru (Kolom C / Index 2)
-        // Beri tanda kutip satu (') agar dianggap teks
-        sheetSiswa.getRange(i + 1, 3).setValue("'" + dataSiswa.nisn); 
-        
-        // 3. Update Kelas (Kolom D / Index 3)
-        sheetSiswa.getRange(i + 1, 4).setValue(dataSiswa.kelas);
-        
-        Logger.log(`Sync App 2 Sukses: Siswa ${dataSiswa.nama} (NISN Lama: ${targetNisnSearch} -> Baru: ${dataSiswa.nisn}) berhasil diupdate.`);
+      const currentNisnInDb = String(data[i][2]).trim();      // Kolom C (NISN)
+      const currentNoUjianInDb = String(data[i][0]).trim();   // Kolom A (Nomor Ujian)
+
+      // Cocokkan dengan NISN Lama
+      if (currentNisnInDb === targetNisnSearch || currentNoUjianInDb === targetNisnSearch) {
+        studentRowIndex = i + 1; // Baris ditemukan
         break;
       }
     }
+
+    if (studentRowIndex !== -1) {
+       // === UPDATE ===
+       sheetSiswa.getRange(studentRowIndex, 1).setValue("'" + newNisn); // A: Nomor Ujian
+       sheetSiswa.getRange(studentRowIndex, 2).setValue(dataSiswa.nama); // B: Nama
+       sheetSiswa.getRange(studentRowIndex, 3).setValue("'" + newNisn); // C: NISN
+       sheetSiswa.getRange(studentRowIndex, 4).setValue(dataSiswa.kelas); // D: Kelas
+       
+       // Cascade jika NISN berubah
+       if (targetNisnSearch !== newNisn) {
+           _cascadeChangeNomorUjian(ss, targetNisnSearch, newNisn);
+       }
+       Logger.log(`Sync App 2: Siswa ${dataSiswa.nama} diupdate.`);
+
+    } else {
+       // === INSERT ===
+       Logger.log(`Sync App 2: Siswa ${dataSiswa.nama} tidak ditemukan. Menambahkan baru...`);
+       sheetSiswa.appendRow([
+         "'" + newNisn,  // A
+         dataSiswa.nama, // B
+         "'" + newNisn,  // C
+         dataSiswa.kelas // D
+       ]);
+    }
+
+    // --- LANGKAH B: Cek & Pastikan Enrollment (Penempatan) ---
+    const latestTaId = _getLatestTahunAjaranId(ss); // Helper existing
     
-    // Beri sinyal refresh cache agar guru di App 2 melihat data terbaru
+    if (latestTaId) {
+        const enrollData = sheetEnroll.getDataRange().getValues();
+        let isEnrolled = false;
+        
+        // Cek apakah 'newNisn' sudah terdaftar di 'latestTaId'
+        for(let j=1; j < enrollData.length; j++) {
+             // Kolom B (Index 1) = Nomor Ujian, Kolom D (Index 3) = ID TA
+             if (String(enrollData[j][1]).trim() === newNisn && String(enrollData[j][3]).trim() === latestTaId) {
+                isEnrolled = true;
+                break;
+             }
+        }
+        
+        // Jika belum ada di enrollment, tambahkan!
+        if (!isEnrolled) {
+           Logger.log(`Sync App 2: Menambahkan enrollment untuk ${newNisn} di TA ${latestTaId}...`);
+           const newIdEnroll = `enroll-${new Date().getTime()}-${Math.random().toString(36).substring(2, 7)}`;
+           
+           sheetEnroll.appendRow([
+              newIdEnroll,      // A: ID Enrollment
+              "'" + newNisn,    // B: Nomor Ujian
+              id_sekolah,       // C: ID Sekolah (PENTING)
+              latestTaId,       // D: ID Tahun Ajaran
+              ""                // E: Ruang Ujian (Default Kosong)
+           ]);
+        }
+    }
+    
+    // Refresh cache di App 2
     _touchApp2DataVersion(app2DbId);
     
   } catch (e) {
     Logger.log("Gagal sync siswa ke App 2: " + e.message);
+  }
+}
+
+/**
+ * [DIPERBAIKI FORMAT] Helper untuk memperbarui Nomor Ujian di seluruh sheet terkait.
+ * PERBAIKAN: Menangani 'Leading Zero' (00xxx) agar tidak hilang saat batch update.
+ */
+function _cascadeChangeNomorUjian(ss, oldId, newId) {
+  try {
+    const sheets = ss.getSheets();
+    
+    sheets.forEach(sheet => {
+      const name = sheet.getName();
+      
+      // Cek sheet db_enrollment ATAU sheet nilai
+      if (name === 'db_enrollment' || name.startsWith('db_nilai_')) {
+        
+        const lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          // Ambil Kolom B (Index 2) dimana Nomor Ujian disimpan
+          const rangeNomorUjian = sheet.getRange(2, 2, lastRow - 1, 1);
+          const values = rangeNomorUjian.getValues();
+          let isDirty = false;
+          
+          // Array baru untuk menyimpan nilai yang sudah diformat
+          const updatedValues = values.map(row => {
+            const valString = String(row[0]).trim(); // Pastikan jadi string
+            
+            if (valString === oldId) {
+              isDirty = true;
+              return ["'" + newId]; // Ganti dengan ID Baru (Paksa Teks)
+            } else {
+              // PENTING: Untuk data yang TIDAK berubah, kita juga harus
+              // menambahkan tanda kutip (') agar Google Sheets tidak
+              // otomatis mengubah "00123" menjadi angka 123 saat ditulis ulang.
+              return ["'" + valString]; 
+            }
+          });
+          
+          // Jika ada perubahan (ID ditemukan), tulis kembali SEMUA data
+          if (isDirty) {
+            // Langkah 1: Paksa format kolom menjadi Plain Text dulu
+            rangeNomorUjian.setNumberFormat('@'); 
+            
+            // Langkah 2: Tulis nilai yang sudah diberi tanda kutip
+            rangeNomorUjian.setValues(updatedValues);
+            
+            Logger.log(`Cascade Update: Mengganti ${oldId} menjadi ${newId} di sheet ${name} (Format 00xxx terjaga)`);
+          }
+        }
+      }
+    });
+    
+  } catch (e) {
+    Logger.log("Gagal cascade update nomor ujian: " + e.message);
   }
 }
