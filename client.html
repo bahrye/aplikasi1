@@ -683,6 +683,16 @@
     hideMessage('kelola-nilai-guru-message');
     // --- AKHIR TAMBAHAN ---
 
+    // --- [MODIFIKASI: LOGIKA NOTIFIKASI REALTIME] ---
+    if (idHalaman === 'halaman-utama') {
+        // Jika masuk ke Dashboard -> Mulai Polling
+        startAdminNotificationPolling();
+    } else {
+        // Jika pindah ke halaman lain -> Matikan Polling (Hemat memori)
+        stopAdminNotificationPolling();
+    }
+    // --- [AKHIR MODIFIKASI] ---
+
     const targetElement = document.getElementById(idHalaman);
     if (targetElement) {
         if (authSubPages.includes(idHalaman)) {
@@ -14059,6 +14069,87 @@
     // Update nilai input jika berbeda
     if (input.value !== val) {
       input.value = val;
+    }
+  }
+
+  // --- [LOGIKA NOTIFIKASI REALTIME] ---
+
+  let adminNotifInterval = null;
+
+  // Fungsi untuk Memulai Polling (Dijalankan saat masuk Dashboard)
+  function startAdminNotificationPolling() {
+    // Hentikan jika ada interval lama berjalan
+    if (adminNotifInterval) clearInterval(adminNotifInterval);
+
+    // Cek apakah user adalah ADMIN (bukan guru/siswa)
+    // Variabel 'currentUserRole' sudah ada di kode Anda sebelumnya
+    if (typeof currentUserRole !== 'undefined' && currentUserRole === 'admin') {
+        
+        console.log("Memulai polling notifikasi...");
+        fetchNotificationCount(); // Panggil langsung sekali
+
+        // Set interval setiap 30 detik (Hemat resource browser & server)
+        adminNotifInterval = setInterval(() => {
+          // Hanya cek jika tab sedang aktif dan elemen dashboard terlihat
+          if (!document.hidden && document.getElementById('halaman-utama').style.display !== 'none') {
+            fetchNotificationCount();
+          }
+        }, 30000); 
+    }
+  }
+
+  // Fungsi untuk Menghentikan Polling (Dijalankan saat keluar Dashboard)
+  function stopAdminNotificationPolling() {
+    if (adminNotifInterval) {
+      console.log("Menghentikan polling notifikasi.");
+      clearInterval(adminNotifInterval);
+      adminNotifInterval = null;
+    }
+  }
+
+  // Fungsi Request ke Server
+  function fetchNotificationCount() {
+    const token = getToken();
+    if (!token) return;
+
+    google.script.run
+      .withSuccessHandler(updateNotificationBadge)
+      .withFailureHandler((e) => console.log("Silent poll fail:", e)) 
+      .getPendingNotificationCount(token);
+  }
+
+  // Fungsi Update UI Badge
+  function updateNotificationBadge(response) {
+    if (response.status !== 'sukses') return;
+
+    const count = response.count;
+    
+    // Target tombol/kartu "Kelola Nilai Guru"
+    const btn = document.getElementById('btn-buka-kelola-nilai-guru');
+    if (!btn) return;
+    
+    const card = btn.closest('.dashboard-card');
+    if (!card) return;
+
+    // Cek apakah badge sudah ada
+    let badge = card.querySelector('.notification-badge');
+    
+    if (count > 0) {
+      if (!badge) {
+        // Buat badge jika belum ada
+        badge = document.createElement('span');
+        badge.className = 'notification-badge';
+        card.appendChild(badge);
+      }
+      badge.innerText = count > 99 ? '99+' : count;
+      badge.style.display = 'block';
+      
+      // Opsional: Beri border merah pada kartu agar lebih mencolok
+      card.style.borderColor = 'var(--danger-color)';
+    } else {
+      // Sembunyikan jika 0
+      if (badge) badge.style.display = 'none';
+      card.style.borderColor = ''; // Reset border
     }
   }
 
