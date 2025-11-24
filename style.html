@@ -6097,4 +6097,60 @@
   .btn-atur-ta:hover {
     background-color: #5a6268;
   }
+
+  /* --- PERBAIKAN KHUSUS BADGE NOTIFIKASI --- */
+  /* Paste ini di baris PALING BAWAH file style.html agar menang prioritas */
+
+  /* 1. Paksa Kartu agar mengizinkan elemen 'keluar' dari kotaknya */
+  #halaman-utama .dashboard-card,
+  .dashboard-card {
+      position: relative !important; /* Acuan posisi badge */
+      overflow: visible !important;  /* Izinkan badge menonjol keluar */
+      z-index: 1;
+  }
+
+  /* 2. Style Badge Bulat Penuh di Pojok Kanan Atas */
+  .notification-badge {
+      /* Posisi: Absolute (Keluar dari aliran teks) */
+      position: absolute !important; 
+      top: -10px !important;    /* Geser ke atas keluar garis kartu */
+      right: -10px !important;  /* Geser ke kanan keluar garis kartu */
+      
+      /* Bentuk: Lingkaran Sempurna (Wajib Lebar=Tinggi) */
+      width: 26px !important;
+      height: 26px !important;
+      min-width: 26px !important; /* Mencegah gepeng */
+      min-height: 26px !important;
+      
+      border-radius: 50% !important; /* Bulat penuh */
+      padding: 0 !important;         /* Hapus padding agar tidak lonjong */
+      margin: 0 !important;
+      
+      /* Penataan Angka di Tengah (Center) */
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      
+      /* Tampilan Visual */
+      background-color: #dc3545 !important; /* Merah */
+      color: white !important;
+      border: 2px solid #fff !important;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3) !important;
+      
+      /* Font */
+      font-size: 12px !important;
+      font-weight: bold !important;
+      font-family: Arial, sans-serif !important;
+      line-height: 1 !important; /* Reset tinggi baris agar benar-benar tengah */
+      
+      z-index: 100 !important; /* Pastikan di atas segalanya */
+      
+      /* Animasi Muncul */
+      animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  @keyframes pop-in {
+    0% { transform: scale(0); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
 </style>
