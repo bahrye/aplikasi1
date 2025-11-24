@@ -2534,6 +2534,19 @@
             hapusMapel(id);
         } else if (target.classList.contains('btn-move-up-mapel') || target.classList.contains('btn-move-down-mapel')) {
           
+          // --- [PERBAIKAN UTAMA] SINKRONISASI CHECKBOX SEBELUM SORTIR ---
+          // Kita simpan status centang saat ini ke variabel global agar tidak hilang saat render ulang
+          document.querySelectorAll('#mapel-table-container .mapel-tipe-cek').forEach(cb => {
+              const id = cb.dataset.id;
+              const tipe = cb.dataset.tipe;
+              const mapelObj = globalMapelList.find(m => m.id === id);
+              if (mapelObj) {
+                  if (tipe === 'us') mapelObj.isUS = cb.checked;
+                  if (tipe === 'up') mapelObj.isUP = cb.checked;
+              }
+          });
+          // --- [AKHIR PERBAIKAN] ---
+
           const mapelID = target.dataset.id;
           const direction = target.classList.contains('btn-move-up-mapel') ? 'up' : 'down';
 
@@ -3907,12 +3920,24 @@
       globalNilaiRaporGridCache.clear();
       // --- AKHIR TAMBAHAN ---
       
+      // --- PERBAIKAN UTAMA DI SINI ---
+      // Kita harus update 'isUS' dan 'isUP' di cache global juga, 
+      // bukan hanya 'originalIsUS'
       globalMapelList.forEach(m => {
         const cb_us = document.querySelector(`.mapel-tipe-cek[data-id="${m.id}"][data-tipe="us"]`);
         const cb_up = document.querySelector(`.mapel-tipe-cek[data-id="${m.id}"][data-tipe="up"]`);
-        if (cb_us) m.originalIsUS = cb_us.checked;
-        if (cb_up) m.originalIsUP = cb_up.checked;
+        
+        if (cb_us) {
+            m.isUS = cb_us.checked;         // <--- TAMBAHKAN INI (Update nilai utama)
+            m.originalIsUS = cb_us.checked; // Update nilai original (untuk dirty state)
+        }
+        if (cb_up) {
+            m.isUP = cb_up.checked;         // <--- TAMBAHAN INI (Update nilai utama)
+            m.originalIsUP = cb_up.checked; // Update nilai original (untuk dirty state)
+        }
       });
+      // --- AKHIR PERBAIKAN ---
+
       setMapelTipeDirty(false); 
       isFormDirty = false; 
       showMessage('mapel-message', 'Tipe ujian berhasil disimpan!', false);
