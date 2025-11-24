@@ -8418,6 +8418,16 @@
     
     document.getElementById('halaman-hasil-siswa').style.display = 'none';
 
+    // ============================================================
+    // === [TAMBAHAN BARU] BERSIHKAN BADGE NOTIFIKASI DARI DOM ===
+    // ============================================================
+    const badges = document.querySelectorAll('.notification-badge');
+    badges.forEach(badge => badge.remove()); // Hapus elemen badge
+
+    const cards = document.querySelectorAll('.dashboard-card');
+    cards.forEach(card => card.style.borderColor = ''); // Reset border merah
+    // ============================================================
+
     // --- [Sisa kode reset UI di bawah ini tidak berubah] ---
     const pSubjudul = document.querySelector('#halaman-utama h2#salam-sekolah + p');
     if (pSubjudul) {
@@ -10597,6 +10607,25 @@
       tabSiswa.disabled = !isPremium;
       tabSiswa.title = isPremium ? "Cek Kelulusan Siswa" : "Fitur Premium - Donasi untuk aktivasi";
     }
+
+    // ============================================================
+    // === [TAMBAHAN BARU] PAKSA HAPUS BADGE JIKA NON-PREMIUM ===
+    // ============================================================
+    if (!isPremium) {
+        const btnKelolaNilai = document.getElementById('btn-buka-kelola-nilai-guru');
+        if (btnKelolaNilai) {
+            const card = btnKelolaNilai.closest('.dashboard-card');
+            if (card) {
+                // Hapus badge jika ada
+                const badge = card.querySelector('.notification-badge');
+                if (badge) badge.remove();
+                
+                // Reset border kartu
+                card.style.borderColor = '';
+            }
+        }
+    }
+    // ============================================================
   }
 
   /**
