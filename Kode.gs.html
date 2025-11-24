@@ -10105,3 +10105,49 @@ function _cascadeChangeNomorUjian(ss, oldId, newId) {
     Logger.log("Gagal cascade update nomor ujian: " + e.message);
   }
 }
+
+/**
+ * [FUNGSI BARU] Cek Jumlah Notifikasi (Hemat Kuota)
+ * Hanya membaca Spreadsheet jika cache kadaluarsa (setiap 60 detik).
+ */
+function getPendingNotificationCount(token) {
+  try {
+    // 1. Validasi sesi (mengambil ID DB Sekolah)
+    const { app2DbId, sekolahID } = validateAdminSession(token);
+
+    // 2. Cek Cache Script (Memori Sementara Google)
+    const cache = CacheService.getScriptCache();
+    const cacheKey = "NOTIF_COUNT_" + sekolahID;
+    const cachedCount = cache.get(cacheKey);
+
+    // JIKA ADA DI CACHE: Kembalikan langsung (Sangat Cepat & 0 Kuota Read)
+    if (cachedCount != null) {
+      return { status: "sukses", count: parseInt(cachedCount, 10) };
+    }
+
+    // JIKA TIDAK ADA DI CACHE: Baru buka Spreadsheet (Operasi Berat)
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const statusSheet = ss_app2.getSheetByName('db_status_kirim');
+    
+    let count = 0;
+    if (statusSheet && statusSheet.getLastRow() > 1) {
+      // Ambil kolom G (Status Approval, index 6)
+      const data = statusSheet.getRange(2, 7, statusSheet.getLastRow() - 1, 1).getValues();
+      // Hitung yang "PENDING"
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === 'PENDING') {
+          count++;
+        }
+      }
+    }
+
+    // Simpan hasil ke cache selama 60 detik
+    cache.put(cacheKey, String(count), 60);
+
+    return { status: "sukses", count: count };
+
+  } catch (e) {
+    // Silent error (jangan ganggu UI jika gagal)
+    return { status: "silent_error", count: 0 };
+  }
+}
