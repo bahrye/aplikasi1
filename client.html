@@ -176,6 +176,11 @@
   const ROWS_PER_PAGE = 50; // Batas aman render di HP
   // --------------------------------------
 
+  let isImportSiswaAborted = false;
+  let isImportGuruAborted = false;
+  let isUploadNilaiAborted = false;
+  let isUploadRaporAborted = false;
+
   function getToken() {
     return localStorage.getItem('sessionToken');
   }
@@ -997,6 +1002,30 @@
     /* --- =================================== --- */
     /* ---      AKHIR MODIFIKASI            --- */
     /* --- =================================== --- */
+
+    // Listener Tombol Batalkan Import Siswa
+    const btnAbort = document.getElementById('btn-abort-import-siswa');
+    if (btnAbort) {
+        btnAbort.addEventListener('click', batalkanImportSiswa);
+    }
+
+    // Listener Tombol Batalkan Import Guru
+    const btnAbortGuru = document.getElementById('btn-abort-import-guru');
+    if (btnAbortGuru) {
+        btnAbortGuru.addEventListener('click', batalkanImportGuru);
+    }
+
+    // Listener Tombol Batalkan Upload Nilai
+    const btnAbortNilai = document.getElementById('btn-abort-upload-nilai');
+    if (btnAbortNilai) {
+        btnAbortNilai.addEventListener('click', batalkanUploadNilai);
+    }
+
+    // Listener Tombol Batalkan Upload Rapor
+    const btnAbortRapor = document.getElementById('btn-abort-upload-rapor');
+    if (btnAbortRapor) {
+        btnAbortRapor.addEventListener('click', batalkanUploadRapor);
+    }
 
     document.getElementById('btn-registrasi').addEventListener('click', () => {
       const btnReg = document.getElementById('btn-registrasi');
@@ -2589,6 +2618,11 @@
 
     document.getElementById('btn-tutup-modal-import-siswa').addEventListener('click', tutupModalImportSiswa);
     document.getElementById('btn-batal-modal-import-siswa').addEventListener('click', tutupModalImportSiswa);
+
+    // --- TAMBAHAN BARU: Listener Tombol Batal ---
+    document.getElementById('btn-abort-import-siswa').addEventListener('click', batalkanImportSiswa);
+    // ---------------------------------------------
+
     document.getElementById('btn-download-template-siswa').addEventListener('click', downloadTemplateSiswa);
     document.getElementById('btn-proses-import-siswa').addEventListener('click', prosesImportFileSiswa);
 
@@ -5133,22 +5167,94 @@
   }
 
   function prosesImportFileSiswa() {
-    setLoading(true, 'Mengimpor siswa...');
+    // 1. Reset Flag Pembatalan
+    isImportSiswaAborted = false; 
+
+    // 2. Tampilkan Loading TAPI JANGAN BLOKIR UI (Parameter ke-3 = false)
+    // Ini kuncinya: cursor tidak akan jadi 'wait' dan tombol bisa diklik.
+    setLoading(true, 'Mengimpor siswa... Tekan Batalkan jika perlu.', false);
+    
     document.getElementById('import-siswa-results').style.display = 'none';
     hideMessage('template-message');
+    
     const file = document.getElementById('file-upload-siswa').files[0];
-    if (!file) { setLoading(false); showMessage('template-message', 'Pilih file Excel.', true); return; }
+    if (!file) { 
+        setLoading(false); 
+        showMessage('template-message', 'Pilih file Excel.', true); 
+        return; 
+    }
+
+    // 3. Atur Tombol: Munculkan "Batalkan", Sembunyikan "Tutup" & "Proses"
+    document.getElementById('btn-abort-import-siswa').style.display = 'inline-flex';
+    document.getElementById('btn-batal-modal-import-siswa').style.display = 'none';
+    document.getElementById('btn-proses-import-siswa').style.display = 'none';
+
     const reader = new FileReader();
     reader.onload = (e) => {
+      // Cek apakah dibatalkan saat membaca file
+      if (isImportSiswaAborted) return;
+
       const fileData = { base64: e.target.result, mimeType: file.type, fileName: file.name };
-      google.script.run.withSuccessHandler(onImportSiswaFinished).withFailureHandler(onGagal).prosesImportExcelSiswa(getToken(), fileData);
+      
+      google.script.run
+        .withSuccessHandler(onImportSiswaFinished)
+        .withFailureHandler((err) => {
+            // Hanya tampilkan error jika TIDAK dibatalkan
+            if (!isImportSiswaAborted) {
+                onGagal(err);
+                // Reset tombol jika gagal
+                document.getElementById('btn-abort-import-siswa').style.display = 'none';
+                document.getElementById('btn-batal-modal-import-siswa').style.display = 'inline-flex';
+                document.getElementById('btn-proses-import-siswa').style.display = 'inline-flex';
+            }
+        })
+        .prosesImportExcelSiswa(getToken(), fileData);
     };
-    reader.onerror = (e) => { setLoading(false); showMessage('template-message', 'Gagal baca file.', true); };
+    
+    reader.onerror = (e) => { 
+        setLoading(false); 
+        showMessage('template-message', 'Gagal baca file.', true); 
+        // Reset tombol
+        document.getElementById('btn-abort-import-siswa').style.display = 'none';
+        document.getElementById('btn-batal-modal-import-siswa').style.display = 'inline-flex';
+        document.getElementById('btn-proses-import-siswa').style.display = 'inline-flex';
+    };
+    
     reader.readAsDataURL(file);
   }
 
-  function onImportSiswaFinished(response) {
+  function batalkanImportSiswa() {
+    isImportSiswaAborted = true; // Set flag agar callback diabaikan
+
+    // 1. Matikan Loading (Toast hilang)
     setLoading(false);
+
+    // 2. Kembalikan Tombol ke Kondisi Semula
+    document.getElementById('btn-abort-import-siswa').style.display = 'none';
+    document.getElementById('btn-batal-modal-import-siswa').style.display = 'inline-flex';
+    document.getElementById('btn-proses-import-siswa').style.display = 'inline-flex';
+    
+    // 3. Beri pesan ke user
+    showMessage('template-message', 'Proses import dibatalkan oleh pengguna.', true);
+    
+    // (Opsional) Reset input file jika ingin memaksa user pilih ulang
+    // document.getElementById('file-upload-siswa').value = '';
+  }
+
+  function onImportSiswaFinished(response) {
+    // 1. CEK FLAG: Jika dibatalkan, jangan lakukan apa-apa (abaikan respon server)
+    if (isImportSiswaAborted) {
+        console.log("Respon import diterima tapi diabaikan karena pembatalan user.");
+        return;
+    }
+
+    setLoading(false);
+    
+    // 2. Reset Tombol
+    document.getElementById('btn-abort-import-siswa').style.display = 'none';
+    document.getElementById('btn-batal-modal-import-siswa').style.display = 'inline-flex';
+    document.getElementById('btn-proses-import-siswa').style.display = 'inline-flex';
+
     const resultsContainer = document.getElementById('import-siswa-results');
 
     if (response.status !== 'sukses') {
@@ -5162,17 +5268,15 @@
       siswaTelahDiImport = true;
       globalSiswaList = []; 
       
-      // --- TAMBAHAN INVALIDASI CACHE NILAI ---
+      // Bersihkan semua cache
       globalNilaiGridCacheUM = null;
       globalNilaiGridCachePraktek = null;
       globalNilaiRaporGridCache.clear();
-
-      // --- [TAMBAHAN BARU: CACHE KELAS] ---
       globalKelasListCache = [];
-      // --- [AKHIR TAMBAHAN] ---
     }
 
     let html = '<h4><i class="fas fa-check-circle"></i>Proses Import Selesai</h4>';
+    // ... (sisa kode render hasil tetap sama) ...
     html += `<p>Total data diproses: <strong>${response.totalDiProses}</strong></p>`;
     html += `<p style="color: var(--success-color);">Berhasil ditambah: <strong>${response.berhasilDiUpload}</strong></p>`;
     html += `<p style="color: var(--danger-color);">Gagal/Dilewati: <strong>${response.gagalDiUpload}</strong></p>`;
@@ -5200,6 +5304,12 @@
 
     document.getElementById('file-upload-siswa').value = null;
     document.getElementById('btn-proses-import-siswa').disabled = true;
+    
+    const fileUploadText = document.getElementById('file-upload-text');
+    if (fileUploadText) {
+        fileUploadText.innerText = 'Klik untuk memilih file atau seret & letakkan di sini.';
+        fileUploadText.classList.remove('file-chosen');
+    }
   }
 
   function bukaModalUploadNilai() {
@@ -5283,23 +5393,92 @@
     }
   }
 
+  /**
+   * [BARU] Membatalkan proses menunggu upload nilai ujian.
+   */
+  function batalkanUploadNilai() {
+    isUploadNilaiAborted = true; // Set flag pembatalan
+
+    // 1. Hentikan Loading UI
+    setLoading(false);
+
+    // 2. Kembalikan Tampilan Tombol
+    document.getElementById('btn-abort-upload-nilai').style.display = 'none';
+    document.getElementById('btn-batal-modal-upload-nilai').style.display = 'inline-flex';
+    document.getElementById('btn-proses-upload-nilai').style.display = 'inline-flex';
+    
+    // 3. Reset UI Pesan
+    const resultsContainer = document.getElementById('import-nilai-results');
+    resultsContainer.style.display = 'none';
+    resultsContainer.innerHTML = '';
+    
+    showMessage('template-nilai-message', 'Proses dibatalkan oleh pengguna.', true);
+  }
+
   function prosesUploadFileNilai() {
-    setLoading(true, 'Mengupload nilai...');
+    // 1. Reset Flag
+    isUploadNilaiAborted = false;
+
+    // 2. Loading Non-Blocking (blockUI = false)
+    setLoading(true, 'Mengupload nilai... Tekan Batalkan jika perlu.', false);
+    
     document.getElementById('import-nilai-results').style.display = 'none';
     hideMessage('template-nilai-message');
+    
     const file = document.getElementById('file-upload-nilai').files[0];
-    if (!file) { setLoading(false); showMessage('template-nilai-message', 'Pilih file Excel.', true); return; }
+    if (!file) { 
+        setLoading(false); 
+        showMessage('template-nilai-message', 'Pilih file Excel.', true); 
+        return; 
+    }
+
+    // 3. Atur Tombol
+    document.getElementById('btn-abort-upload-nilai').style.display = 'inline-flex';
+    document.getElementById('btn-batal-modal-upload-nilai').style.display = 'none';
+    document.getElementById('btn-proses-upload-nilai').style.display = 'none';
+
     const reader = new FileReader();
     reader.onload = (e) => {
+      if (isUploadNilaiAborted) return;
+
       const fileData = { base64: e.target.result, mimeType: file.type, fileName: file.name };
-      google.script.run.withSuccessHandler(onUploadNilaiFinished).withFailureHandler(onGagal).prosesUploadExcelNilai(getToken(), fileData);
+      
+      google.script.run
+        .withSuccessHandler(onUploadNilaiFinished)
+        .withFailureHandler((err) => {
+            if (!isUploadNilaiAborted) {
+                onGagal(err);
+                // Reset tombol jika gagal
+                document.getElementById('btn-abort-upload-nilai').style.display = 'none';
+                document.getElementById('btn-batal-modal-upload-nilai').style.display = 'inline-flex';
+                document.getElementById('btn-proses-upload-nilai').style.display = 'inline-flex';
+            }
+        })
+        .prosesUploadExcelNilai(getToken(), fileData);
     };
-    reader.onerror = (e) => { setLoading(false); showMessage('template-nilai-message', 'Gagal baca file.', true); };
+    
+    reader.onerror = (e) => { 
+        setLoading(false); 
+        showMessage('template-nilai-message', 'Gagal baca file.', true); 
+        document.getElementById('btn-abort-upload-nilai').style.display = 'none';
+        document.getElementById('btn-batal-modal-upload-nilai').style.display = 'inline-flex';
+        document.getElementById('btn-proses-upload-nilai').style.display = 'inline-flex';
+    };
+    
     reader.readAsDataURL(file);
   }
 
   function onUploadNilaiFinished(response) {
+    // 1. Cek Flag Pembatalan
+    if (isUploadNilaiAborted) return;
+
     setLoading(false);
+    
+    // 2. Reset Tombol
+    document.getElementById('btn-abort-upload-nilai').style.display = 'none';
+    document.getElementById('btn-batal-modal-upload-nilai').style.display = 'inline-flex';
+    document.getElementById('btn-proses-upload-nilai').style.display = 'inline-flex';
+
     const resultsContainer = document.getElementById('import-nilai-results');
 
     if (response.status !== 'sukses') {
@@ -5309,8 +5488,13 @@
     }
 
     if (response.berhasilDiUpload > 0) {
-      setIjazahDirty(true);// <-- TAMBAHKAN INI
+      setIjazahDirty(true);
       nilaiTelahDiUpload = true;
+      
+      // Bersihkan cache agar data baru dimuat saat menu dibuka
+      globalNilaiGridCacheUM = null;
+      globalNilaiGridCachePraktek = null;
+      console.log("Cache nilai ujian dibersihkan setelah upload.");
     }
 
     let html = '<h4><i class="fas fa-check-circle"></i>Proses Upload Selesai</h4>';
@@ -5445,25 +5629,99 @@
     }
   }
 
+  /**
+   * [BARU] Membatalkan proses menunggu upload nilai rapor.
+   */
+  function batalkanUploadRapor() {
+    isUploadRaporAborted = true; // Set flag pembatalan
+
+    // 1. Hentikan Loading UI
+    setLoading(false);
+
+    // 2. Kembalikan Tampilan Tombol
+    document.getElementById('btn-abort-upload-rapor').style.display = 'none';
+    document.getElementById('btn-batal-modal-upload-nilai-rapor').style.display = 'inline-flex';
+    document.getElementById('btn-proses-upload-nilai-rapor').style.display = 'inline-flex';
+    
+    // 3. Reset UI Pesan
+    const resultsContainer = document.getElementById('import-rapor-results');
+    resultsContainer.style.display = 'none';
+    resultsContainer.innerHTML = '';
+    
+    showMessage('template-rapor-message', 'Proses dibatalkan oleh pengguna.', true);
+  }
+
   function prosesUploadFileNilaiRapor() {
-    setLoading(true, 'Mengupload nilai rapor...');
+    // 1. Reset Flag
+    isUploadRaporAborted = false;
+
+    // 2. Loading Non-Blocking
+    setLoading(true, 'Mengupload nilai rapor... Tekan Batalkan jika perlu.', false);
+    
     document.getElementById('import-rapor-results').style.display = 'none';
     hideMessage('template-rapor-message');
+    
     const file = document.getElementById('file-upload-rapor').files[0];
     const semesterId = document.getElementById('upload-rapor-filter-semester').value;
-    if (!file) { setLoading(false); showMessage('template-rapor-message', 'Pilih file Excel.', true); return; }
-    if (!semesterId) { setLoading(false); showMessage('template-rapor-message', 'Pilih semester.', true); return; }
+    
+    if (!file) { 
+        setLoading(false); 
+        showMessage('template-rapor-message', 'Pilih file Excel.', true); 
+        return; 
+    }
+    if (!semesterId) { 
+        setLoading(false); 
+        showMessage('template-rapor-message', 'Pilih semester.', true); 
+        return; 
+    }
+
+    // 3. Atur Tombol
+    document.getElementById('btn-abort-upload-rapor').style.display = 'inline-flex';
+    document.getElementById('btn-batal-modal-upload-nilai-rapor').style.display = 'none';
+    document.getElementById('btn-proses-upload-nilai-rapor').style.display = 'none';
+
     const reader = new FileReader();
     reader.onload = (e) => {
+      if (isUploadRaporAborted) return;
+
       const fileData = { base64: e.target.result, mimeType: file.type, fileName: file.name };
-      google.script.run.withSuccessHandler(onUploadNilaiRaporFinished).withFailureHandler(onGagal).prosesUploadExcelNilaiRapor(getToken(), fileData, semesterId);
+      
+      google.script.run
+        .withSuccessHandler(onUploadNilaiRaporFinished)
+        .withFailureHandler((err) => {
+            if (!isUploadRaporAborted) {
+                onGagal(err);
+                // Reset tombol jika gagal
+                document.getElementById('btn-abort-upload-rapor').style.display = 'none';
+                document.getElementById('btn-batal-modal-upload-nilai-rapor').style.display = 'inline-flex';
+                document.getElementById('btn-proses-upload-nilai-rapor').style.display = 'inline-flex';
+            }
+        })
+        .prosesUploadExcelNilaiRapor(getToken(), fileData, semesterId);
     };
-    reader.onerror = (e) => { setLoading(false); showMessage('template-rapor-message', 'Gagal baca file.', true); };
+    
+    reader.onerror = (e) => { 
+        setLoading(false); 
+        showMessage('template-rapor-message', 'Gagal baca file.', true); 
+        document.getElementById('btn-abort-upload-rapor').style.display = 'none';
+        document.getElementById('btn-batal-modal-upload-nilai-rapor').style.display = 'inline-flex';
+        document.getElementById('btn-proses-upload-nilai-rapor').style.display = 'inline-flex';
+    };
+    
     reader.readAsDataURL(file);
   }
 
   function onUploadNilaiRaporFinished(response) {
+    // 1. Cek Flag Pembatalan
+    if (isUploadRaporAborted) return;
+
     setLoading(false);
+    
+    // 2. Reset Tombol
+    document.getElementById('btn-abort-upload-rapor').style.display = 'none';
+    document.getElementById('btn-batal-modal-upload-nilai-rapor').style.display = 'inline-flex';
+    document.getElementById('btn-proses-upload-nilai-rapor').style.display = 'inline-flex';
+
     const resultsContainer = document.getElementById('import-rapor-results');
 
     if (response.status !== 'sukses') {
@@ -5473,8 +5731,14 @@
     }
 
     if (response.berhasilDiUpload > 0) {
-      setIjazahDirty(true);// <-- TAMBAHKAN INI
+      setIjazahDirty(true);
       nilaiRaporTelahDiUpload = true;
+      
+      // Bersihkan cache nilai rapor
+      if (globalNilaiRaporGridCache) {
+          globalNilaiRaporGridCache.clear();
+      }
+      console.log("Cache nilai rapor dibersihkan setelah upload.");
     }
 
     let html = '<h4><i class="fas fa-check-circle"></i>Proses Upload Selesai</h4>';
@@ -10352,23 +10616,92 @@
     }
   }
 
+  /**
+   * [BARU] Membatalkan proses menunggu import guru.
+   */
+  function batalkanImportGuru() {
+    isImportGuruAborted = true; // Set flag pembatalan
+
+    // 1. Hentikan Loading UI
+    setLoading(false);
+
+    // 2. Kembalikan Tampilan Tombol
+    document.getElementById('btn-abort-import-guru').style.display = 'none';
+    document.getElementById('btn-batal-modal-import-guru').style.display = 'inline-flex';
+    document.getElementById('btn-proses-import-guru').style.display = 'inline-flex';
+    
+    // 3. Reset UI Pesan
+    const resultsContainer = document.getElementById('import-guru-results');
+    resultsContainer.style.display = 'none';
+    resultsContainer.innerHTML = '';
+    
+    showMessage('template-guru-message', 'Proses dibatalkan oleh pengguna.', true);
+  }
+
   function prosesImportFileGuru() {
-    setLoading(true, 'Mengimpor guru...');
+    // 1. Reset Flag
+    isImportGuruAborted = false;
+
+    // 2. Loading Non-Blocking
+    setLoading(true, 'Mengimpor guru... Tekan Batalkan jika perlu.', false);
+    
     document.getElementById('import-guru-results').style.display = 'none';
     hideMessage('template-guru-message');
+    
     const file = document.getElementById('file-upload-guru').files[0];
-    if (!file) { setLoading(false); showMessage('template-guru-message', 'Pilih file Excel.', true); return; }
+    if (!file) { 
+        setLoading(false); 
+        showMessage('template-guru-message', 'Pilih file Excel.', true); 
+        return; 
+    }
+
+    // 3. Atur Tombol
+    document.getElementById('btn-abort-import-guru').style.display = 'inline-flex';
+    document.getElementById('btn-batal-modal-import-guru').style.display = 'none';
+    document.getElementById('btn-proses-import-guru').style.display = 'none';
+
     const reader = new FileReader();
     reader.onload = (e) => {
+      if (isImportGuruAborted) return;
+
       const fileData = { base64: e.target.result, mimeType: file.type, fileName: file.name };
-      google.script.run.withSuccessHandler(onImportGuruFinished).withFailureHandler(onGagal).prosesImportExcelGuru(getToken(), fileData);
+      
+      google.script.run
+        .withSuccessHandler(onImportGuruFinished)
+        .withFailureHandler((err) => {
+            if (!isImportGuruAborted) {
+                onGagal(err);
+                // Reset tombol jika gagal
+                document.getElementById('btn-abort-import-guru').style.display = 'none';
+                document.getElementById('btn-batal-modal-import-guru').style.display = 'inline-flex';
+                document.getElementById('btn-proses-import-guru').style.display = 'inline-flex';
+            }
+        })
+        .prosesImportExcelGuru(getToken(), fileData);
     };
-    reader.onerror = (e) => { setLoading(false); showMessage('template-guru-message', 'Gagal baca file.', true); };
+    
+    reader.onerror = (e) => { 
+        setLoading(false); 
+        showMessage('template-guru-message', 'Gagal baca file.', true); 
+        document.getElementById('btn-abort-import-guru').style.display = 'none';
+        document.getElementById('btn-batal-modal-import-guru').style.display = 'inline-flex';
+        document.getElementById('btn-proses-import-guru').style.display = 'inline-flex';
+    };
+    
     reader.readAsDataURL(file);
   }
 
   function onImportGuruFinished(response) {
+    // 1. Cek Flag Pembatalan
+    if (isImportGuruAborted) return;
+
     setLoading(false);
+    
+    // 2. Reset Tombol
+    document.getElementById('btn-abort-import-guru').style.display = 'none';
+    document.getElementById('btn-batal-modal-import-guru').style.display = 'inline-flex';
+    document.getElementById('btn-proses-import-guru').style.display = 'inline-flex';
+
     const resultsContainer = document.getElementById('import-guru-results');
 
     if (response.status !== 'sukses') {
@@ -10379,6 +10712,8 @@
 
     if (response.berhasilDiUpload > 0) {
       guruTelahDiImport = true;
+      // Opsional: Bersihkan cache guru jika diperlukan
+      globalGuruList = []; 
     }
 
     let html = '<h4><i class="fas fa-check-circle"></i>Proses Import Selesai</h4>';
@@ -10409,6 +10744,13 @@
 
     document.getElementById('file-upload-guru').value = null;
     document.getElementById('btn-proses-import-guru').disabled = true;
+    
+    // Reset text upload
+    const fileUploadText = document.getElementById('file-upload-text-guru');
+    if (fileUploadText) {
+        fileUploadText.innerText = 'Klik untuk memilih file atau seret & letakkan di sini.';
+        fileUploadText.classList.remove('file-chosen');
+    }
   }
 
   /**
