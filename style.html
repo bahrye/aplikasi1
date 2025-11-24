@@ -6105,7 +6105,7 @@
   #halaman-utama .dashboard-card,
   .dashboard-card {
       position: relative !important; /* Acuan posisi badge */
-      overflow: visible !important;  /* Izinkan badge menonjol keluar */
+      overflow: hidden !important; /* Izinkan badge menonjol keluar */
       z-index: 1;
   }
 
@@ -6113,8 +6113,8 @@
   .notification-badge {
       /* Posisi: Absolute (Keluar dari aliran teks) */
       position: absolute !important; 
-      top: -10px !important;    /* Geser ke atas keluar garis kartu */
-      right: -10px !important;  /* Geser ke kanan keluar garis kartu */
+      top: 8px !important;   /* Geser ke atas keluar garis kartu */
+      right: 8px !important;  /* Geser ke kanan keluar garis kartu */
       
       /* Bentuk: Lingkaran Sempurna (Wajib Lebar=Tinggi) */
       width: 26px !important;
