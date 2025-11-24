@@ -6153,4 +6153,84 @@
     0% { transform: scale(0); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
   }
+
+  /* --- [MODIFIKASI KHUSUS: TAMPILAN TOMBOL IMPORT SISWA] --- */
+  
+  /* 1. Mengatur tata letak footer agar tombol memenuhi lebar (Full Width) */
+  #import-siswa-modal .modal-footer {
+    display: flex;
+    gap: 10px; /* Jarak antar tombol */
+    justify-content: space-between;
+    padding: 15px 20px; /* Pastikan padding konsisten */
+  }
+
+  /* 2. Membuat tombol Tutup dan Proses memiliki panjang yang sama (50:50) */
+  #import-siswa-modal .modal-footer button {
+    flex: 1;       /* Memaksa tombol membagi ruang yang tersedia secara rata */
+    width: 100%;   /* Memastikan tombol memenuhi container flex-nya */
+    margin: 0 !important; /* Menghapus margin bawaan agar rapi */
+    justify-content: center; /* Memastikan teks dan ikon berada di tengah */
+  }
+
+  /* 3. Mengubah warna tombol 'Tutup' menjadi Biru (Primary) */
+  #btn-batal-modal-import-siswa {
+    background-color: var(--primary-color) !important; /* Override warna abu-abu/secondary */
+    color: white;
+  }
+  
+  #btn-batal-modal-import-siswa:hover {
+    background-color: var(--primary-dark) !important;
+  }
+
+  /* Pastikan tombol 'Batalkan' (jika muncul saat loading) juga mengikuti style ini */
+  #btn-abort-import-siswa {
+    flex: 1; 
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  /* --- [MODIFIKASI: TAMPILAN TOMBOL IMPORT GURU, UJIAN, & RAPOR] --- */
+
+  /* 1. Mengatur layout footer untuk Modal Guru, Ujian, dan Rapor */
+  #import-guru-modal .modal-footer,
+  #upload-nilai-modal .modal-footer,
+  #upload-nilai-rapor-modal .modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    padding: 15px 20px;
+  }
+
+  /* 2. Membuat semua tombol di dalam footer tersebut Full Width & Lebar Sama */
+  #import-guru-modal .modal-footer button,
+  #upload-nilai-modal .modal-footer button,
+  #upload-nilai-rapor-modal .modal-footer button {
+    flex: 1;
+    width: 100%;
+    margin: 0 !important;
+    justify-content: center;
+  }
+
+  /* 3. Mengubah warna tombol 'Tutup' menjadi Biru (Primary) pada ketiga modal */
+  #btn-batal-modal-import-guru,
+  #btn-batal-modal-upload-nilai,
+  #btn-batal-modal-upload-nilai-rapor {
+    background-color: var(--primary-color) !important;
+    color: white;
+  }
+
+  #btn-batal-modal-import-guru:hover,
+  #btn-batal-modal-upload-nilai:hover,
+  #btn-batal-modal-upload-nilai-rapor:hover {
+    background-color: var(--primary-dark) !important;
+  }
+
+  /* 4. Pastikan tombol 'Batalkan' (Abort) yang muncul saat loading juga Full Width */
+  #btn-abort-import-guru,
+  #btn-abort-upload-nilai,
+  #btn-abort-upload-rapor {
+    flex: 1;
+    width: 100%;
+    margin: 0 !important;
+  }
 </style>
