@@ -1710,7 +1710,8 @@ function syncDefaultMapel(token) {
       sheetMapel.getRange(sheetMapel.getLastRow() + 1, 1, mapelToAdd.length, 5).setValues(mapelToAdd);
     }
     clearMapelCache(sessionData.sekolahID, spreadsheetID);
-    return { status: "sukses" };
+    // Tambahkan property message di bawah ini
+    return { status: "sukses", message: "Sinkronisasi mapel default berhasil diselesaikan." };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
