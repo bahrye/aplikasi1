@@ -14634,38 +14634,60 @@
     }
   }
 
-  // --- [LOGIKA NOTIFIKASI REALTIME] ---
+  // --- [LOGIKA NOTIFIKASI REALTIME: SMART POLLING] ---
 
-  let adminNotifInterval = null;
+  let smartPollingInterval = null;
+  let smartPollingStopTimeout = null;
+  let lastBadgeCount = -1; // Inisialisasi dengan angka yang tidak mungkin (untuk deteksi perubahan awal)
 
   // Fungsi untuk Memulai Polling (Dijalankan saat masuk Dashboard)
   function startAdminNotificationPolling() {
-    // Hentikan jika ada interval lama berjalan
-    if (adminNotifInterval) clearInterval(adminNotifInterval);
-
-    // Cek apakah user adalah ADMIN (bukan guru/siswa)
-    // Variabel 'currentUserRole' sudah ada di kode Anda sebelumnya
+    // Cek apakah user adalah ADMIN
     if (typeof currentUserRole !== 'undefined' && currentUserRole === 'admin') {
+        console.log("Memulai Smart Polling Notifikasi...");
         
-        console.log("Memulai polling notifikasi...");
-        fetchNotificationCount(); // Panggil langsung sekali
+        // 1. Reset timer jika ada yang berjalan
+        stopAdminNotificationPolling();
 
-        // Set interval setiap 30 detik (Hemat resource browser & server)
-        adminNotifInterval = setInterval(() => {
-          // Hanya cek jika tab sedang aktif dan elemen dashboard terlihat
+        // 2. Panggil langsung sekali agar tidak menunggu 5 detik pertama
+        fetchNotificationCount(); 
+
+        // 3. Jalankan Polling setiap 5 detik
+        smartPollingInterval = setInterval(() => {
+          // Hanya cek jika tab aktif dan di halaman utama
           if (!document.hidden && document.getElementById('halaman-utama').style.display !== 'none') {
             fetchNotificationCount();
           }
-        }, 30000); 
+        }, 5000); 
+
+        // 4. Set Timeout 30 detik untuk menghentikan polling (Hemat Sumber Daya)
+        resetPollingTimeout();
     }
   }
 
-  // Fungsi untuk Menghentikan Polling (Dijalankan saat keluar Dashboard)
+  // Fungsi untuk Mengatur Ulang Timeout Penghentian (Perpanjang 30 detik)
+  function resetPollingTimeout() {
+    // Hapus timeout penghentian sebelumnya
+    if (smartPollingStopTimeout) {
+      clearTimeout(smartPollingStopTimeout);
+    }
+
+    // Pasang timeout baru: Hentikan polling setelah 30 detik
+    smartPollingStopTimeout = setTimeout(() => {
+      console.log("Smart Polling: Waktu habis (30s). Polling dihentikan untuk menghemat kuota.");
+      stopAdminNotificationPolling();
+    }, 30000);
+  }
+
+  // Fungsi untuk Menghentikan Polling Sepenuhnya
   function stopAdminNotificationPolling() {
-    if (adminNotifInterval) {
-      console.log("Menghentikan polling notifikasi.");
-      clearInterval(adminNotifInterval);
-      adminNotifInterval = null;
+    if (smartPollingInterval) {
+      clearInterval(smartPollingInterval);
+      smartPollingInterval = null;
+    }
+    if (smartPollingStopTimeout) {
+      clearTimeout(smartPollingStopTimeout);
+      smartPollingStopTimeout = null;
     }
   }
 
@@ -14680,38 +14702,42 @@
       .getPendingNotificationCount(token);
   }
 
-  // Fungsi Update UI Badge
+  // Fungsi Update UI Badge & Logika Perpanjangan Waktu
   function updateNotificationBadge(response) {
     if (response.status !== 'sukses') return;
 
     const count = response.count;
     
-    // Target tombol/kartu "Kelola Nilai Guru"
+    // [LOGIKA CERDAS] Deteksi Perubahan Data
+    // Jika jumlah notifikasi berbeda dari pemeriksaan sebelumnya (misal: 1 jadi 0, atau 0 jadi 1)
+    if (count !== lastBadgeCount) {
+      console.log(`Perubahan data terdeteksi (Lama: ${lastBadgeCount}, Baru: ${count}). Memperpanjang polling.`);
+      lastBadgeCount = count;
+      
+      // Perpanjang waktu polling 30 detik lagi karena ada aktivitas data
+      resetPollingTimeout();
+    }
+
+    // --- Update UI (Badge) ---
     const btn = document.getElementById('btn-buka-kelola-nilai-guru');
     if (!btn) return;
-    
     const card = btn.closest('.dashboard-card');
     if (!card) return;
 
-    // Cek apakah badge sudah ada
     let badge = card.querySelector('.notification-badge');
     
     if (count > 0) {
       if (!badge) {
-        // Buat badge jika belum ada
         badge = document.createElement('span');
         badge.className = 'notification-badge';
         card.appendChild(badge);
       }
       badge.innerText = count > 99 ? '99+' : count;
-      badge.style.display = 'block';
-      
-      // Opsional: Beri border merah pada kartu agar lebih mencolok
+      badge.style.display = 'flex'; // Gunakan flex agar angka di tengah
       card.style.borderColor = 'var(--danger-color)';
     } else {
-      // Sembunyikan jika 0
       if (badge) badge.style.display = 'none';
-      card.style.borderColor = ''; // Reset border
+      card.style.borderColor = ''; 
     }
   }
 
