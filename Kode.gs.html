@@ -4097,7 +4097,7 @@ function getNilaiRaporTemplateData(token, semesterId, kelasDipilih) {
     metadataSheet.appendRow(['Kelas', kelasDipilih]);
     metadataSheet.hideSheet();
     SpreadsheetApp.flush();
-    const url = "[https://docs.google.com/spreadsheets/d/](https://docs.google.com/spreadsheets/d/)" + tempSpreadsheetId + "/export?format=xlsx";
+    const url = "https://docs.google.com/spreadsheets/d/" + tempSpreadsheetId + "/export?format=xlsx";
     const oauthToken = ScriptApp.getOAuthToken();
     const response = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + oauthToken } });
     const fileNameOutput = `template_rapor_${semesterId}_${kelasDipilih}.xlsx`;
@@ -4645,12 +4645,32 @@ function recalculateIjazahData(token) {
 function exportDataIjazah(token, tipeFile, tipeData, kelasFilter, isWeighted) {
   let tempSpreadsheetId = null;
   try {
-    const { sessionData } = validateAdminSession(token);
+    // [MODIFIKASI] Ambil app2DbId dari sesi
+    const { sessionData, app2DbId } = validateAdminSession(token);
     const namaSekolah = sessionData.namaSekolah;
     const jenjangPilihan = sessionData.jenjangPilihan;
+    
+    // --- [LOGIKA BARU] AMBIL TAHUN AJARAN TERBARU ---
+    let tahunAjaran = "";
+    try {
+      const ssApp2 = SpreadsheetApp.openById(app2DbId);
+      const taSheet = ssApp2.getSheetByName('db_tahun_ajaran');
+      if (taSheet && taSheet.getLastRow() > 1) {
+        const taData = taSheet.getRange(2, 1, taSheet.getLastRow() - 1, 2).getValues(); // Ambil ID & Deskripsi
+        // Urutkan berdasarkan Deskripsi (Z-A) untuk dapat yang terbaru
+        taData.sort((a, b) => b[1].localeCompare(a[1]));
+        tahunAjaran = taData[0][1]; // Ambil deskripsi (misal: 2024/2025)
+      }
+    } catch (e) {
+      Logger.log("Gagal mengambil Tahun Ajaran: " + e.message);
+      tahunAjaran = "-";
+    }
+    // --- [AKHIR LOGIKA BARU] ---
+
     const ijazahResponse = getNilaiIjazahData(token);
     if (ijazahResponse.status !== 'sukses') throw new Error(ijazahResponse.message);
     const data = ijazahResponse.data;
+    
     let dataToExport, title = "", kkmInfo = "";
     if (tipeData === 'ujian') {
       dataToExport = isWeighted ? data.dataUjian : data.dataUjianOriginal;
@@ -4665,16 +4685,23 @@ function exportDataIjazah(token, tipeFile, tipeData, kelasFilter, isWeighted) {
       title = "NILAI IJAZAH";
       kkmInfo = `(KKM: ${data.kkm})`;
     }
+    
     const filteredSiswaList = (kelasFilter === 'semua') ? data.siswaList : data.siswaList.filter(s => s.kelas === kelasFilter);
+    
+    // [MODIFIKASI] Masukkan tahunAjaran ke payload
     const dataPayload = {
       namaSekolah, title, kkmInfo, kelasFilter, siswaList: filteredSiswaList,
-      mapelList: data.mapelList, nilaiData: dataToExport, tipeData, isWeighted, kkmValue: data.kkm
+      mapelList: data.mapelList, nilaiData: dataToExport, tipeData, isWeighted, kkmValue: data.kkm,
+      tahunAjaran: tahunAjaran // <-- DATA BARU
     };
+    
     const tempSS = buatSpreadsheetEksporIjazah(dataPayload);
     tempSpreadsheetId = tempSS.getId();
+    
     let blob, fileName, mimeType;
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd");
     const safeTitle = title.replace(/ /g, '_'), safeKelas = kelasFilter.replace(/ /g, '_');
+    
     if (tipeFile === 'pdf') {
       blob = generatePdfBlobFromSheet(tempSS);
       fileName = `Nilai_${safeTitle}_${safeKelas}_${timestamp}.pdf`;
@@ -4684,7 +4711,9 @@ function exportDataIjazah(token, tipeFile, tipeData, kelasFilter, isWeighted) {
       fileName = `Nilai_${safeTitle}_${safeKelas}_${timestamp}.xlsx`;
       mimeType = MimeType.MICROSOFT_EXCEL;
     }
+    
     return { status: "sukses", base64: Utilities.base64Encode(blob.getBytes()), mimeType, fileName };
+    
   } catch (e) {
     return { status: "gagal", message: e.message };
   } finally {
@@ -4693,30 +4722,38 @@ function exportDataIjazah(token, tipeFile, tipeData, kelasFilter, isWeighted) {
 }
 
 function buatSpreadsheetEksporIjazah(dataPayload) {
-  const { namaSekolah, title, kkmInfo, kelasFilter, siswaList, mapelList, nilaiData, tipeData, isWeighted, kkmValue } = dataPayload;
+  const { namaSekolah, title, kkmInfo, kelasFilter, siswaList, mapelList, nilaiData, tipeData, isWeighted, kkmValue, tahunAjaran } = dataPayload;
   
   const ss = SpreadsheetApp.create(`[TEMP] Ekspor ${title}`);
   const sheet = ss.getSheetByName('Sheet1');
   sheet.setName('Data Nilai');
 
-  sheet.getRange('A1').setValue(namaSekolah.toUpperCase()).setFontSize(14).setFontWeight('bold');
-  sheet.getRange('A2').setValue(`REKAPITULASI ${title.toUpperCase()} ${kkmInfo}`).setFontSize(12).setFontWeight('bold');
-  sheet.getRange('A3').setValue(`Kelas: ${(kelasFilter === 'semua') ? 'Semua Kelas' : kelasFilter}`).setFontSize(12).setFontWeight('bold');
+  // --- HEADER DOKUMEN (Judul & Info) ---
+  // [MODIFIKASI] Tambahkan .setVerticalAlignment('middle')
+  sheet.getRange('A1').setValue(namaSekolah.toUpperCase()).setFontSize(14).setFontWeight('bold').setVerticalAlignment('middle');
+  sheet.getRange('A2').setValue(`REKAPITULASI ${title.toUpperCase()} ${kkmInfo}`).setFontSize(12).setFontWeight('bold').setVerticalAlignment('middle');
+  sheet.getRange('A3').setValue(`Kelas: ${(kelasFilter === 'semua') ? 'Semua Kelas' : kelasFilter}`).setFontSize(12).setFontWeight('bold').setVerticalAlignment('middle');
+  sheet.getRange('A4').setValue(`Tahun Ajaran: ${tahunAjaran}`).setFontSize(12).setFontWeight('bold').setVerticalAlignment('middle');
 
+  // --- HEADER TABEL ---
   const headers = ["No", "Nama Siswa", "NISN", "Kelas", ...mapelList.map(m => m.id), "Jumlah", "Rata-Rata"];
   if (tipeData === 'ijazah') {
     headers.push("Status");
   }
   
-  const headerRange = sheet.getRange(5, 1, 1, headers.length);
+  const startHeaderRow = 6; 
+  const headerRange = sheet.getRange(startHeaderRow, 1, 1, headers.length);
   headerRange.setValues([headers]);
-  headerRange.setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
-  headerRange.setBackground("#666666").setFontColor("#ffffff");
+  
+  // [MODIFIKASI] Pastikan Header Vertikal Tengah & Horizontal Tengah
+  headerRange.setFontWeight('bold')
+             .setHorizontalAlignment('center')
+             .setVerticalAlignment('middle') // <-- PENTING
+             .setBackground("#666666")
+             .setFontColor("#ffffff")
+             .setWrap(true); // Header boleh wrap jika panjang
 
-  headerRange.setWrap(false);
-  sheet.getRange(5, 2).setWrap(true);
-  sheet.getRange(5, 5, 1, mapelList.length).setWrap(true);
-
+  // --- DATA TABEL ---
   const dataRows = [];
   
   siswaList.forEach((siswa, index) => {
@@ -4763,37 +4800,39 @@ function buatSpreadsheetEksporIjazah(dataPayload) {
   });
 
   if (dataRows.length > 0) {
-    const dataRange = sheet.getRange(6, 1, dataRows.length, headers.length);
+    const startDataRow = startHeaderRow + 1;
+    const dataRange = sheet.getRange(startDataRow, 1, dataRows.length, headers.length);
     dataRange.setValues(dataRows);
     dataRange.applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
     
+    // [MODIFIKASI] TERAPKAN PERATAAN VERTIKAL TENGAH UNTUK SEMUA DATA
     dataRange.setVerticalAlignment('middle'); 
-    sheet.getRange(6, 2, dataRows.length, 1).setWrap(true); 
     
-    sheet.getRange(6, 1, dataRows.length, 1).setHorizontalAlignment('center'); // Kolom No (A) -> Rata Tengah
-    sheet.getRange(6, 2, dataRows.length, 1).setHorizontalAlignment('left');  // Kolom Nama (B) -> Rata Kiri
+    // Aktifkan Text Wrap untuk kolom Nama (B) agar rapi
+    sheet.getRange(startDataRow, 2, dataRows.length, 1).setWrap(true); 
     
-    // --- PERBAIKAN RATA TENGAH NISN ---
-    sheet.getRange(6, 3, dataRows.length, 1).setHorizontalAlignment('center'); // Kolom NISN (C) -> Rata Tengah
-    sheet.getRange(6, 4, dataRows.length, headers.length - 3).setHorizontalAlignment('center'); // Kolom Kelas (D) -> dst
-    // --- AKHIR PERBAIKAN ---
+    // Perataan Horizontal (Kiri/Tengah/Kanan) per kolom
+    sheet.getRange(startDataRow, 1, dataRows.length, 1).setHorizontalAlignment('center'); // No
+    sheet.getRange(startDataRow, 2, dataRows.length, 1).setHorizontalAlignment('left');  // Nama (Tetap kiri agar mudah dibaca)
+    sheet.getRange(startDataRow, 3, dataRows.length, 1).setHorizontalAlignment('center'); // NISN
+    sheet.getRange(startDataRow, 4, dataRows.length, headers.length - 3).setHorizontalAlignment('center'); // Sisanya (Kelas, Nilai, dll)
     
-    const tableRange = sheet.getRange(5, 1, dataRows.length + 1, headers.length);
+    const tableRange = sheet.getRange(startHeaderRow, 1, dataRows.length + 1, headers.length);
     tableRange.setBorder(true, true, true, true, true, true);
     tableRange.setFontSize(11); 
     
-    const legendStartRow = 6 + dataRows.length + 2; 
+    // --- LEGENDA KODE MAPEL ---
+    const legendStartRow = startDataRow + dataRows.length + 2; 
     
     const mergeStartCol = 3; 
     const mergeEndCol = 12;  
     const mergeCount = mergeEndCol - mergeStartCol + 1; 
     
     sheet.getRange(legendStartRow, mergeStartCol, 1, mergeCount).merge(); 
-    
-    // --- PERBAIKAN RATA KIRI LEGENDA ---
     sheet.getRange(legendStartRow, mergeStartCol).setValue("Keterangan Kode Mapel :")
-         .setFontWeight('bold').setFontSize(11).setHorizontalAlignment('left');
-    // --- AKHIR PERBAIKAN ---
+         .setFontWeight('bold').setFontSize(11)
+         .setHorizontalAlignment('left')
+         .setVerticalAlignment('middle'); // [MODIFIKASI]
          
     const legendData = [];
     mapelList.forEach(mapel => {
@@ -4803,27 +4842,33 @@ function buatSpreadsheetEksporIjazah(dataPayload) {
     if (legendData.length > 0) {
       const legendDataRange = sheet.getRange(legendStartRow + 1, 3, legendData.length, 3);
       legendDataRange.setValues(legendData);
-      
       legendDataRange.setFontSize(11);
       
-      // --- PERBAIKAN RATA KIRI LEGENDA ---
-      sheet.getRange(legendStartRow + 1, 3, legendData.length, 1).setFontWeight('bold').setHorizontalAlignment('left'); // Kolom C (Kode)
-      // --- AKHIR PERBAIKAN ---
-      
-      sheet.getRange(legendStartRow + 1, 4, legendData.length, 1).setHorizontalAlignment('center'); // Kolom D (=)
+      // Format Legenda
+      sheet.getRange(legendStartRow + 1, 3, legendData.length, 1)
+           .setFontWeight('bold')
+           .setHorizontalAlignment('left')
+           .setVerticalAlignment('middle'); // [MODIFIKASI]
+
+      sheet.getRange(legendStartRow + 1, 4, legendData.length, 1)
+           .setHorizontalAlignment('center')
+           .setVerticalAlignment('middle'); // [MODIFIKASI]
 
       for (let i = 0; i < legendData.length; i++) {
         let row = legendStartRow + 1 + i;
         sheet.getRange(row, 5, 1, 8).merge(); 
-        sheet.getRange(row, 5).setHorizontalAlignment('left').setVerticalAlignment('middle');
+        sheet.getRange(row, 5)
+             .setHorizontalAlignment('left')
+             .setVerticalAlignment('middle'); // [MODIFIKASI]
       }
     }
   }
 
-  sheet.setColumnWidth(1, 40); 
-  sheet.setColumnWidth(2, 220); 
-  sheet.setColumnWidth(3, 100); 
-  sheet.setColumnWidth(4, 60);  
+  // Pengaturan Lebar Kolom
+  sheet.setColumnWidth(1, 40);  // No
+  sheet.setColumnWidth(2, 250); // Nama (Diperlebar sedikit)
+  sheet.setColumnWidth(3, 100); // NISN
+  sheet.setColumnWidth(4, 60);  // Kelas
   
   const mapelColStart = 5;
   for(let i = 0; i < mapelList.length; i++) {
@@ -4832,14 +4877,13 @@ function buatSpreadsheetEksporIjazah(dataPayload) {
   }
 
   const rekapColStart = mapelColStart + mapelList.length;
-  sheet.setColumnWidth(rekapColStart, 80); 
-  sheet.setColumnWidth(rekapColStart + 1, 80); 
+  sheet.setColumnWidth(rekapColStart, 80); // Jumlah
+  sheet.setColumnWidth(rekapColStart + 1, 80); // Rata-rata
   if (tipeData === 'ijazah') {
-    sheet.setColumnWidth(rekapColStart + 2, 100); 
+    sheet.setColumnWidth(rekapColStart + 2, 100); // Status
   }
 
   SpreadsheetApp.flush();
-
   return ss;
 }
 
@@ -9404,12 +9448,6 @@ function getRiwayatNilaiGuru(token, id_ta_filter) {
   }
 }
 
-/**
- * [DIPERBARUI - DINAMIS] Membuat PDF Laporan Nilai Guru dari sisi Admin.
- * - Perbaikan: Kolom Ujian/Praktek/Rata-2 muncul dinamis sesuai tipe mapel.
- * - Tempat TTD & Tanggal diambil dari Master Sheet.
- * - Label "No. Ujian" menjadi "NISN".
- */
 function generateGuruPdfAdmin(token, submissionKey, filterKelas) {
   try {
     // 1. Validasi Sesi
@@ -9485,8 +9523,8 @@ function generateGuruPdfAdmin(token, submissionKey, filterKelas) {
     if (rowMaster) {
         kopId = rowMaster[15]; // Kolom P
         tanggalCetakManual = rowMaster[16]; // Kolom Q
-        tempatTtd = rowMaster[19]; // Kolom T
-        modeTanggal = rowMaster[20] || 'otomatis'; // Kolom U
+        tempatTtd = rowMaster[19] || ""; // Kolom T
+        modeTanggal = rowMaster[20] || "otomatis"; // Kolom U
     }
 
     // Gabungkan Data Info Cetak
@@ -9540,17 +9578,20 @@ function generateGuruPdfAdmin(token, submissionKey, filterKelas) {
                       </div>`;
     }
 
-    // --- LOGIKA HEADER TABEL DINAMIS ---
+    // --- [MODIFIKASI FINAL] STYLE KUAT UNTUK MEMAKSA WARNA ---
+    // Menambahkan -webkit-print-color-adjust: exact; dan !important
+    const styleHeader = 'style="background-color: #666666 !important; color: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; text-align: center; font-weight: bold; border: 1px solid black; padding: 6px;"';
+    
     let dynamicHeadersHtml = '';
     if (mapelInfo.isUS) {
-        dynamicHeadersHtml += '<th width="50">Ujian</th>';
+        dynamicHeadersHtml += `<th width="50" ${styleHeader}>Ujian</th>`;
     }
     if (mapelInfo.isUP) {
-        dynamicHeadersHtml += '<th width="50">Praktek</th>';
+        dynamicHeadersHtml += `<th width="50" ${styleHeader}>Praktek</th>`;
     }
     // Hanya tampilkan Rata-2 jika KEDUANYA ada
     if (mapelInfo.isUS && mapelInfo.isUP) {
-        dynamicHeadersHtml += '<th width="50">Rata-2</th>';
+        dynamicHeadersHtml += `<th width="50" ${styleHeader}>Rata-2</th>`;
     }
 
     // --- LOGIKA BARIS TABEL DINAMIS ---
@@ -9601,8 +9642,17 @@ function generateGuruPdfAdmin(token, submissionKey, filterKelas) {
         @page { size: A4; margin: 1cm; }
         body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; margin: 0; width: 100%; }
         table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-        th, td { border: 1px solid black; padding: 4px; font-size: 10pt; vertical-align: middle; }
-        th { background-color: #e0e0e0; text-align: center; font-weight: bold; }
+        
+        td { border: 1px solid black; padding: 4px; font-size: 10pt; vertical-align: middle; }
+        
+        /* [TAMBAHAN] CSS Backup di Head juga */
+        th {
+            background-color: #666666 !important;
+            color: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
         .info-table { width: 100%; border: none; margin-bottom: 15px; font-size: 10pt; }
         .info-table td { border: none; padding: 2px; text-align: left; }
         .footer-table { width: 100%; margin-top: 30px; border: none; font-size: 10pt; page-break-inside: avoid; }
@@ -9637,12 +9687,12 @@ function generateGuruPdfAdmin(token, submissionKey, filterKelas) {
         <table>
             <thead>
                 <tr>
-                    <th width="30">No</th>
-                    <th width="90">NISN</th> 
-                    <th>Nama Peserta Ujian</th>
-                    <th width="60">Kelas</th>
+                    <th width="30" ${styleHeader}>No</th>
+                    <th width="90" ${styleHeader}>NISN</th> 
+                    <th ${styleHeader}>Nama Peserta Ujian</th>
+                    <th width="60" ${styleHeader}>Kelas</th>
                     ${dynamicHeadersHtml} 
-                    <th>Nilai dengan huruf</th>
+                    <th ${styleHeader}>Nilai dengan huruf</th>
                 </tr>
             </thead>
             <tbody>${tableRowsHtml}</tbody>
