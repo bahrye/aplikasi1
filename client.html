@@ -10334,7 +10334,20 @@
                   setLoading(false);
                   if (response.status === 'sukses') {
                       showToast(response.message, 'sukses');
-                      bukaHalamanGuru(); // Reload tabel
+                      
+                      // --- [PERBAIKAN] UPDATE TAMPILAN SECARA LANGSUNG ---
+                      // 1. Hapus guru dari variabel global di klien
+                      if (globalGuruList && globalGuruList.length > 0) {
+                          const index = globalGuruList.findIndex(g => g.email === email);
+                          if (index > -1) {
+                              globalGuruList.splice(index, 1); // Hapus dari array
+                          }
+                      }
+                      
+                      // 2. Render ulang tabel guru dengan data terbaru (tanpa reload halaman)
+                      renderGuruTable(globalGuruList);
+                      // ---------------------------------------------------
+
                   } else {
                       showToast(response.message, 'gagal');
                   }
@@ -10823,19 +10836,40 @@
 
     if (response.berhasilDiUpload > 0) {
       guruTelahDiImport = true;
-      // Opsional: Bersihkan cache guru jika diperlukan
       globalGuruList = []; 
     }
 
-    let html = '<h4><i class="fas fa-check-circle"></i>Proses Import Selesai</h4>';
-    html += `<p>Total data diproses: <strong>${response.totalDiProses}</strong></p>`;
-    html += `<p style="color: var(--success-color);">Berhasil ditambah: <strong>${response.berhasilDiUpload}</strong></p>`;
-    html += `<p style="color: var(--danger-color);">Gagal/Dilewati: <strong>${response.gagalDiUpload}</strong></p>`;
+    let html = '<h4><i class="fas fa-check-circle"></i> Proses Import Selesai</h4>';
+    html += `<p>Total baris diproses: <strong>${response.totalDiProses}</strong></p>`;
+    html += `<p style="color: var(--success-color);">Berhasil: <strong>${response.dataSukses ? response.dataSukses.length : 0} baris</strong> (Total ${response.berhasilDiUpload} akun guru dibuat/diupdate)</p>`;
+    html += `<p style="color: var(--danger-color);">Gagal/Dilewati: <strong>${response.gagalDiUpload} baris</strong></p>`;
 
+    // --- TABEL DATA SUKSES (HIJAU) ---
+    if (response.dataSukses && response.dataSukses.length > 0) {
+      html += `<hr><p style="color: var(--success-color);"><strong>Rincian Data Berhasil:</strong></p>`;
+      html += '<div style="max-height: 200px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #d4edda; border-radius: 5px;">';
+      html += '<table class="import-gagal-table" style="border-color: #c3e6cb;">';
+      html += '<tr style="background-color: #d4edda; color: #155724;"><th>Baris</th><th>Nama</th><th>Email</th><th>Mapel & Kelas</th></tr>';
+
+      response.dataSukses.forEach(item => {
+        html += `
+          <tr>
+            <td>${item.baris}</td>
+            <td>${item.nama}</td>
+            <td>${item.email}</td>
+            <td><small>${item.mapel}<br>(${item.kelas})</small></td>
+          </tr>
+        `;
+      });
+      html += '</table></div>';
+    }
+
+    // --- TABEL DATA GAGAL (MERAH) ---
     if (response.dataGagal && response.dataGagal.length > 0) {
-      html += `<hr><p><strong>Detail Data yang Gagal:</strong></p>`;
-      html += '<table class="import-gagal-table">';
-      html += '<tr><th>Baris</th><th>Nama</th><th>Email</th><th>Alasan Gagal</th></tr>';
+      html += `<hr><p style="color: var(--danger-color);"><strong>Rincian Data Gagal:</strong></p>`;
+      html += '<div style="max-height: 200px; overflow-y: auto; border: 1px solid #f5c6cb; border-radius: 5px;">';
+      html += '<table class="import-gagal-table" style="border-color: #f5c6cb;">';
+      html += '<tr style="background-color: #f8d7da; color: #721c24;"><th>Baris</th><th>Nama</th><th>Email</th><th>Alasan Gagal</th></tr>';
 
       response.dataGagal.forEach(item => {
         html += `
@@ -10847,7 +10881,7 @@
           </tr>
         `;
       });
-      html += '</table>';
+      html += '</table></div>';
     }
 
     resultsContainer.innerHTML = html;
@@ -10856,7 +10890,6 @@
     document.getElementById('file-upload-guru').value = null;
     document.getElementById('btn-proses-import-guru').disabled = true;
     
-    // Reset text upload
     const fileUploadText = document.getElementById('file-upload-text-guru');
     if (fileUploadText) {
         fileUploadText.innerText = 'Klik untuk memilih file atau seret & letakkan di sini.';
