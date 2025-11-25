@@ -13881,7 +13881,13 @@
     if (response.status === 'sukses') {
       tutupAlasanTolakModal();
       showToast(response.message, 'sukses');
-      bukaHalamanKelolaNilaiGuru(); // Refresh list
+      
+      // --- [TAMBAHAN BARU] ---
+      // Update badge segera
+      fetchNotificationCount(true); 
+      // -----------------------
+      
+      bukaHalamanKelolaNilaiGuru(); 
     } else {
       onScoreRejectFailed({ message: response.message });
     }
@@ -13899,14 +13905,16 @@
       showToast(response.message, 'sukses');
       setIjazahDirty(true); 
       
-      // --- [TAMBAHAN] Invalidasi Cache Input Nilai Ujian ---
-      // Kita kosongkan cache klien agar saat Admin kembali ke menu 
-      // "Input Nilai Ujian", aplikasi dipaksa mengambil data terbaru dari server.
       globalNilaiGridCacheUM = null;
       globalNilaiGridCachePraktek = null;
-      // --- [AKHIR TAMBAHAN] ---
 
-      bukaHalamanKelolaNilaiGuru(); // Refresh list di halaman Kelola Guru
+      // --- [TAMBAHAN BARU] ---
+      // Segera update badge notifikasi di background!
+      // Saat user kembali ke dashboard, angkanya sudah 0.
+      fetchNotificationCount(true); 
+      // -----------------------
+
+      bukaHalamanKelolaNilaiGuru(); 
     } else {
       onGagal(response);
     }
@@ -14638,48 +14646,43 @@
 
   let smartPollingInterval = null;
   let smartPollingStopTimeout = null;
-  let lastBadgeCount = -1; // Inisialisasi dengan angka yang tidak mungkin (untuk deteksi perubahan awal)
+  let lastBadgeCount = -1;
 
-  // Fungsi untuk Memulai Polling (Dijalankan saat masuk Dashboard)
+  // 1. Fungsi Memulai Polling (Saat masuk dashboard)
   function startAdminNotificationPolling() {
-    // Cek apakah user adalah ADMIN
     if (typeof currentUserRole !== 'undefined' && currentUserRole === 'admin') {
-        console.log("Memulai Smart Polling Notifikasi...");
+        console.log("Smart Polling: START (30 detik)...");
         
-        // 1. Reset timer jika ada yang berjalan
+        // Reset timer jika ada
         stopAdminNotificationPolling();
 
-        // 2. Panggil langsung sekali agar tidak menunggu 5 detik pertama
-        fetchNotificationCount(); 
+        // Panggil langsung sekali
+        fetchNotificationCount(true); // true = Paksa update UI
 
-        // 3. Jalankan Polling setiap 5 detik
+        // Jalankan Interval 5 Detik
         smartPollingInterval = setInterval(() => {
-          // Hanya cek jika tab aktif dan di halaman utama
+          // Cek apakah tab aktif dan dashboard terlihat
           if (!document.hidden && document.getElementById('halaman-utama').style.display !== 'none') {
-            fetchNotificationCount();
+            fetchNotificationCount(false); // false = Cek rutin
           }
         }, 5000); 
 
-        // 4. Set Timeout 30 detik untuk menghentikan polling (Hemat Sumber Daya)
+        // Set Timeout Kematian (30 Detik)
         resetPollingTimeout();
     }
   }
 
-  // Fungsi untuk Mengatur Ulang Timeout Penghentian (Perpanjang 30 detik)
+  // 2. Fungsi Reset Timeout (Perpanjang Waktu)
   function resetPollingTimeout() {
-    // Hapus timeout penghentian sebelumnya
-    if (smartPollingStopTimeout) {
-      clearTimeout(smartPollingStopTimeout);
-    }
+    if (smartPollingStopTimeout) clearTimeout(smartPollingStopTimeout);
 
-    // Pasang timeout baru: Hentikan polling setelah 30 detik
     smartPollingStopTimeout = setTimeout(() => {
-      console.log("Smart Polling: Waktu habis (30s). Polling dihentikan untuk menghemat kuota.");
+      console.log("Smart Polling: Waktu habis (30s). Berhenti.");
       stopAdminNotificationPolling();
     }, 30000);
   }
 
-  // Fungsi untuk Menghentikan Polling Sepenuhnya
+  // 3. Fungsi Stop Polling
   function stopAdminNotificationPolling() {
     if (smartPollingInterval) {
       clearInterval(smartPollingInterval);
@@ -14691,10 +14694,16 @@
     }
   }
 
-  // Fungsi Request ke Server
-  function fetchNotificationCount() {
+  // 4. Fungsi Fetch Data
+  // forceUpdate: Jika true, akan mengambil data meskipun dashboard tersembunyi
+  function fetchNotificationCount(forceUpdate = false) {
     const token = getToken();
     if (!token) return;
+    
+    // Jika tidak dipaksa DAN dashboard tersembunyi, jangan ambil (hemat kuota)
+    if (!forceUpdate && document.getElementById('halaman-utama').style.display === 'none') {
+        return;
+    }
 
     google.script.run
       .withSuccessHandler(updateNotificationBadge)
@@ -14702,23 +14711,22 @@
       .getPendingNotificationCount(token);
   }
 
-  // Fungsi Update UI Badge & Logika Perpanjangan Waktu
+  // 5. Update UI Badge & Deteksi Perubahan
   function updateNotificationBadge(response) {
     if (response.status !== 'sukses') return;
 
     const count = response.count;
     
-    // [LOGIKA CERDAS] Deteksi Perubahan Data
-    // Jika jumlah notifikasi berbeda dari pemeriksaan sebelumnya (misal: 1 jadi 0, atau 0 jadi 1)
+    // [LOGIKA CERDAS] Jika angka berubah, perpanjang waktu polling
     if (count !== lastBadgeCount) {
-      console.log(`Perubahan data terdeteksi (Lama: ${lastBadgeCount}, Baru: ${count}). Memperpanjang polling.`);
+      if (lastBadgeCount !== -1) { // Abaikan inisialisasi awal
+         console.log(`Data Berubah (${lastBadgeCount} -> ${count}). Perpanjang 30s.`);
+         resetPollingTimeout();
+      }
       lastBadgeCount = count;
-      
-      // Perpanjang waktu polling 30 detik lagi karena ada aktivitas data
-      resetPollingTimeout();
     }
 
-    // --- Update UI (Badge) ---
+    // Update Badge di DOM
     const btn = document.getElementById('btn-buka-kelola-nilai-guru');
     if (!btn) return;
     const card = btn.closest('.dashboard-card');
@@ -14733,7 +14741,7 @@
         card.appendChild(badge);
       }
       badge.innerText = count > 99 ? '99+' : count;
-      badge.style.display = 'flex'; // Gunakan flex agar angka di tengah
+      badge.style.display = 'flex';
       card.style.borderColor = 'var(--danger-color)';
     } else {
       if (badge) badge.style.display = 'none';
