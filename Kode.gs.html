@@ -8994,6 +8994,8 @@ function approveTeacherScore(token, submissionKey) {
     // 7. Update Status di App 2
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("APPROVED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue("");
+
+    SpreadsheetApp.flush();
     
     // 8. Bersihkan Cache & Kirim Notifikasi
     clearNilaiUjianCache(sekolahID, spreadsheetID);
@@ -9059,6 +9061,8 @@ function rejectTeacherScore(token, submissionKey, reason) {
 
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("REJECTED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue(reason);
+
+    SpreadsheetApp.flush();
     
     // --- [TAMBAHAN BARU: HAPUS CACHE NOTIFIKASI] ---
     // Ini kuncinya: Hapus cache agar badge di dashboard langsung update/hilang
@@ -10409,32 +10413,30 @@ function _cascadeChangeNomorUjian(ss, oldId, newId) {
 
 /**
  * [FUNGSI BARU] Cek Jumlah Notifikasi (Hemat Kuota)
- * Hanya membaca Spreadsheet jika cache kadaluarsa (setiap 60 detik).
+ * Hanya membaca Spreadsheet jika cache kadaluarsa.
  */
 function getPendingNotificationCount(token) {
   try {
     // 1. Validasi sesi (mengambil ID DB Sekolah)
     const { app2DbId, sekolahID } = validateAdminSession(token);
 
-    // 2. Cek Cache Script (Memori Sementara Google)
+    // 2. Cek Cache Script
     const cache = CacheService.getScriptCache();
     const cacheKey = "NOTIF_COUNT_" + sekolahID;
     const cachedCount = cache.get(cacheKey);
 
-    // JIKA ADA DI CACHE: Kembalikan langsung (Sangat Cepat & 0 Kuota Read)
+    // JIKA ADA DI CACHE: Kembalikan langsung
     if (cachedCount != null) {
       return { status: "sukses", count: parseInt(cachedCount, 10) };
     }
 
-    // JIKA TIDAK ADA DI CACHE: Baru buka Spreadsheet (Operasi Berat)
+    // JIKA TIDAK ADA DI CACHE: Buka Spreadsheet
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
     const statusSheet = ss_app2.getSheetByName('db_status_kirim');
     
     let count = 0;
     if (statusSheet && statusSheet.getLastRow() > 1) {
-      // Ambil kolom G (Status Approval, index 6)
       const data = statusSheet.getRange(2, 7, statusSheet.getLastRow() - 1, 1).getValues();
-      // Hitung yang "PENDING"
       for (let i = 0; i < data.length; i++) {
         if (data[i][0] === 'PENDING') {
           count++;
@@ -10442,13 +10444,15 @@ function getPendingNotificationCount(token) {
       }
     }
 
-    // Simpan hasil ke cache selama 60 detik
-    cache.put(cacheKey, String(count), 60);
+    // [PERBAIKAN PENTING]
+    // Ubah durasi cache dari 60 detik menjadi 5 detik.
+    // Ini memaksa server mengecek data asli DB lebih sering,
+    // sehingga perubahan status Approved/Rejected segera terdeteksi.
+    cache.put(cacheKey, String(count), 5); 
 
     return { status: "sukses", count: count };
 
   } catch (e) {
-    // Silent error (jangan ganggu UI jika gagal)
     return { status: "silent_error", count: 0 };
   }
 }
