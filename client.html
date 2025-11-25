@@ -688,16 +688,6 @@
     hideMessage('kelola-nilai-guru-message');
     // --- AKHIR TAMBAHAN ---
 
-    // --- [MODIFIKASI: LOGIKA NOTIFIKASI REALTIME] ---
-    if (idHalaman === 'halaman-utama') {
-        // Jika masuk ke Dashboard -> Mulai Polling
-        startAdminNotificationPolling();
-    } else {
-        // Jika pindah ke halaman lain -> Matikan Polling (Hemat memori)
-        stopAdminNotificationPolling();
-    }
-    // --- [AKHIR MODIFIKASI] ---
-
     const targetElement = document.getElementById(idHalaman);
     if (targetElement) {
         if (authSubPages.includes(idHalaman)) {
@@ -3234,10 +3224,15 @@
         document.getElementById('btn-kembali-ke-superadmin').style.display = 'inline-flex';
       }
 
-      // --- TAMBAHKAN 2 BARIS INI ---
+      // --- TAMBAHAN 2 BARIS INI ---
       globalDonasiStatus = response.donasiStatus || "NONE";
       updatePremiumFeatures(globalDonasiStatus);
       // --- AKHIR TAMBAHAN ---
+
+      // --- [MODIFIKASI: TAMBAHAN UNTUK POLLING] ---
+      // Mulai polling saat Admin berhasil login/reload
+      startSmartGlobalPolling();
+      // --- [AKHIR MODIFIKASI] ---
 
       if (lastPageId && lastPageId !== 'halaman-superadmin' && lastPageId !== 'halaman-login' && lastPageId !== 'halaman-login-guru') {
         bukaHalamanTersimpan(lastPageId);
@@ -13882,10 +13877,13 @@
       tutupAlasanTolakModal();
       showToast(response.message, 'sukses');
       
-      // --- [TAMBAHAN BARU] ---
-      // Update badge segera
-      fetchNotificationCount(true); 
-      // -----------------------
+      // --- [MODIFIKASI: TAMBAHKAN DELAY] ---
+      // Beri jeda 1.5 detik agar status "REJECTED" tersimpan sempurna
+      setTimeout(function() {
+         console.log("Memicu polling ulang setelah delay...");
+         startSmartGlobalPolling(); 
+      }, 1500);
+      // --------------------
       
       bukaHalamanKelolaNilaiGuru(); 
     } else {
@@ -13908,11 +13906,14 @@
       globalNilaiGridCacheUM = null;
       globalNilaiGridCachePraktek = null;
 
-      // --- [TAMBAHAN BARU] ---
-      // Segera update badge notifikasi di background!
-      // Saat user kembali ke dashboard, angkanya sudah 0.
-      fetchNotificationCount(true); 
-      // -----------------------
+      // --- [MODIFIKASI: TAMBAHKAN DELAY] ---
+      // Beri jeda 1.5 detik agar Google Sheet selesai menyimpan data "APPROVED"
+      // sebelum kita menghitung ulang jumlah pending.
+      setTimeout(function() {
+         console.log("Memicu polling ulang setelah delay...");
+         startSmartGlobalPolling(); 
+      }, 1500);
+      // --------------------
 
       bukaHalamanKelolaNilaiGuru(); 
     } else {
@@ -14642,109 +14643,120 @@
     }
   }
 
-  // --- [LOGIKA NOTIFIKASI REALTIME: SMART POLLING] ---
+  // --- [LOGIKA NOTIFIKASI REALTIME: SMART POLLING V3] ---
 
-  let smartPollingInterval = null;
-  let smartPollingStopTimeout = null;
-  let lastBadgeCount = -1;
+  let globalPollingInterval = null;
+  let globalPollingStopTimeout = null;
+  let lastKnownBadgeCount = -1;
+  
+  const POLLING_FREQ_MS = 5000;     // Cek setiap 5 detik
+  const POLLING_TIMEOUT_MS = 60000; // Berhenti setelah 60 detik (jika tidak ada aktivitas/perubahan)
 
-  // 1. Fungsi Memulai Polling (Saat masuk dashboard)
-  function startAdminNotificationPolling() {
-    if (typeof currentUserRole !== 'undefined' && currentUserRole === 'admin') {
-        console.log("Smart Polling: START (30 detik)...");
-        
-        // Reset timer jika ada
-        stopAdminNotificationPolling();
+  /**
+   * Fungsi Utama: Memulai atau Mereset Polling.
+   * Dipanggil saat: Login, Ada Aksi Admin (Setujui/Tolak), atau Terdeteksi Perubahan Data.
+   */
+  function startSmartGlobalPolling() {
+    // Hanya jalankan untuk Admin
+    if (typeof currentUserRole === 'undefined' || currentUserRole !== 'admin') return;
 
-        // Panggil langsung sekali
-        fetchNotificationCount(true); // true = Paksa update UI
+    console.log("Smart Polling: AKTIF (Timer 60 detik di-reset)...");
 
-        // Jalankan Interval 5 Detik
-        smartPollingInterval = setInterval(() => {
-          // Cek apakah tab aktif dan dashboard terlihat
-          if (!document.hidden && document.getElementById('halaman-utama').style.display !== 'none') {
-            fetchNotificationCount(false); // false = Cek rutin
-          }
-        }, 5000); 
+    // 1. Reset Timer Kematian (Stop Timeout)
+    // Jika timer stop sudah jalan, matikan dulu, lalu buat baru (perpanjang nyawa polling).
+    if (globalPollingStopTimeout) {
+      clearTimeout(globalPollingStopTimeout);
+    }
 
-        // Set Timeout Kematian (30 Detik)
-        resetPollingTimeout();
+    // Set timer mati otomatis setelah 60 detik
+    globalPollingStopTimeout = setTimeout(() => {
+      console.log("Smart Polling: Waktu habis (60s). Polling berhenti.");
+      stopGlobalPolling();
+    }, POLLING_TIMEOUT_MS);
+
+    // 2. Jalankan Interval Polling (jika belum jalan)
+    if (!globalPollingInterval) {
+      // Panggil segera untuk update instan
+      fetchNotificationCount(); 
+      
+      // Set interval rutin
+      globalPollingInterval = setInterval(() => {
+        // Tetap jalan di latar belakang (hapus cek document.hidden jika ingin super agresif)
+        // Tapi best practice: cek jika tab aktif atau biarkan browser throttle background tab
+        fetchNotificationCount();
+      }, POLLING_FREQ_MS);
     }
   }
 
-  // 2. Fungsi Reset Timeout (Perpanjang Waktu)
-  function resetPollingTimeout() {
-    if (smartPollingStopTimeout) clearTimeout(smartPollingStopTimeout);
-
-    smartPollingStopTimeout = setTimeout(() => {
-      console.log("Smart Polling: Waktu habis (30s). Berhenti.");
-      stopAdminNotificationPolling();
-    }, 30000);
-  }
-
-  // 3. Fungsi Stop Polling
-  function stopAdminNotificationPolling() {
-    if (smartPollingInterval) {
-      clearInterval(smartPollingInterval);
-      smartPollingInterval = null;
+  // Fungsi untuk menghentikan total
+  function stopGlobalPolling() {
+    if (globalPollingInterval) {
+      clearInterval(globalPollingInterval);
+      globalPollingInterval = null;
     }
-    if (smartPollingStopTimeout) {
-      clearTimeout(smartPollingStopTimeout);
-      smartPollingStopTimeout = null;
+    if (globalPollingStopTimeout) {
+      clearTimeout(globalPollingStopTimeout);
+      globalPollingStopTimeout = null;
     }
   }
 
-  // 4. Fungsi Fetch Data
-  // forceUpdate: Jika true, akan mengambil data meskipun dashboard tersembunyi
-  function fetchNotificationCount(forceUpdate = false) {
+  // Fungsi mengambil data dari server
+  function fetchNotificationCount() {
     const token = getToken();
     if (!token) return;
-    
-    // Jika tidak dipaksa DAN dashboard tersembunyi, jangan ambil (hemat kuota)
-    if (!forceUpdate && document.getElementById('halaman-utama').style.display === 'none') {
-        return;
-    }
 
     google.script.run
-      .withSuccessHandler(updateNotificationBadge)
+      .withSuccessHandler(updateNotificationBadgeGlobal)
       .withFailureHandler((e) => console.log("Silent poll fail:", e)) 
       .getPendingNotificationCount(token);
   }
 
-  // 5. Update UI Badge & Deteksi Perubahan
-  function updateNotificationBadge(response) {
-    if (response.status !== 'sukses') return;
-
-    const count = response.count;
-    
-    // [LOGIKA CERDAS] Jika angka berubah, perpanjang waktu polling
-    if (count !== lastBadgeCount) {
-      if (lastBadgeCount !== -1) { // Abaikan inisialisasi awal
-         console.log(`Data Berubah (${lastBadgeCount} -> ${count}). Perpanjang 30s.`);
-         resetPollingTimeout();
-      }
-      lastBadgeCount = count;
+  // Fungsi update UI dan Deteksi Perubahan Data
+  function updateNotificationBadgeGlobal(response) {
+    // Jika respon status gagal atau tidak ada count, anggap 0 (aman)
+    let currentCount = 0;
+    if (response && response.status === 'sukses') {
+        currentCount = response.count;
     }
 
-    // Update Badge di DOM
+    // --- DETEKSI PERUBAHAN DATA (TRIGGER RESET TIMER) ---
+    if (lastKnownBadgeCount !== -1 && currentCount !== lastKnownBadgeCount) {
+       console.log(`DATA BERUBAH (${lastKnownBadgeCount} -> ${currentCount}). Reset timer polling.`);
+       startSmartGlobalPolling(); 
+    }
+    
+    lastKnownBadgeCount = currentCount;
+
+    // --- UPDATE UI (BADGE) ---
     const btn = document.getElementById('btn-buka-kelola-nilai-guru');
-    if (!btn) return;
+    if (!btn) return; 
+    
     const card = btn.closest('.dashboard-card');
     if (!card) return;
 
+    // Cari badge yang sudah ada, atau buat baru
     let badge = card.querySelector('.notification-badge');
     
-    if (count > 0) {
+    if (currentCount > 0) {
+      // JIKA ADA PENDING -> TAMPILKAN
       if (!badge) {
         badge = document.createElement('span');
         badge.className = 'notification-badge';
         card.appendChild(badge);
       }
-      badge.innerText = count > 99 ? '99+' : count;
-      badge.style.display = 'flex';
+      badge.innerText = currentCount > 99 ? '99+' : currentCount;
+      badge.style.display = 'flex'; // Pastikan terlihat
+      
+      // Efek border merah pada kartu
       card.style.borderColor = 'var(--danger-color)';
+      
     } else {
-      if (badge) badge.style.display = 'none';
+      // JIKA 0 -> SEMBUNYIKAN/HAPUS
+      if (badge) {
+          badge.style.display = 'none';
+          badge.remove(); // Hapus elemen dari DOM agar bersih
+      }
+      // Reset border kartu
       card.style.borderColor = ''; 
     }
   }
