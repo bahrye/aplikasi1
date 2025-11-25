@@ -7399,13 +7399,24 @@
         .getNilaiIjazahData(getToken());
   }
 
-  // Salin dan GANTI fungsi onNilaiIjazahLoaded() Anda
+  // Salin dan GANTI fungsi onNilaiIjazahLoaded() Anda dengan yang ini
   function onNilaiIjazahLoaded(response, isRecalculating = false) { 
       
       setLoading(false); 
+
+      // [MODIFIKASI] Cek status tombol Hitung Ulang
+      const btnRecalc = document.getElementById('btn-recalculate-ijazah');
       
-      if (isRecalculating && response.status === 'sukses') {
+      // Jika ini adalah hasil dari proses hitung ulang (isRecalculating = true),
+      // maka kita matikan loading pada tombol Hitung Ulang SEKARANG.
+      if (isRecalculating && btnRecalc) {
+          resetButtonLoading(btnRecalc);
           setTimeout(() => {
+            showToast("Nilai berhasil dihitung ulang dan data telah diperbarui.", 'sukses');
+          }, 550); 
+      } else if (isRecalculating && response.status === 'sukses') {
+          // Fallback jika tombol tidak ditemukan tapi status recalculating true
+           setTimeout(() => {
             showToast("Nilai berhasil dihitung ulang dan data telah diperbarui.", 'sukses');
           }, 550); 
       }
@@ -7418,7 +7429,7 @@
       const exportControlsIjazah = document.getElementById('export-controls-ijazah');
 
       const infoUpdateEl = document.getElementById('ijazah-info-update');
-      infoUpdateEl.style.display = 'none';
+      if (infoUpdateEl) infoUpdateEl.style.display = 'none';
 
       if (response.status !== 'sukses') {
         document.getElementById('ijazah-ujian-table-container').innerHTML = `<p class="message error" style="display:block;">Gagal memuat data: ${response.message}</p>`;
@@ -7453,13 +7464,15 @@
         btnToggleUjian.style.display = 'inline-flex';
         btnToggleUjian.innerText = 'Lihat Nilai Asli';
         btnToggleUjian.classList.remove('toggled');
-        document.querySelector('#tab-ujian-content .table-content-header').innerText = 'Nilai Ujian (Setelah Diberi Bobot)';
+        const headerUjian = document.querySelector('#tab-ujian-content .table-content-header');
+        if(headerUjian) headerUjian.innerText = 'Nilai Ujian (Setelah Diberi Bobot)';
       }
       if (btnToggleRapor) {
         btnToggleRapor.style.display = 'inline-flex';
         btnToggleRapor.innerText = 'Lihat Nilai Asli';
         btnToggleRapor.classList.remove('toggled');
-        document.querySelector('#tab-rapor-content .table-content-header').innerText = 'Nilai Rapor (Setelah Diberi Bobot)';
+        const headerRapor = document.querySelector('#tab-rapor-content .table-content-header');
+        if(headerRapor) headerRapor.innerText = 'Nilai Rapor (Setelah Diberi Bobot)';
       }
 
       const bobotUjian = response.data.bobotUjianPct || 0;
@@ -7490,14 +7503,24 @@
       renderNilaiIjazahTabel('rapor');
       renderNilaiIjazahTabel('ijazah');
       
-      // Aktifkan kembali tombol SETELAH semua tabel selesai dirender
-      setIjazahExportButtonsDisabled(false);
-      
       if (exportControlsUjian) exportControlsUjian.style.display = 'flex';
       if (exportControlsRapor) exportControlsRapor.style.display = 'flex';
       if (exportControlsIjazah) exportControlsIjazah.style.display = 'flex';
       
       activateIjazahTab('ujian');
+
+      // --- [PERBAIKAN UTAMA] ---
+      // Hanya aktifkan tombol Export jika tombol Hitung Ulang TIDAK sedang loading.
+      // Jika tombol Hitung Ulang masih loading (misal karena request paralel),
+      // maka kita biarkan export disabled.
+      const isRecalcStillRunning = btnRecalc && btnRecalc.classList.contains('loading');
+
+      if (isRecalcStillRunning) {
+         setIjazahExportButtonsDisabled(true);
+      } else {
+         setIjazahExportButtonsDisabled(false);
+      }
+      // --- [AKHIR PERBAIKAN] ---
   }
 
   function populateNilaiIjazahFilter(siswaList) {
@@ -8079,31 +8102,30 @@
       }, 50); 
   }
 
-  // Salin dan GANTI fungsi onRekalkulasiIjazahSukses() Anda
+  // Salin dan GANTI fungsi onRekalkulasiIjazahSukses() Anda dengan yang ini
   function onRekalkulasiIjazahSukses(response) {
+      // [MODIFIKASI] Jangan reset tombol di sini jika sukses. 
+      // Biarkan tetap loading sampai onNilaiIjazahLoaded selesai merender tabel.
       const btn = document.getElementById('btn-recalculate-ijazah');
-      resetButtonLoading(btn); // Kembalikan tombol hitung ulang
 
       if (response.status === 'sukses') {
         setIjazahDirty(response.isDirty); 
         
-        // Panggil bukaHalamanNilaiIjazah.
-        // Fungsi ini sudah kita atur untuk MENJAGA tombol ekspor
-        // tetap nonaktif sampai onNilaiIjazahLoaded selesai.
+        // Panggil load data. Tombol export tetap nonaktif karena btn masih loading.
         bukaHalamanNilaiIjazah(true); 
 
       } else {
-        // Kalkulasi di server GAGAL (tapi koneksi tidak putus)
+        // Jika GAGAL, baru kita reset tombol di sini
+        resetButtonLoading(btn); 
+
         setLoading(false); 
         if (response.isDirty) {
           setIjazahDirty(response.isDirty); 
         }
         showToast('Gagal menghitung: ' + response.message, 'gagal');
         
-        // --- PERUBAHAN DI SINI ---
         // Aktifkan kembali tombol ekspor karena proses gagal dan halaman tidak di-reload
         setIjazahExportButtonsDisabled(false);
-        // --- AKHIR PERUBAHAN ---
       }
   }
 
