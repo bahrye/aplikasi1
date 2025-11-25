@@ -8958,6 +8958,11 @@ function approveTeacherScore(token, submissionKey) {
     
     CacheService.getScriptCache().put('IJAZAH_IS_DIRTY_' + sekolahID, 'true');
 
+    // --- [TAMBAHAN BARU: HAPUS CACHE NOTIFIKASI] ---
+    // Agar badge di dashboard langsung update (hilang) saat kembali
+    CacheService.getScriptCache().remove("NOTIF_COUNT_" + sekolahID);
+    // -----------------------------------------------
+
     kirimNotifikasiKeGuru(email_guru, nama_mapel_app2, "APPROVED", "", namaSekolah);
 
     return { status: "sukses", message: `Berhasil disetujui. ${copyCount} nilai siswa berhasil disalin.` };
@@ -8975,16 +8980,18 @@ function rejectTeacherScore(token, submissionKey, reason) {
   lock.waitLock(15000); 
   
   try {
-    const { app2DbId, sessionData } = validateAdminSession(token);
-    const namaSekolah = sessionData.namaSekolah; // Ambil nama sekolah
+    // [MODIFIKASI] Tambahkan sekolahID dalam destructuring
+    const { app2DbId, sessionData, sekolahID } = validateAdminSession(token);
+    
+    const namaSekolah = sessionData.namaSekolah; 
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
 
     const statusSheetApp2 = ss_app2.getSheetByName('db_status_kirim');
     const statusDataApp2 = statusSheetApp2.getDataRange().getValues();
     
     let statusRowIndex = -1;
-    let email_guru = "";       // [BARU] Variabel untuk email
-    let nama_mapel_app2 = "";  // [BARU] Variabel untuk mapel
+    let email_guru = "";       
+    let nama_mapel_app2 = "";  
 
     for (let i = 1; i < statusDataApp2.length; i++) {
       if (statusDataApp2[i][0] === submissionKey) {
@@ -8992,8 +8999,8 @@ function rejectTeacherScore(token, submissionKey, reason) {
           throw new Error("Status nilai ini bukan 'PENDING'. Mungkin sudah diproses.");
         }
         statusRowIndex = i + 1;
-        email_guru = statusDataApp2[i][2];       // [BARU] Ambil email dari kolom C
-        nama_mapel_app2 = statusDataApp2[i][3];  // [BARU] Ambil mapel dari kolom D
+        email_guru = statusDataApp2[i][2];       
+        nama_mapel_app2 = statusDataApp2[i][3];  
         break;
       }
     }
@@ -9009,9 +9016,13 @@ function rejectTeacherScore(token, submissionKey, reason) {
     statusSheetApp2.getRange(statusRowIndex, 7).setValue("REJECTED");
     statusSheetApp2.getRange(statusRowIndex, 8).setValue(reason);
     
-    // --- [BARU] Kirim Email Notifikasi ---
+    // --- [TAMBAHAN BARU: HAPUS CACHE NOTIFIKASI] ---
+    // Ini kuncinya: Hapus cache agar badge di dashboard langsung update/hilang
+    CacheService.getScriptCache().remove("NOTIF_COUNT_" + sekolahID);
+    // -----------------------------------------------
+
+    // Kirim Email Notifikasi
     kirimNotifikasiKeGuru(email_guru, nama_mapel_app2, "REJECTED", reason, namaSekolah);
-    // --- [AKHIR BARU] ---
 
     return { status: "sukses", message: "Nilai berhasil ditolak dan notifikasi email dikirim ke guru." };
 
