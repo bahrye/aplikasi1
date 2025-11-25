@@ -6051,6 +6051,30 @@ function prosesImportExcelGuru(token, fileData) {
       emailDiDatabase.add(String(dataGuru[i][0]).trim().toLowerCase());
     }
 
+    // --- PERSIAPAN DATA REFERENSI UNTUK VALIDASI ---
+    // 1. Ambil Daftar Mapel Valid (Server-Side)
+    const sheetMapel = getMapelSheet(ss);
+    const dataMapel = sheetMapel.getDataRange().getValues();
+    dataMapel.shift(); // Hapus header
+    
+    // Map: KODE MAPEL (UPPER) -> KODE MAPEL ASLI
+    const validMapelMap = new Map();
+    dataMapel.forEach(row => {
+      if (row[0]) validMapelMap.set(String(row[0]).toUpperCase().trim(), String(row[0]).trim());
+    });
+
+    // 2. Ambil Daftar Kelas Valid (Server-Side)
+    const sheetKelas = getKelasSheet(ss);
+    const dataKelas = sheetKelas.getDataRange().getValues();
+    dataKelas.shift(); // Hapus header
+    
+    // Map: NAMA KELAS (UPPER) -> NAMA KELAS ASLI
+    const validKelasMap = new Map();
+    dataKelas.forEach(row => {
+      if (row[0]) validKelasMap.set(String(row[0]).toUpperCase().trim(), String(row[0]).trim());
+    });
+    // ---------------------------------------------------------
+
     // --- Proses File Excel ---
     const { base64, mimeType, fileName } = fileData;
     const decodedData = Utilities.base64Decode(base64.split(',')[1]);
@@ -6062,7 +6086,9 @@ function prosesImportExcelGuru(token, fileData) {
     tempConvertedSheetId = convertedFile.id;
     
     const tempSheet = SpreadsheetApp.openById(tempConvertedSheetId);
-    let dataSheet = tempSheet.getSheetByName('Template Guru') || tempSheet.getSheets()[0];
+    let dataSheet = tempSheet.getSheetByName('Template Guru');
+    if (!dataSheet) dataSheet = tempSheet.getSheets()[0];
+    
     const excelData = dataSheet.getDataRange().getValues();
     
     if (excelData.length <= 1) throw new Error("File Excel kosong.");
@@ -6077,10 +6103,9 @@ function prosesImportExcelGuru(token, fileData) {
 
     const dataToProcess = excelData.slice(startIndex);
     const gagalList = [];
+    const suksesList = []; // Array untuk menampung rincian sukses
     
     // --- LOGIKA PENGGABUNGAN DATA (AGGREGATION) ---
-    // Kita gunakan Map untuk menyimpan guru sementara dari file Excel
-    // Key: Email, Value: Object Guru lengkap dengan mapel yang digabungkan
     const guruMap = new Map();
 
     for (let i = 0; i < dataToProcess.length; i++) {
@@ -6096,13 +6121,12 @@ function prosesImportExcelGuru(token, fileData) {
       const rawMapel = (row[4] ? String(row[4]) : '').trim();
       const rawKelas = (row[5] ? String(row[5]) : '').trim();
 
-      // Validasi Dasar
+      // 1. Validasi Dasar
       if (!nama || !email || !password) {
         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Nama, Email, atau Password kosong." });
         continue;
       }
       
-      // Cek apakah email sudah ada di DATABASE (bukan di file)
       if (emailDiDatabase.has(email)) {
         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Email sudah terdaftar di sistem." });
         continue;
@@ -6113,39 +6137,81 @@ function prosesImportExcelGuru(token, fileData) {
          continue;
       }
 
-      // Parse Mapel dan Kelas baris ini
-      let mapels = [];
-      if (rawMapel) {
-         mapels = rawMapel.split(',').map(m => m.trim().toUpperCase()).filter(m => m !== "");
-      }
+      // 2. Validasi Mapel & Kelas (STRICT)
+      const mapelParts = rawMapel ? rawMapel.split(',').map(m => m.trim()).filter(m => m) : [];
+      const kelasParts = rawKelas ? rawKelas.split(',').map(k => k.trim()).filter(k => k) : [];
       
-      let classes = ["*"];
-      if (rawKelas && rawKelas !== "" && !rawKelas.includes("*")) {
-          classes = rawKelas.split(',').map(k => k.trim()).filter(k => k !== "");
+      const invalidMapels = [];
+      const validMapels = [];
+      const invalidClasses = [];
+      const validClasses = [];
+
+      // Cek Mapel
+      mapelParts.forEach(m => {
+          const upperM = m.toUpperCase();
+          if (validMapelMap.has(upperM)) {
+              validMapels.push(validMapelMap.get(upperM));
+          } else {
+              invalidMapels.push(m);
+          }
+      });
+
+      // Cek Kelas
+      if (kelasParts.length === 0) {
+           // Jika kosong, anggap salah (harus diisi user, atau * untuk semua)
+           invalidClasses.push("(Kosong)");
+      } else {
+           kelasParts.forEach(k => {
+              if (k === "*") {
+                  validClasses.push("*");
+              } else {
+                  const upperK = k.toUpperCase();
+                  if (validKelasMap.has(upperK)) {
+                      validClasses.push(validKelasMap.get(upperK));
+                  } else {
+                      invalidClasses.push(k);
+                  }
+              }
+           });
       }
 
-      // --- INTI LOGIKA: GABUNGKAN DATA ---
+      // --- KEPUTUSAN: TOLAK JIKA ADA YANG SALAH ---
+      if (invalidMapels.length > 0) {
+          gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: `Kode Mapel tidak ditemukan: ${invalidMapels.join(', ')}` });
+          continue; // Lewati baris ini
+      }
+
+      if (invalidClasses.length > 0) {
+          gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: `Nama Kelas tidak valid: ${invalidClasses.join(', ')}` });
+          continue; // Lewati baris ini
+      }
+
+      // --- JIKA LOLOS SEMUA VALIDASI ---
+      
+      // Simpan ke daftar sukses untuk laporan
+      suksesList.push({
+          baris: barisKe,
+          nama: nama,
+          email: email,
+          mapel: validMapels.join(', '),
+          kelas: validClasses.join(', ')
+      });
+
+      // Proses Logic Penggabungan (Sama seperti sebelumnya, tapi datanya sudah pasti bersih)
       if (guruMap.has(email)) {
-         // Guru sudah ada di baris sebelumnya dalam file ini -> GABUNGKAN MAPEL/KELAS
          const existingGuru = guruMap.get(email);
-         
-         // Loop setiap mapel di baris ini
-         mapels.forEach(mCode => {
+         validMapels.forEach(mCode => {
              if (existingGuru.mapelKelasData[mCode]) {
-                 // Jika mapel sudah ada, gabungkan kelasnya (hindari duplikat)
-                 const mergedClasses = [...new Set([...existingGuru.mapelKelasData[mCode], ...classes])];
+                 const mergedClasses = [...new Set([...existingGuru.mapelKelasData[mCode], ...validClasses])];
                  existingGuru.mapelKelasData[mCode] = mergedClasses;
              } else {
-                 // Jika mapel belum ada, tambahkan
-                 existingGuru.mapelKelasData[mCode] = classes;
+                 existingGuru.mapelKelasData[mCode] = validClasses;
              }
          });
-         
       } else {
-         // Guru baru (pertama kali ditemukan di file ini) -> BUAT OBJEK BARU
          const mapelKelasData = {};
-         mapels.forEach(mCode => {
-             mapelKelasData[mCode] = classes;
+         validMapels.forEach(mCode => {
+             mapelKelasData[mCode] = validClasses;
          });
          
          guruMap.set(email, {
@@ -6157,7 +6223,7 @@ function prosesImportExcelGuru(token, fileData) {
          });
       }
     }
-    // --- AKHIR LOOP AGGREGATION ---
+    // --- AKHIR LOOP ---
 
     // Konversi Map ke Array untuk disimpan
     const rowsToAppend = [];
@@ -6169,10 +6235,8 @@ function prosesImportExcelGuru(token, fileData) {
         const newHash = hashPassword(guruData.password, newSalt);
         const formattedNip = (guruData.nip !== "") ? "'" + guruData.nip : "";
 
-        // Array untuk Sheet Lokal
         rowsToAppend.push([email, guruData.nama, formattedNip, newHash, newSalt, mapelKelasJSON]);
         
-        // Array untuk Sync App 2
         gurusToSync.push({
             email: email,
             password: guruData.password,
@@ -6213,9 +6277,10 @@ function prosesImportExcelGuru(token, fileData) {
     return {
       status: "sukses",
       totalDiProses: dataToProcess.length,
-      berhasilDiUpload: rowsToAppend.length, // Hitung guru unik
+      berhasilDiUpload: rowsToAppend.length, // Hitung guru unik yang terbuat
       gagalDiUpload: gagalList.length,
-      dataGagal: gagalList
+      dataGagal: gagalList,
+      dataSukses: suksesList // <-- KIRIM DATA SUKSES
     };
     
   } catch (e) {
