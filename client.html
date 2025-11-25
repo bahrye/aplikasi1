@@ -10213,36 +10213,55 @@
       const mode = document.getElementById('modal-guru-mode').value;
       const originalEmail = document.getElementById('modal-guru-original-email').value;
       
-      // --- [PEMULIHAN & UPDATE FITUR] ---
+      // --- [VALIDASI MAPEL & KELAS] ---
       const mapelKelasData = {};
       const rows = document.querySelectorAll('#modal-guru-mapel-kelas-list .mapel-kelas-row');
       
-      rows.forEach(row => {
+      let hasMapelError = false;
+
+      // Loop untuk validasi dan pengumpulan data
+      for (const row of rows) {
           const mapelId = row.dataset.mapelId;
           const select = row.querySelector('select.mapel-kelas-select');
           const selectedKelas = select ? select.value : "";
           
-          if (mapelId && selectedKelas) {
+          // VALIDASI: Jika kelas masih kosong (""), hentikan simpan
+          if (!selectedKelas) {
+              resetButtonLoading(document.getElementById('btn-simpan-guru'));
+              showMessage('modal-guru-error', `Harap pilih kelas untuk mapel <strong>${mapelId}</strong>.`, true);
+              
+              // Beri efek visual error
+              select.classList.add('input-error');
+              
+              // Scroll dan Fokus ke elemen yang salah
+              select.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              select.focus();
+              
+              hasMapelError = true;
+              return; // Hentikan proses simpan
+          }
+
+          // Jika lolos validasi, masukkan ke data
+          if (mapelId) {
               if (!mapelKelasData[mapelId]) {
                   mapelKelasData[mapelId] = [];
               }
               
-              // --- [LOGIKA BARU UNTUK SEMUA KELAS] ---
+              // Logika array kelas
               if (selectedKelas === "*") {
-                  // Jika pilih "Semua Kelas", paksa array jadi ["*"] dan abaikan pilihan lain untuk mapel ini
                   mapelKelasData[mapelId] = ["*"];
               } else {
-                  // Jika bukan "*", masukkan ke array jika belum ada "Semua Kelas" di dalamnya
                   if (!mapelKelasData[mapelId].includes("*")) {
                       if (!mapelKelasData[mapelId].includes(selectedKelas)) {
                           mapelKelasData[mapelId].push(selectedKelas);
                       }
                   }
               }
-              // --- [AKHIR LOGIKA BARU] ---
           }
-      });
-      // --- [AKHIR PEMULIHAN] ---
+      }
+
+      if (hasMapelError) return; 
+      // --- [AKHIR VALIDASI MAPEL] ---
 
       if (!nama || !email) {
           resetButtonLoading(document.getElementById('btn-simpan-guru'));
@@ -10287,10 +10306,9 @@
                       if (indexToUpdate > -1) {
                         globalGuruList[indexToUpdate] = newData;
                       } else {
-                         // Fallback update cache
-                         const indexToUpdateByName = globalGuruList.findIndex(g => g.nama === newData.nama);
-                         if(indexToUpdateByName > -1) globalGuruList[indexToUpdateByName] = newData;
-                         else globalGuruList.push(newData); 
+                        const indexToUpdateByName = globalGuruList.findIndex(g => g.nama === newData.nama);
+                        if(indexToUpdateByName > -1) globalGuruList[indexToUpdateByName] = newData;
+                        else globalGuruList.push(newData); 
                       }
                     }
                   } else {
@@ -10373,47 +10391,66 @@
   }
 
   function updateMapelSuggestions() {
-    // --- PERBAIKAN: Tentukan UI mana yang aktif ---
-    const modal = document.getElementById('guru-modal');
-    if (!modal) return;
-    const isSingleClassMode = (modal.dataset.isSingleClassMode === 'true');
+      const modal = document.getElementById('guru-modal');
+      if (!modal) return;
+      const isSingleClassMode = (modal.dataset.isSingleClassMode === 'true');
 
-    const container = document.getElementById(isSingleClassMode ? 'modal-guru-mapel-suggestions' : 'modal-guru-mapel-kelas-suggestions');
-    const searchInput = document.getElementById(isSingleClassMode ? 'modal-guru-mapel-search' : 'modal-guru-mapel-kelas-search');
-    // --- AKHIR PERBAIKAN ---
+      const container = document.getElementById(isSingleClassMode ? 'modal-guru-mapel-suggestions' : 'modal-guru-mapel-kelas-suggestions');
+      const searchInput = document.getElementById(isSingleClassMode ? 'modal-guru-mapel-search' : 'modal-guru-mapel-kelas-search');
 
-    const searchTerm = searchInput.value.toLowerCase();
+      const searchTerm = searchInput.value.toLowerCase();
 
-    if (searchTerm.length === 0) {
-      container.innerHTML = '';
-      container.style.display = 'none';
-      return;
-    }
+      if (searchTerm.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+      }
 
-    // --- PERBAIKAN: Baca dari UI yang benar ---
-    const selectedIds = isSingleClassMode ? 
-                        getSelectedMapelIds() : // (Fungsi lama, baca tag)
-                        getSelectedMapelKelasIds(); // (Fungsi baru, baca list row)
-    // --- AKHIR PERBAIKAN ---
+      const filteredMapel = globalMapelList.filter(mapel => {
+          // 1. Cek kecocokan nama/kode
+          const isMatch = mapel.id.toLowerCase().includes(searchTerm) || mapel.nama.toLowerCase().includes(searchTerm);
+          if (!isMatch) return false;
 
-    const filteredMapel = globalMapelList.filter(mapel => {
-      return !selectedIds.has(mapel.id) && 
-            (mapel.id.toLowerCase().includes(searchTerm) || 
-              mapel.nama.toLowerCase().includes(searchTerm));
-    });
+          if (isSingleClassMode) {
+              const selectedIds = getSelectedMapelIds();
+              return !selectedIds.has(mapel.id);
+          }
 
-    if (filteredMapel.length === 0) {
-      container.innerHTML = '<div class="mapel-suggestion-item" style="color: var(--text-light); cursor: default;">Mapel tidak ditemukan atau sudah ditambah.</div>';
-    } else {
-      container.innerHTML = filteredMapel.slice(0, 10).map(mapel => {
-        return `
-          <div class="mapel-suggestion-item" data-id="${mapel.id}" data-nama="${mapel.nama}">
-            <strong>${mapel.id}</strong> - ${mapel.nama}
-          </div>
-        `;
-      }).join('');
-    }
-    container.style.display = 'block';
+          // 3. LOGIKA BARU: Cek ketersediaan kelas
+          
+          // Ambil semua kelas yang sudah dipilih untuk mapel INI
+          const usedClassesForThisMapel = new Set();
+          document.querySelectorAll(`#modal-guru-mapel-kelas-list .mapel-kelas-row[data-mapel-id="${mapel.id}"]`).forEach(row => {
+              const select = row.querySelector('.mapel-kelas-select');
+              if (select && select.value) {
+                  usedClassesForThisMapel.add(select.value);
+              }
+          });
+
+          // [ATURAN 1] Jika "Semua Kelas" (*) sudah dipilih, sembunyikan mapel ini
+          if (usedClassesForThisMapel.has("*")) return false;
+
+          // [ATURAN 2] Jika jumlah kelas yang dipilih >= total kelas tersedia, sembunyikan
+          const totalAvailableClasses = globalKelasListCache.length;
+          if (usedClassesForThisMapel.size >= totalAvailableClasses && totalAvailableClasses > 0) {
+              return false;
+          }
+
+          return true;
+      });
+
+      if (filteredMapel.length === 0) {
+        container.innerHTML = '<div class="mapel-suggestion-item" style="color: var(--text-light); cursor: default;">Mapel tidak ditemukan atau kelas sudah penuh.</div>';
+      } else {
+        container.innerHTML = filteredMapel.slice(0, 10).map(mapel => {
+          return `
+            <div class="mapel-suggestion-item" data-id="${mapel.id}" data-nama="${mapel.nama}">
+              <strong>${mapel.id}</strong> - ${mapel.nama}
+            </div>
+          `;
+        }).join('');
+      }
+      container.style.display = 'block';
   }
 
   /**
@@ -10427,81 +10464,155 @@
     return ids;
   }
 
-  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "*") { // [MODIFIKASI] Default ubah ke "*"
-    const container = document.getElementById('modal-guru-mapel-kelas-list');
-    
-    // Buat opsi <select>
-    let classOptions = '<option value="">-- Pilih Kelas --</option>';
-    
-    // Tambahkan Opsi "Semua Kelas"
-    // Jika selectedKelas adalah "*", maka opsi ini akan otomatis terpilih
-    const isAllSelected = (selectedKelas === "*");
-    classOptions += `<option value="*" ${isAllSelected ? 'selected' : ''} style="font-weight:bold; color:var(--primary-color);">-- Semua Kelas --</option>`;
-    
-    if (globalKelasListCache.length > 0) {
-      // Urutkan kelas agar rapi
-      globalKelasListCache.sort((a, b) => compareKelas(a.nama, b.nama));
+  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "") { 
+      const container = document.getElementById('modal-guru-mapel-kelas-list');
       
-      globalKelasListCache.forEach(kelas => {
-        const isSelected = (selectedKelas === kelas.nama) ? 'selected' : '';
-        classOptions += `<option value="${kelas.nama}" ${isSelected}>${kelas.nama}</option>`;
+      const rowDiv = document.createElement('div');
+      rowDiv.className = 'mapel-kelas-row';
+      rowDiv.dataset.mapelId = mapelId; 
+
+      rowDiv.innerHTML = `
+          <span class="mapel-kelas-nama">${mapelId} - ${mapelNama}</span>
+          <div class="mapel-kelas-select-wrapper">
+              <select class="mapel-kelas-select">
+                  </select>
+          </div>
+          <button type="button" class="mapel-kelas-remove" title="Hapus Baris Ini">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+      `;
+
+      container.appendChild(rowDiv);
+
+      const select = rowDiv.querySelector('.mapel-kelas-select');
+      populateKelasDropdown(select, mapelId, selectedKelas);
+
+      // Listener Change
+      select.addEventListener('change', () => {
+          // [BARU] Hapus style error jika user sudah memilih
+          if (select.value) select.classList.remove('input-error');
+          
+          refreshAllKelasDropdownsForMapel(mapelId);
       });
-    } else {
-      classOptions += '<option value="" disabled>Data kelas kosong</option>';
-    }
 
-    const rowHtml = `
-      <div class="mapel-kelas-row" data-mapel-id="${mapelId}">
-        <span class="mapel-kelas-nama">${mapelId} - ${mapelNama}</span>
-        <div class="mapel-kelas-select-wrapper">
-            <select class="mapel-kelas-select">
-                ${classOptions}
-            </select>
-        </div>
-        <button type="button" class="mapel-kelas-remove" data-id="${mapelId}" title="Hapus Baris Ini">
-          <i class="fas fa-trash-alt"></i>
-        </button>
-      </div>
-    `;
-    
-    container.innerHTML += rowHtml;
+      rowDiv.querySelector('.mapel-kelas-remove').addEventListener('click', () => {
+          rowDiv.remove();
+          refreshAllKelasDropdownsForMapel(mapelId); 
+          updateMapelSuggestions();
+      });
 
-    // Reset input pencarian
-    const searchInput = document.getElementById('modal-guru-mapel-kelas-search');
-    const suggestionsContainer = document.getElementById('modal-guru-mapel-kelas-suggestions');
-    searchInput.value = "";
-    suggestionsContainer.innerHTML = "";
-    suggestionsContainer.style.display = "none";
-    searchInput.focus();
+      const searchInput = document.getElementById('modal-guru-mapel-kelas-search');
+      const suggestionsContainer = document.getElementById('modal-guru-mapel-kelas-suggestions');
+      searchInput.value = "";
+      suggestionsContainer.innerHTML = "";
+      suggestionsContainer.style.display = "none";
+      searchInput.focus();
   }
 
-  function renderMapelKelasList(mapelKelasData) {
-    const container = document.getElementById('modal-guru-mapel-kelas-list');
-    container.innerHTML = ''; // Kosongkan dulu
-    
-    if (!globalMapelList || globalMapelList.length === 0) {
-      setTimeout(() => renderMapelKelasList(mapelKelasData), 100);
-      return;
-    }
+  /**
+   * [BARU] Mengisi dropdown kelas dengan mengecualikan kelas yang sudah dipilih
+   * di baris lain untuk mapel yang sama.
+   */
+  function populateKelasDropdown(selectElement, mapelId, currentSelectedValue) {
+      // 1. Kumpulkan kelas yang SUDAH dipilih di baris LAIN untuk mapel INI
+      const usedClasses = new Set();
+      const allRows = document.querySelectorAll(`#modal-guru-mapel-kelas-list .mapel-kelas-row[data-mapel-id="${mapelId}"]`);
+      
+      allRows.forEach(row => {
+          const otherSelect = row.querySelector('.mapel-kelas-select');
+          // Jangan hitung diri sendiri
+          if (otherSelect !== selectElement && otherSelect.value) {
+              usedClasses.add(otherSelect.value);
+          }
+      });
 
-    for (const mapelId in mapelKelasData) {
-      const mapel = globalMapelList.find(m => m.id === mapelId);
-      if (mapel) {
-        const selectedKelas = mapelKelasData[mapelId]; // Array, misal: ["VI A"] atau ["*"]
-        let kelasArray = Array.isArray(selectedKelas) ? selectedKelas : [];
-        
-        // --- [MODIFIKASI PENTING] ---
-        // DULU: Kita expand "*" menjadi list semua nama kelas.
-        // SEKARANG: Kita biarkan apa adanya. Jika ["*"], loop di bawah akan merender 1 baris dengan value "*"
-        
-        if (kelasArray.length > 0) {
-          kelasArray.forEach(namaKelas => {
-            addMapelKelasRow(mapel.id, mapel.nama, namaKelas);
-          });
-        }
-        // --- [AKHIR MODIFIKASI] ---
+      // 2. Simpan nilai saat ini (agar tidak hilang saat render ulang)
+      const valueToSet = currentSelectedValue || selectElement.value || "";
+
+      // 3. Bangun HTML Opsi
+      let optionsHtml = '<option value="">-- Pilih Kelas --</option>';
+
+      // Opsi "Semua Kelas" (*)
+      // Hanya boleh muncul jika BELUM ada kelas spesifik lain yang dipilih
+      if (usedClasses.size === 0) {
+          const isAllSelected = (valueToSet === "*");
+          optionsHtml += `<option value="*" ${isAllSelected ? 'selected' : ''} style="font-weight:bold; color:var(--primary-color);">-- Semua Kelas --</option>`;
       }
-    }
+
+      // Loop Daftar Kelas Global
+      if (globalKelasListCache.length > 0) {
+          // Urutkan
+          const sortedKelas = [...globalKelasListCache].sort((a, b) => compareKelas(a.nama, b.nama));
+          
+          sortedKelas.forEach(kelas => {
+              const className = kelas.nama;
+              
+              // Tampilkan opsi JIKA:
+              // a. Kelas ini adalah nilai yang sedang dipilih di elemen ini (Keep Selected)
+              // b. ATAU kelas ini BELUM dipilih di baris lain (Not Used)
+              // c. DAN belum ada yang memilih "*" di baris lain
+              
+              if (!usedClasses.has("*")) {
+                  if (className === valueToSet || !usedClasses.has(className)) {
+                      const isSelected = (className === valueToSet) ? 'selected' : '';
+                      optionsHtml += `<option value="${className}" ${isSelected}>${className}</option>`;
+                  }
+              }
+          });
+      } else {
+          optionsHtml += '<option value="" disabled>Data kelas kosong</option>';
+      }
+
+      selectElement.innerHTML = optionsHtml;
+  }
+
+  /**
+   * [BARU] Me-refresh semua dropdown untuk mapel tertentu.
+   * Dipanggil saat ada perubahan seleksi atau penghapusan baris.
+   */
+  function refreshAllKelasDropdownsForMapel(mapelId) {
+      const rows = document.querySelectorAll(`#modal-guru-mapel-kelas-list .mapel-kelas-row[data-mapel-id="${mapelId}"]`);
+      rows.forEach(row => {
+          const select = row.querySelector('.mapel-kelas-select');
+          const currentVal = select.value;
+          populateKelasDropdown(select, mapelId, currentVal);
+      });
+      
+      // Juga refresh pencarian agar status "Habis" terupdate
+      updateMapelSuggestions(); 
+  }
+
+  // Cari fungsi ini di client.html dan GANTI dengan yang baru
+  function renderMapelKelasList(mapelKelasData) {
+      const container = document.getElementById('modal-guru-mapel-kelas-list');
+      container.innerHTML = ''; // Kosongkan dulu
+      
+      if (!globalMapelList || globalMapelList.length === 0) {
+        setTimeout(() => renderMapelKelasList(mapelKelasData), 100);
+        return;
+      }
+
+      // Urutkan mapel agar rapi
+      const sortedMapelIds = Object.keys(mapelKelasData).sort();
+
+      for (const mapelId of sortedMapelIds) {
+        const mapel = globalMapelList.find(m => m.id === mapelId);
+        if (mapel) {
+          const selectedKelas = mapelKelasData[mapelId]; // Array ["VII A", "VII B"] atau ["*"]
+          let kelasArray = Array.isArray(selectedKelas) ? selectedKelas : [];
+          
+          if (kelasArray.length > 0) {
+            // Render baris satu per satu
+            kelasArray.forEach(namaKelas => {
+              addMapelKelasRow(mapel.id, mapel.nama, namaKelas);
+            });
+            
+            // Setelah semua baris untuk mapel ini ditambahkan, refresh dropdownnya
+            // agar filter "terpakai" langsung aktif
+            refreshAllKelasDropdownsForMapel(mapel.id);
+          }
+        }
+      }
   }
 
   function addSelectedMapelTag(mapelId, mapelNama) {
