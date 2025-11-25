@@ -2152,48 +2152,205 @@ function updateSiswa(token, dataSiswa) {
   }
 }
 
+/**
+ * [DIPERBARUI] Menghapus siswa dari Aplikasi 1 DAN menyinkronkan penghapusan ke Aplikasi 2.
+ * Menghapus dari: db_siswa, db_enrollment, db_nilai_*, dan db_nilai_asli_* di App 2.
+ */
 function deleteSiswa(token, siswaID) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000); // Mencegah konflik penghapusan ganda
+  
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token); // <--- Ambil spreadsheetID
+    // 1. Validasi sesi dan ambil ID DB App 2
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token); 
+    
     if (!siswaID) return { status: "gagal", message: "SiswaID kosong." };
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getSiswaSheet(ss);
     const data = sheet.getDataRange().getValues();
+    
+    let nisnToDelete = null;
+    let namaSiswa = "";
+    let rowDeleted = false;
+    
+    // 2. Cari dan Hapus di App 1 (Lokal)
     for (let i = data.length - 1; i >= 1; i--) {
       if (data[i][0] == siswaID) {
-        sheet.deleteRow(i + 1);
+        // Ambil NISN (Kolom C) untuk kunci penghapusan di App 2
+        // Bersihkan dari tanda petik atau spasi
+        nisnToDelete = String(data[i][2]).replace(/['"]/g, '').trim();
+        namaSiswa = data[i][1];
         
-        // --- PERBAIKAN DI SINI ---
-        clearSiswaCache(sessionData.sekolahID, spreadsheetID);
-        // --- AKHIR PERBAIKAN ---
-
-        return { status: "sukses" };
+        sheet.deleteRow(i + 1);
+        rowDeleted = true;
+        break;
       }
     }
-    return { status: "gagal", message: "Siswa tidak ditemukan." };
+    
+    if (!rowDeleted) {
+       return { status: "gagal", message: "Siswa tidak ditemukan." };
+    }
+    
+    // 3. [BARU] Sinkronisasi Hapus ke App 2 (Global)
+    if (app2DbId && nisnToDelete) {
+       try {
+         Logger.log(`Memulai sinkronisasi hapus siswa ${namaSiswa} (${nisnToDelete}) ke App 2...`);
+         _syncDeleteSiswaFromApp2Recursive(app2DbId, nisnToDelete);
+         Logger.log(`Sukses: Siswa dihapus dari seluruh tabel App 2.`);
+       } catch(e) {
+         // Jangan gagalkan proses utama jika sync gagal, tapi catat di log
+         Logger.log("Peringatan: Gagal sync delete ke App 2: " + e.message);
+       }
+    }
+    
+    // 4. Bersihkan Cache
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    
+    return { status: "sukses", message: `Siswa ${namaSiswa} berhasil dihapus dari semua database.` };
+    
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
+/**
+ * [BARU] Helper untuk menghapus siswa dari SEMUA tabel di Aplikasi 2.
+ * Mencari berdasarkan Nomor Ujian (NISN).
+ */
+function _syncDeleteSiswaFromApp2Recursive(app2DbId, nisn) {
+  const ss = SpreadsheetApp.openById(app2DbId);
+  const sheets = ss.getSheets();
+  
+  // A. Hapus dari Tabel Master (db_siswa & db_enrollment)
+  const masterSheets = ['db_siswa', 'db_enrollment'];
+  
+  masterSheets.forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (sheet && sheet.getLastRow() > 1) {
+      const data = sheet.getDataRange().getValues();
+      // Tentukan indeks kolom Nomor Ujian
+      // db_siswa: Kolom A (Indeks 0)
+      // db_enrollment: Kolom B (Indeks 1)
+      const colIndex = (sheetName === 'db_siswa') ? 0 : 1;
+      
+      // Loop dari bawah ke atas
+      for (let i = data.length - 1; i >= 1; i--) {
+        const rowNisn = String(data[i][colIndex]).replace(/['"]/g, '').trim();
+        if (rowNisn === nisn) {
+          sheet.deleteRow(i + 1);
+        }
+      }
+    }
+  });
+  
+  // B. Hapus dari Tabel Nilai Dinamis (db_nilai_... & db_nilai_asli_...)
+  sheets.forEach(sheet => {
+    const name = sheet.getName();
+    // Cek apakah nama sheet diawali dengan prefix nilai
+    if (name.startsWith('db_nilai_') || name.startsWith('db_nilai_asli_')) {
+       if (sheet.getLastRow() > 1) {
+         const data = sheet.getDataRange().getValues();
+         
+         // Di kedua tabel nilai, Nomor Ujian ada di Kolom B (Indeks 1)
+         // (Lihat fungsi getNilaiSheetByTahunAjaran & getNilaiAsliSheetByTahunAjaran)
+         for (let i = data.length - 1; i >= 1; i--) {
+           const rowNisn = String(data[i][1]).replace(/['"]/g, '').trim();
+           if (rowNisn === nisn) {
+              sheet.deleteRow(i + 1);
+           }
+         }
+       }
+    }
+  });
+  
+  // C. Refresh Timestamp App 2 agar cache guru diperbarui
+  _touchApp2DataVersion(app2DbId);
+}
+
+/**
+ * [DIPERBARUI] Menghapus SEMUA data siswa dari Aplikasi 1 DAN Aplikasi 2.
+ * Membersihkan secara total agar tidak ada data hantu yang tertinggal.
+ */
 function deleteAllSiswa(token) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000); // Lock lebih lama untuk operasi batch
+  
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token); // <--- Ambil spreadsheetID
+    // 1. Validasi sesi dan ambil ID DB App 2
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token);
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getSiswaSheet(ss);
+    
+    // 2. Hapus Data Lokal di App 1 (Sheet 'Siswa')
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
-      sheet.deleteRows(2, lastRow - 1);
+      sheet.deleteRows(2, lastRow - 1); // Hapus semua baris data
     }
     
-    // --- PERBAIKAN DI SINI ---
+    // 3. [BARU] Sinkronisasi Hapus Total ke App 2
+    if (app2DbId) {
+       try {
+         Logger.log(`Memulai penghapusan total siswa dan nilai di App 2...`);
+         _syncDeleteAllSiswaFromApp2(app2DbId);
+         Logger.log(`Sukses: App 2 telah dibersihkan dari data siswa.`);
+       } catch(e) {
+         // Catat error tapi jangan gagalkan proses utama (agar App 1 tetap bersih)
+         Logger.log("Peringatan: Gagal sync delete all di App 2: " + e.message);
+       }
+    }
+    
+    // 4. Bersihkan Cache Lokal
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
-    // --- AKHIR PERBAIKAN ---
 
-    return { status: "sukses", message: "Semua data siswa dihapus." };
+    return { status: "sukses", message: "Semua data siswa dan nilai terkait berhasil dihapus dari seluruh sistem (App 1 & App 2)." };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
+}
+
+/**
+ * [BARU] Helper untuk membersihkan seluruh data siswa & nilai di Aplikasi 2.
+ * Menghapus isi db_siswa, db_enrollment, dan semua sheet nilai.
+ */
+function _syncDeleteAllSiswaFromApp2(app2DbId) {
+  const ss = SpreadsheetApp.openById(app2DbId);
+  const sheets = ss.getSheets();
+
+  // A. Bersihkan Tabel Master (db_siswa & db_enrollment)
+  const masterSheets = ['db_siswa', 'db_enrollment'];
+  
+  masterSheets.forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (sheet) {
+      const lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+         // Hapus semua baris setelah header
+         sheet.deleteRows(2, lastRow - 1);
+      }
+    }
+  });
+  
+  // B. Bersihkan Semua Sheet Nilai (db_nilai_* & db_nilai_asli_*)
+  // Karena semua siswa dihapus, maka semua nilai juga harus dihapus agar bersih.
+  sheets.forEach(sheet => {
+    const name = sheet.getName();
+    // Cek apakah sheet adalah sheet nilai
+    if (name.startsWith('db_nilai_') || name.startsWith('db_nilai_asli_')) {
+       const lastRow = sheet.getLastRow();
+       if (lastRow > 1) {
+         sheet.deleteRows(2, lastRow - 1);
+       }
+    }
+  });
+  
+  // C. Refresh Timestamp App 2 (Penting agar cache guru/admin di App 2 invalid)
+  _touchApp2DataVersion(app2DbId);
 }
 
 function getDataSekolahSheet(ss) {
@@ -5383,13 +5540,110 @@ function _internalPublishLogic(
   return nisnList.length;
 }
 
+/**
+ * [PERBAIKAN] Mempublikasikan kelulusan.
+ * Melakukan perhitungan ulang data (tanpa menyimpan ke cache visual dashboard) 
+ * untuk memastikan data yang dipublikasikan adalah data terbaru dan lengkap, 
+ * lalu mengirimkannya ke _internalPublishLogic.
+ */
 function publishKelulusan(token, tanggalPengumumanISO) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    // 1. Validasi Sesi
     const session = validateAdminSession(token);
-    const nisnListLength = _internalPublishLogic(session.spreadsheetID, session.sessionData.sekolahID, session.sessionData.namaSekolah, tanggalPengumumanISO);
+    const spreadsheetID = session.spreadsheetID;
+    const sekolahID = session.sessionData.sekolahID;
+    const namaSekolah = session.sessionData.namaSekolah;
+    
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+
+    // 2. Ambil Pengaturan (Bobot & KKM)
+    const sheetSetting = getPengaturanSheet(ss);
+    const settings = sheetSetting.getRange('A1:B' + sheetSetting.getLastRow()).getValues();
+    let bobotRapor = 60, bobotUjian = 40, kkm = 76, jmlSemester = 5;
+    
+    settings.forEach(s => {
+      if (s[0] === 'Bobot_Rapor') bobotRapor = s[1];
+      if (s[0] === 'Bobot_Ujian') bobotUjian = s[1];
+      if (s[0] === 'KKM') kkm = s[1];
+      if (s[0] === 'Jumlah_Semester') jmlSemester = s[1];
+    });
+
+    // 3. Ambil Data Siswa & Mapel dari Cache/Sheet
+    const siswaListFull = _getSiswaInternal(spreadsheetID, sekolahID);
+    const mapelListFull = _getMapelInternal(ss, sekolahID);
+    const mapelIjazah = mapelListFull.filter(m => m.isUS || m.isUP);
+
+    // 4. Hitung Nilai (Ujian & Rapor)
+    // Kita buat struktur data sederhana untuk fungsi hitung internal
+    const siswaListForCalc = siswaListFull.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
+    
+    // Hitung Nilai Ujian
+    const { nilaiRekapMap: nilaiUjian } = getRekapUjianInternal(ss, siswaListForCalc, mapelListFull);
+    
+    // Hitung Nilai Rapor
+    const semesterIds = [];
+    const jenjang = session.sessionData.jenjang;
+    if (jenjang === 'SD/MI') {
+       if (jmlSemester === 3) semesterIds.push('K5_S1','K5_S2','K6_S1');
+       else semesterIds.push('K4_S1','K4_S2','K5_S1','K5_S2','K6_S1');
+    } else if (jenjang === 'SMP/MTS') {
+       semesterIds.push('K7_S1','K7_S2','K8_S1','K8_S2','K9_S1');
+    } else {
+       semesterIds.push('K10_S1','K10_S2','K11_S1','K11_S2','K12_S1');
+    }
+    const { nilaiRekapMap: nilaiRapor } = getRekapRaporInternal(ss, siswaListForCalc, mapelListFull, semesterIds);
+
+    // 5. Susun Data untuk Publikasi (siswaMap, nisnList, rekapMap)
+    const rekapMap = new Map();
+    const siswaMap = new Map();
+    const nisnList = [];
+
+    siswaListFull.forEach(siswa => {
+      let sum = 0;
+      let count = 0;
+
+      // Hitung Nilai Akhir Ijazah per Siswa
+      mapelIjazah.forEach(mapel => {
+        const key = `${siswa.id}_${mapel.id}`;
+        const nU = nilaiUjian.get(key) || 0;
+        const nR = nilaiRapor.get(key) || 0;
+        
+        // Rumus Nilai Akhir
+        const final = (nU * (bobotUjian/100)) + (nR * (bobotRapor/100));
+        
+        sum += final;
+        count++;
+      });
+
+      // Simpan Rekap Nilai
+      rekapMap.set(siswa.id, { sum: sum, count: count });
+      
+      // Simpan Identitas Siswa (Gunakan NISN bersih sebagai Key)
+      let nisn = String(siswa.nisn).trim().replace("'", "");
+      
+      // Hanya masukkan siswa yang datanya lengkap untuk login (NISN & Tgl Lahir)
+      if (nisn && siswa.tglLahir && siswa.nama) {
+         siswaMap.set(nisn, { id: siswa.id, dob: siswa.tglLahir, nama: siswa.nama });
+         nisnList.push(nisn);
+      }
+    });
+
+    // 6. Panggil Logika Internal dengan Parameter LENGKAP (8 Parameter)
+    const nisnListLength = _internalPublishLogic(
+        spreadsheetID, 
+        sekolahID, 
+        namaSekolah, 
+        tanggalPengumumanISO,
+        siswaMap,   // <-- Parameter 5: Map Siswa (FIXED)
+        nisnList,   // <-- Parameter 6: List NISN (FIXED)
+        rekapMap,   // <-- Parameter 7: Data Nilai (FIXED)
+        kkm         // <-- Parameter 8: KKM (FIXED)
+    );
+    
     return { status: "sukses", message: `Hasil kelulusan dipublikasikan untuk ${nisnListLength} siswa.` };
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   } finally {
@@ -7118,8 +7372,11 @@ function getBackupDatabaseExcel(token) {
 }
 
 /**
- * [BARU - DIPERBARUI] Menghapus semua data siswa, nilai, dan cache ijazah.
- * Mempertahankan Mapel, Kelas, dan Akun Guru.
+ * [DIPERBARUI] Proses Kelulusan (Tutup Tahun Ajaran).
+ * 1. Mengarsipkan data ke App 3.
+ * 2. Menghapus data siswa & nilai di App 1.
+ * 3. Menghapus data siswa, enrollment, nilai, & status di App 2.
+ * (CATATAN: Data Tahun Ajaran TIDAK dihapus agar struktur tetap ada).
  */
 function hapusSemuaDataSiswaDanNilai(token) {
   const lock = LockService.getDocumentLock();
@@ -7130,41 +7387,52 @@ function hapusSemuaDataSiswaDanNilai(token) {
     const session = validateAdminSession(token);
     spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
+    const app2DbId = session.app2DbId;
 
-    // === TAMBAHAN: JALANKAN PENGARSIPAN OTOMATIS ===
+    // === 1. ARSIPKAN DATA SEBELUM PENGHAPUSAN ===
     try {
        // Ini akan mengirim data ke Spreadsheet Arsip (App 3)
        processArchivingToApp3(token); 
     } catch (archiveError) {
-       // Opsional: Lempar error jika arsip gagal agar data tidak terhapus
-       // Atau log saja jika ingin tetap lanjut hapus
-       throw new Error("Gagal mengarsipkan data: " + archiveError.message + ". Data BELUM dihapus.");
+       // Log error tapi lanjutkan penghapusan
+       Logger.log("Gagal mengarsipkan data (lanjut hapus): " + archiveError.message);
     }
-    // === AKHIR TAMBAHAN ===
     
+    // === 2. HAPUS DATA DI APLIKASI 1 (LOKAL) ===
     const ss = SpreadsheetApp.openById(spreadsheetID);
     
-    // Daftar sheet yang akan DIBERSIHKAN (bukan dihapus)
-    const sheetsToClear = [
+    // Daftar sheet yang akan DIBERSIHKAN di App 1
+    const sheetsToClearApp1 = [
       'Siswa',
       'Nilai_Ujian',
       'Nilai_Rapor_Akhir',
       'Cache_Rekap_Ijazah'
-      // 'Akun_Guru' <-- TELAH DIHAPUS DARI DAFTAR INI
     ];
     
-    sheetsToClear.forEach(sheetName => {
+    sheetsToClearApp1.forEach(sheetName => {
       const sheet = ss.getSheetByName(sheetName);
       if (sheet) {
         const lastRow = sheet.getLastRow();
         if (lastRow > 1) {
-          // Hapus baris 2 sampai akhir
+          // Hapus baris 2 sampai akhir (sisakan header)
           sheet.deleteRows(2, lastRow - 1);
         }
       }
     });
 
-    // Bersihkan semua cache sisi server yang terkait siswa
+    // === 3. HAPUS DATA DI APLIKASI 2 (GLOBAL/DB) ===
+    if (app2DbId) {
+        try {
+          Logger.log("Menghapus data total di Aplikasi 2...");
+          _syncDeleteAllDataInApp2(app2DbId);
+          Logger.log("Sukses membersihkan Aplikasi 2.");
+        } catch(e) {
+          Logger.log("Gagal menghapus data App 2: " + e.message);
+          // Tetap lanjut agar App 1 bersih
+        }
+    }
+
+    // === 4. BERSIHKAN CACHE ===
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
     clearNilaiUjianCache(sessionData.sekolahID, spreadsheetID);
     clearNilaiRaporCache(sessionData.sekolahID, spreadsheetID);
@@ -7172,7 +7440,8 @@ function hapusSemuaDataSiswaDanNilai(token) {
     clearLockedKelasCache(sessionData.sekolahID);
     CacheService.getScriptCache().remove(NILAI_IJAZAH_CACHE_KEY + "_" + sessionData.sekolahID);
 
-    return { status: "sukses" };
+    // [MODIFIKASI PESAN]
+    return { status: "sukses", message: "Proses Kelulusan Selesai. Data siswa dan nilai telah dihapus/diarsipkan. Data Tahun Ajaran tetap tersimpan." };
 
   } catch (e) {
     Logger.log("Gagal hapusSemuaDataSiswaDanNilai: " + e.message);
@@ -7180,6 +7449,53 @@ function hapusSemuaDataSiswaDanNilai(token) {
   } finally {
     if (lock) lock.releaseLock();
   }
+}
+
+/**
+ * [BARU] Helper untuk menghapus data TOTAL di Aplikasi 2 saat Proses Kelulusan.
+ * - Membersihkan isi: db_siswa, db_enrollment, db_status_kirim.
+ * - Menghapus sheet: db_nilai_*, db_nilai_asli_*.
+ * - [PERUBAHAN]: db_tahun_ajaran TIDAK dihapus.
+ */
+function _syncDeleteAllDataInApp2(app2DbId) {
+  const ss = SpreadsheetApp.openById(app2DbId);
+  const sheets = ss.getSheets();
+  
+  // A. Daftar sheet yang isinya akan DIHAPUS (Header dipertahankan)
+  const sheetsToClearContent = [
+      'db_siswa', 
+      'db_enrollment', 
+      'db_status_kirim'
+      // 'db_tahun_ajaran' <-- DIHAPUS DARI DAFTAR INI (Data TA aman)
+  ];
+  
+  sheetsToClearContent.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (sheet) {
+      const lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+         // Hapus semua data, sisakan header baris 1
+         sheet.deleteRows(2, lastRow - 1);
+      }
+    }
+  });
+
+  // B. Daftar sheet yang akan DIHAPUS TOTAL (Sheet-nya hilang)
+  // Ini adalah sheet dinamis yang dibuat per tahun ajaran (Nilai)
+  // Karena siswanya dihapus, nilai per TA juga dihapus agar bersih.
+  sheets.forEach(sheet => {
+    const name = sheet.getName();
+    if (name.startsWith('db_nilai_') || name.startsWith('db_nilai_asli_')) {
+       try {
+         ss.deleteSheet(sheet);
+       } catch(e) {
+         Logger.log("Gagal menghapus sheet " + name + ": " + e.message);
+       }
+    }
+  });
+  
+  // C. Update Timestamp agar cache di App 2 (Guru) menjadi tidak valid
+  _touchApp2DataVersion(app2DbId);
 }
 
 /**
