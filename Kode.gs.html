@@ -10411,31 +10411,19 @@ function _cascadeChangeNomorUjian(ss, oldId, newId) {
   }
 }
 
-/**
- * [FUNGSI BARU] Cek Jumlah Notifikasi (Hemat Kuota)
- * Hanya membaca Spreadsheet jika cache kadaluarsa.
- */
+// GANTI fungsi ini di Kode.gs.html
 function getPendingNotificationCount(token) {
   try {
-    // 1. Validasi sesi (mengambil ID DB Sekolah)
     const { app2DbId, sekolahID } = validateAdminSession(token);
 
-    // 2. Cek Cache Script
-    const cache = CacheService.getScriptCache();
-    const cacheKey = "NOTIF_COUNT_" + sekolahID;
-    const cachedCount = cache.get(cacheKey);
-
-    // JIKA ADA DI CACHE: Kembalikan langsung
-    if (cachedCount != null) {
-      return { status: "sukses", count: parseInt(cachedCount, 10) };
-    }
-
-    // JIKA TIDAK ADA DI CACHE: Buka Spreadsheet
+    // --- MODIFIKASI: LANGSUNG BACA SHEET (TANPA CACHE) ---
+    // Ini menjamin angka yang tampil adalah 100% akurat sesuai kondisi database saat ini.
     const ss_app2 = SpreadsheetApp.openById(app2DbId);
     const statusSheet = ss_app2.getSheetByName('db_status_kirim');
     
     let count = 0;
     if (statusSheet && statusSheet.getLastRow() > 1) {
+      // Optimasi: Hanya ambil kolom Status (G)
       const data = statusSheet.getRange(2, 7, statusSheet.getLastRow() - 1, 1).getValues();
       for (let i = 0; i < data.length; i++) {
         if (data[i][0] === 'PENDING') {
@@ -10443,12 +10431,6 @@ function getPendingNotificationCount(token) {
         }
       }
     }
-
-    // [PERBAIKAN PENTING]
-    // Ubah durasi cache dari 60 detik menjadi 5 detik.
-    // Ini memaksa server mengecek data asli DB lebih sering,
-    // sehingga perubahan status Approved/Rejected segera terdeteksi.
-    cache.put(cacheKey, String(count), 5); 
 
     return { status: "sukses", count: count };
 
