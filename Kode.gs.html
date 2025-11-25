@@ -2582,7 +2582,7 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
           // Update db_siswa di Aplikasi 2
           _cascadeKelasRename_App2(app2DbId, renameMap);
           
-          // Update db_mapel (Kelas Guru) di Aplikasi 2
+          // Update db_mapel (Kelas Guru) di Aplikasi 2 -> SKENARIO 1 (RENAME)
           if (typeof _cascadeKelasRename_Mapel_App2 === 'function') {
              _cascadeKelasRename_Mapel_App2(app2DbId, renameMap);
           }
@@ -2593,25 +2593,39 @@ function saveKelas(token, kelasList) { // kelasList sekarang [ {oldName, newName
           }
       }
     }
-    // --- AKHIR TINDAKAN CASCADE ---
+    // --- AKHIR TINDAKAN CASCADE RENAME ---
 
-    // 5. Simpan Data Baru
-    // Hapus data lama dari sheet Kelas
+    // 5. Simpan Data Baru ke Sheet Kelas
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
       sheet.deleteRows(2, lastRow - 1);
     }
     
-    // Tulis data baru ke sheet Kelas
     if (newClassListStrings.length > 0) {
       const dataToSave = newClassListStrings.map(nama => [nama]);
       sheet.getRange(2, 1, dataToSave.length, 1).setValues(dataToSave);
     }
-    
+
+    // --- [BARU] SKENARIO 2: KELAS MENJADI TUNGGAL ---
+    // Jika hasil akhir hanya menyisakan 1 kelas, paksa semua guru mengajar kelas itu
+    if (newClassListStrings.length === 1) {
+       Logger.log("Terdeteksi Kelas Tunggal. Menyinkronkan semua guru ke ['*']...");
+       
+       // 1. Update di App 1 (Akun_Guru)
+       _syncGuruToSingleClass_App1(ss);
+       
+       // 2. Update di App 2 (db_mapel)
+       if (app2DbId) {
+          _syncGuruToSingleClass_App2(app2DbId);
+          _touchApp2DataVersion(app2DbId);
+       }
+    }
+    // ------------------------------------------------
+
     // 6. Bersihkan Cache
     clearSiswaCache(sessionData.sekolahID, spreadsheetID); 
     clearLockedKelasCache(sessionData.sekolahID);
-    clearGuruCache(sessionData.sekolahID); // Bersihkan cache guru agar perubahan nama kelas ter-load
+    clearGuruCache(sessionData.sekolahID); 
     
     return { status: "sukses" };
     
@@ -2717,8 +2731,9 @@ function _cascadeKelasRename_App2(app2DbId, renameMap) {
 }
 
 /**
- * [HELPER BARU] Melakukan cascade update nama kelas di db_mapel (Aplikasi 2).
- * Memperbaiki JSON kelas guru (misal: ["X A"] menjadi ["X 1"]).
+ * [SKENARIO 1] Melakukan cascade update nama kelas di db_mapel (Aplikasi 2).
+ * Contoh: Guru mengajar ["VI.A"]. Admin ubah VI.A -> VI.B.
+ * Hasil: Guru mengajar ["VI.B"].
  */
 function _cascadeKelasRename_Mapel_App2(app2DbId, renameMap) {
   try {
@@ -2727,7 +2742,7 @@ function _cascadeKelasRename_Mapel_App2(app2DbId, renameMap) {
     
     if (sheetMapel.getLastRow() <= 1) return;
 
-    // Ambil kolom E (kelas_json), index kolom = 4 (0-based) di array values, tapi range kolom 5
+    // Ambil kolom E (kelas_json), index kolom = 4 (0-based) di array values
     const dataRange = sheetMapel.getRange(2, 5, sheetMapel.getLastRow() - 1, 1); 
     const values = dataRange.getValues();
     let changesMade = false;
@@ -2753,7 +2768,9 @@ function _cascadeKelasRename_Mapel_App2(app2DbId, renameMap) {
           });
 
           if (rowModified) {
-            values[i][0] = JSON.stringify(newArray); // Update JSON
+            // Hapus duplikat jika hasil rename menyebabkan nama sama
+            const uniqueArray = [...new Set(newArray)];
+            values[i][0] = JSON.stringify(uniqueArray); 
             changesMade = true;
           }
         }
@@ -2764,10 +2781,89 @@ function _cascadeKelasRename_Mapel_App2(app2DbId, renameMap) {
 
     if (changesMade) {
       dataRange.setValues(values);
-      Logger.log(`Cascade rename (App 2 - Mapel Guru) berhasil. Update kelas guru.`);
+      Logger.log(`Cascade rename (App 2 - Mapel Guru) berhasil.`);
     }
   } catch (e) {
     Logger.log(`ERROR GAGAL cascade rename (App 2 - Mapel): ${e.message}`);
+  }
+}
+
+/**
+ * [SKENARIO 2 - BARU] Jika kelas tinggal satu, ubah semua guru di App 2 jadi ["*"].
+ * Ini memastikan guru tetap bisa mengajar walaupun kelas lama mereka dihapus.
+ */
+function _syncGuruToSingleClass_App2(app2DbId) {
+  try {
+    const ss_app2 = SpreadsheetApp.openById(app2DbId);
+    const sheetMapel = getMapelSheet_App2(ss_app2);
+    
+    if (sheetMapel.getLastRow() <= 1) return;
+
+    const dataRange = sheetMapel.getRange(2, 5, sheetMapel.getLastRow() - 1, 1); // Kolom E
+    const values = dataRange.getValues();
+    const singleClassJson = '["*"]';
+    let changesMade = false;
+
+    for (let i = 0; i < values.length; i++) {
+      // Jika belum ["*"], ubah jadi ["*"]
+      if (values[i][0] !== singleClassJson) {
+        values[i][0] = singleClassJson;
+        changesMade = true;
+      }
+    }
+
+    if (changesMade) {
+      dataRange.setValues(values);
+      Logger.log("Sync Single Class (App 2): Semua guru diatur ke Semua Kelas.");
+    }
+  } catch (e) {
+    Logger.log("Gagal Sync Single Class App 2: " + e.message);
+  }
+}
+
+/**
+ * [SKENARIO 2 - BARU] Helper untuk App 1 (Akun_Guru) - Opsional tapi disarankan agar sinkron.
+ */
+function _syncGuruToSingleClass_App1(ss) {
+  try {
+    const sheetGuru = getGuruSheet(ss);
+    if (sheetGuru.getLastRow() <= 1) return;
+    
+    // Kolom F (Index 6) = MapelKelasJSON
+    const range = sheetGuru.getRange(2, 6, sheetGuru.getLastRow() - 1, 1);
+    const values = range.getValues();
+    let changes = false;
+    
+    for (let i = 0; i < values.length; i++) {
+      const jsonStr = String(values[i][0]);
+      if (!jsonStr || jsonStr === "") continue;
+      
+      try {
+        let data = JSON.parse(jsonStr);
+        let modified = false;
+        
+        // Ubah setiap mapel menjadi ["*"]
+        for (const mapelId in data) {
+           const arr = data[mapelId];
+           if (Array.isArray(arr) && (arr.length !== 1 || arr[0] !== "*")) {
+              data[mapelId] = ["*"];
+              modified = true;
+           }
+        }
+        
+        if (modified) {
+          values[i][0] = JSON.stringify(data);
+          changes = true;
+        }
+      } catch(e) {}
+    }
+    
+    if (changes) {
+      range.setValues(values);
+      Logger.log("Sync Single Class (App 1): Data guru lokal diperbarui.");
+    }
+  } catch(e) {
+    Logger.log("Gagal Sync Single Class App 1: " + e.message);
   }
 }
 
