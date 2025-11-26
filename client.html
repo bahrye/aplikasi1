@@ -11915,18 +11915,170 @@
     }
   }
 
-  // --- LOGIKA RESET DATA (DIPERBAIKI: FIX ERROR 'innerText' & Alur Download) ---
+  // --- VARIABEL GLOBAL TAMBAHAN ---
+  let globalNewTaDataForReset = null; // Menyimpan data TA baru sementara
+
+  // --- LOGIKA BARU: RESET DATA ---
 
   /**
    * 1. FUNGSI PEMICU UTAMA
-   * Dipanggil saat tombol "Download Backup & Hapus Data" diklik.
+   * Dipanggil saat tombol "Hapus Data (Reset)" diklik.
    */
   function jalankanProsesKelulusan() {
-    // Langkah 1: Tampilkan Loading & Mulai request Excel
-    setLoading(true, 'Langkah 1/3: Membuat backup Excel...', true, true);
+    globalNewTaDataForReset = null; 
+
+    setLoading(true, 'Mengecek Arsip Aplikasi 3...', false, true);
     hideMessage('proses-kelulusan-message');
     
-    // Panggil server
+    google.script.run
+      .withSuccessHandler(handleCheckArsipResult) 
+      .withFailureHandler(onGagal) 
+      .checkArsipExistence(getToken());
+  }
+
+  /**
+   * 2. HANDLE HASIL PENGECEKAN (REVISI)
+   * Sekarang, baik arsip ada atau tidak, alurnya akan mengarah ke Modal TA Baru.
+   * Bedanya hanya ada langkah konfirmasi tambahan jika arsip sudah ada.
+   */
+  function handleCheckArsipResult(response) {
+    setLoading(false);
+
+    if (response.status !== 'sukses') {
+      showMessage('proses-kelulusan-message', 'Gagal mengecek arsip: ' + response.message, true);
+      return;
+    }
+
+    const { exists, currentTaDesc, sheetName } = response;
+
+    // Helper untuk membuka modal TA Baru
+    const openNewTaModal = () => {
+        populateNextTaDropdown(); // Isi dropdown tanggal
+        document.getElementById('modal-setup-new-ta').classList.add('show');
+    };
+
+    if (exists) {
+      // KASUS A: Data SUDAH ADA di arsip -> Tampilkan Peringatan dulu
+      const title = "Duplikasi Arsip Terdeteksi";
+      const message = `
+        Tahun Ajaran <strong>${currentTaDesc}</strong> sudah ada di Aplikasi 3 (Sheet: <em>${sheetName}</em>).
+        <br><br>
+        Jika Anda melanjutkan, data di arsip mungkin akan tertimpa atau ganda.
+        <br><br>
+        Apakah Anda ingin tetap melanjutkan ke penyiapan Tahun Ajaran Baru?
+      `;
+      
+      // Callback jika User pilih "Ya, Lanjutkan"
+      const callback = function() {
+         openNewTaModal(); // <--- PERUBAHAN: Buka Modal TA Baru, bukan langsung backup
+      };
+      
+      showConfirmationModal(title, message, callback, 'warning');
+
+    } else {
+      // KASUS B: Data BELUM ADA -> Langsung buka Modal TA Baru
+      openNewTaModal();
+    }
+  }
+
+  /**
+   * Helper: Mengisi Dropdown ID Tahun Ajaran (2 Opsi: Berjalan & Depan)
+   * Aturan: TA dimulai bulan Juli.
+   */
+  function populateNextTaDropdown() {
+    const select = document.getElementById('new-ta-id-select');
+    select.innerHTML = '';
+    
+    const now = new Date();
+    const currentYear = now.getFullYear(); 
+    const currentMonth = now.getMonth(); // 0 = Januari, 11 = Desember
+    
+    // Logika Tahun Ajaran (Batas ganti di bulan Juli / Index 6)
+    let baseYear;
+    
+    if (currentMonth >= 6) { 
+       // Bulan Juli (6) s.d Desember (11)
+       // Contoh: Nov 2025 -> Masuk TA 2025/2026 -> BaseYear 2025
+       baseYear = currentYear; 
+    } else { 
+       // Bulan Januari (0) s.d Juni (5)
+       // Contoh: Feb 2026 -> Masih TA 2025/2026 -> BaseYear 2025
+       baseYear = currentYear - 1; 
+    }
+    
+    // Tampilkan 2 Opsi: [0] Tahun Berjalan, [1] Tahun Depan
+    const years = [
+      baseYear,       // Contoh: 2025 (TA-2025-2026)
+      baseYear + 1    // Contoh: 2026 (TA-2026-2027)
+    ];
+    
+    years.forEach((y, index) => {
+       const taId = `TA-${y}-${y+1}`;
+       const taDesc = `${y}/${y+1}`;
+       
+       const option = document.createElement('option');
+       option.value = taId;
+       // Tampilkan label yang jelas
+       option.text = (index === 0) ? `${taId} (Berjalan)` : `${taId} (Berikutnya)`;
+       
+       // Simpan deskripsi bersih di dataset untuk auto-fill
+       option.dataset.desc = taDesc;
+       
+       // Secara default pilih tahun depan (Berikutnya), karena biasanya reset dilakukan untuk persiapan TA baru
+       if (index === 1) {
+         option.selected = true;
+       }
+       
+       select.appendChild(option);
+    });
+    
+    // Fungsi update input deskripsi manual saat dropdown berubah
+    const updateDescInput = () => {
+       const selectedOption = select.options[select.selectedIndex];
+       if (selectedOption) {
+          document.getElementById('new-ta-desc-input').value = selectedOption.dataset.desc;
+       }
+    };
+
+    select.onchange = updateDescInput;
+    
+    // Jalankan sekali di awal untuk mengisi input deskripsi sesuai default
+    updateDescInput();
+  }
+
+  // Event Listener Modal (Pastikan ini ada di dalam DOMContentLoaded atau di luar fungsi)
+  // Jika kode ini ditaruh di dalam <script> utama client.html, pastikan elemen ID-nya sudah ada di index.html
+  
+  document.getElementById('btn-batal-new-ta').addEventListener('click', () => {
+      document.getElementById('modal-setup-new-ta').classList.remove('show');
+  });
+
+  document.getElementById('btn-lanjut-reset-new-ta').addEventListener('click', () => {
+      const newId = document.getElementById('new-ta-id-select').value;
+      const newDesc = document.getElementById('new-ta-desc-input').value.trim();
+      
+      if (!newId || !newDesc) {
+          alert("ID dan Deskripsi wajib diisi.");
+          return;
+      }
+      
+      // Simpan data
+      globalNewTaDataForReset = {
+          id: newId,
+          deskripsi: newDesc
+      };
+      
+      // Tutup modal dan BARU mulai proses Backup -> Reset
+      document.getElementById('modal-setup-new-ta').classList.remove('show');
+      startBackupProcess();
+  });
+
+  /**
+   * 3. MULAI PROSES BACKUP (Langkah Asli 1)
+   */
+  function startBackupProcess() {
+    setLoading(true, 'Langkah 1/3: Membuat backup Excel...', true, true);
+    
     google.script.run
       .withSuccessHandler(onBackupExcelReady) 
       .withFailureHandler(onGagal) 
@@ -11934,62 +12086,24 @@
   }
 
   /**
-   * 2. CALLBACK SETELAH EXCEL SIAP
+   * 4. CALLBACK SETELAH EXCEL SIAP (Langkah Asli 2)
    */
   function onBackupExcelReady(response) {
     if (response.status === 'sukses') {
-      
-      // A. Trigger Download Excel
       downloadFileAuto(response.base64, response.mimeType, response.fileName);
-      
-      // B. Beri notifikasi visual bahwa Excel sudah dikirim
-      showToast("Backup Excel sedang diunduh. Jangan tutup halaman...", "sukses", 3000);
+      showToast("Backup Excel sedang diunduh...", "sukses", 3000);
 
-      // C. Jeda 4 detik sebelum lanjut ke langkah 2 (Supaya browser tidak memblokir download kedua)
       setTimeout(() => {
-          // Update status loading untuk Langkah 2
           setLoading(true, 'Langkah 2/3: Membuat backup aman (.sbk)...', true, true);
-          
-          console.log("Lanjut ke Langkah 2: Request SBK...");
           google.script.run
             .withSuccessHandler(onBackupSbkReady)
-            .withFailureHandler(onGagal) // Jika gagal di tengah, berhenti.
+            .withFailureHandler(onGagal)
             .getSecureBackupFile(getToken());
       }, 4000);
 
     } else {
       setLoading(false);
-      showMessage('proses-kelulusan-message', 'Gagal membuat backup Excel: ' + response.message, true);
-    }
-  }
-
-  /**
-   * 3. CALLBACK SETELAH .SBK SIAP
-   */
-  function onBackupSbkReady(response) {
-    if (response.status === 'sukses') {
-      
-      // A. Trigger Download .SBK
-      downloadFileAuto(response.fileContent, response.mimeType, response.fileName);
-      
-      // B. Beri notifikasi
-      showToast("Backup Aman (.sbk) sedang diunduh...", "sukses", 3000);
-
-      // C. Jeda 4 detik lagi sebelum menghapus data
-      setTimeout(() => {
-          // Update status loading untuk Langkah 3
-          setLoading(true, 'Langkah 3/3: Menghapus data & Mereset sistem...', true, true);
-          
-          console.log("Lanjut ke Langkah 3: Hapus Data...");
-          google.script.run
-            .withSuccessHandler(onPembersihanSelesai)
-            .withFailureHandler(onGagal)
-            .hapusSemuaDataSiswaDanNilai(getToken());
-      }, 4000);
-
-    } else {
-      setLoading(false);
-      showMessage('proses-kelulusan-message', 'Gagal membuat backup aman (.sbk). Reset dibatalkan demi keamanan.', true);
+      showMessage('proses-kelulusan-message', 'Gagal backup Excel: ' + response.message, true);
     }
   }
 
@@ -12035,27 +12149,51 @@
   }
 
   /**
-   * 5. CALLBACK FINAL (SELESAI)
+   * 5. CALLBACK SETELAH .SBK SIAP (Langkah Asli 3 -> Final)
+   */
+  function onBackupSbkReady(response) {
+    if (response.status === 'sukses') {
+      downloadFileAuto(response.fileContent, response.mimeType, response.fileName);
+      showToast("Backup .SBK sedang diunduh...", "sukses", 3000);
+
+      setTimeout(() => {
+          setLoading(true, 'Langkah 3/3: Menghapus data & Menyiapkan T.A. Baru...', true, true);
+          
+          // [PENTING] Kirim globalNewTaDataForReset ke fungsi hapus
+          google.script.run
+            .withSuccessHandler(onPembersihanSelesai)
+            .withFailureHandler(onGagal)
+            .hapusSemuaDataSiswaDanNilai(getToken(), globalNewTaDataForReset); // Kirim data TA baru
+      }, 4000);
+
+    } else {
+      setLoading(false);
+      showMessage('proses-kelulusan-message', 'Gagal backup .sbk. Reset dibatalkan.', true);
+    }
+  }
+
+  /**
+   * 6. CALLBACK FINAL
    */
   function onPembersihanSelesai(response) {
     setLoading(false);
-    
+    globalNewTaDataForReset = null; // Reset
+
     if (response.status === 'sukses') {
-      // Bersihkan semua cache di sisi klien
+      // Bersihkan cache klien
       globalSiswaList = [];
       globalGuruList = [];
       globalKelasListCache = [];
       globalNilaiGridCacheUM = null;
       globalNilaiGridCachePraktek = null;
       globalNilaiRaporGridCache.clear();
-      globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+      globalTaList = []; // Reset cache TA agar TA baru muncul
       
-      // Tampilkan notifikasi sukses dan kembali ke dasbor
-      showToast('SUKSES! Data telah direset. Backup Excel & .SBK telah diamankan.', 'sukses', 6000);
+      showToast('SUKSES! ' + response.message, 'sukses', 6000);
       tampilHalaman('halaman-utama');
       
     } else {
-      showMessage('proses-kelulusan-message', 'Gagal menghapus data: ' + response.message, true);
+      showMessage('proses-kelulusan-message', 'Gagal reset: ' + response.message, true);
     }
   }
 
@@ -14959,11 +15097,49 @@
 
   function onRestoreSuccess(response) {
       setLoading(false);
+      
       if (response.status === 'sukses') {
+          // Gunakan Modal Info, tapi callback-nya JANGAN location.reload()
           showInfoModal("Restore Berhasil", response.message, false, () => {
-              // Reload halaman penuh untuk memastikan semua cache bersih dan data baru tampil
-              location.reload(); 
+              
+              // --- PERBAIKAN: SOFT RELOAD (Tanpa Refresh Browser) ---
+              
+              // 1. Bersihkan semua variabel global (Cache Klien)
+              console.log("Membersihkan cache klien setelah restore...");
+              globalSiswaList = [];
+              globalGuruList = [];
+              globalKelasListCache = [];
+              globalNilaiGridCacheUM = null;
+              globalNilaiGridCachePraktek = null;
+              globalNilaiRaporGridCache.clear();
+              globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+              globalPenempatanData = { siswaData: [], mapelList: [], guruList: [], mapelAssignments: [] };
+              
+              // Variabel lain yang perlu di-reset
+              jenjangBaseCache = '';
+              jenjangPilihanCache = '';
+              globalTaList = [];
+              
+              // 2. Hapus item spesifik di LocalStorage (Opsional, untuk keamanan)
+              localStorage.removeItem('ijazahDataIsDirty');
+              
+              // 3. Kembali ke Dashboard & Validasi Ulang Sesi
+              // Kita panggil checkSession() untuk memastikan data baru (seperti Nama Sekolah/Jenjang) terambil
+              // checkSession() akan memanggil onTokenVerified -> refreshAllData/showDashboard
+              const token = getToken();
+              if (token) {
+                 setLoading(true, 'Memuat ulang data...', true, true);
+                 google.script.run
+                   .withSuccessHandler(onTokenCheck) // Gunakan handler checkToken yang sudah ada
+                   .withFailureHandler(onGagal)
+                   .checkToken(token);
+              } else {
+                 tampilHalaman('halaman-login');
+              }
+              
+              // --- AKHIR PERBAIKAN ---
           });
+
       } else {
           showMessage('proses-kelulusan-message', response.message, true);
       }
