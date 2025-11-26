@@ -7372,13 +7372,51 @@ function getBackupDatabaseExcel(token) {
 }
 
 /**
- * [DIPERBARUI] Proses Kelulusan (Tutup Tahun Ajaran).
- * 1. Mengarsipkan data ke App 3.
- * 2. Menghapus data siswa & nilai di App 1.
- * 3. Menghapus data siswa, enrollment, nilai, & status di App 2.
- * (CATATAN: Data Tahun Ajaran TIDAK dihapus agar struktur tetap ada).
+ * [BARU] Mengecek apakah Tahun Ajaran saat ini sudah ada di Arsip (App 3).
+ * Mengembalikan status dan data TA saat ini.
  */
-function hapusSemuaDataSiswaDanNilai(token) {
+function checkArsipExistence(token) {
+  try {
+    const session = validateAdminSession(token);
+    const app2DbId = getApp2DatabaseId(token);
+    
+    // 1. Ambil Nama Tahun Ajaran Saat Ini dari App 2 (Logic sama dengan processArchiving)
+    const ssApp2 = SpreadsheetApp.openById(app2DbId);
+    const taSheet = ssApp2.getSheetByName('db_tahun_ajaran');
+    const taData = taSheet.getDataRange().getValues();
+    // Ambil baris terakhir (asumsi TA terbaru ada di bawah)
+    let latestTA_Desc = taData.length > 1 ? taData[taData.length - 1][1] : null;
+    
+    if (!latestTA_Desc) {
+       return { status: 'sukses', exists: false, message: "Belum ada Tahun Ajaran di App 2." };
+    }
+
+    // Format nama sheet arsip (Sama seperti di processArchivingToApp3)
+    const expectedSheetName = `Arsip ${latestTA_Desc.replace('/', '-')}`;
+
+    // 2. Cek di App 3 (Arsip)
+    const arsipId = getOrCreateArsipDB(token);
+    const ssArsip = SpreadsheetApp.openById(arsipId);
+    const sheet = ssArsip.getSheetByName(expectedSheetName);
+    
+    return { 
+      status: 'sukses', 
+      exists: (sheet !== null), 
+      currentTaDesc: latestTA_Desc,
+      sheetName: expectedSheetName
+    };
+
+  } catch (e) {
+    return { status: 'gagal', message: e.message };
+  }
+}
+
+/**
+ * [DIPERBARUI] Proses Kelulusan (Tutup Tahun Ajaran).
+ * Sekarang menerima parameter opsional `newTaData`.
+ * Jika `newTaData` ada, fungsi ini akan membuat Tahun Ajaran baru di App 2 setelah reset.
+ */
+function hapusSemuaDataSiswaDanNilai(token, newTaData) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000); // Kunci selama 30 detik
   
@@ -7391,30 +7429,20 @@ function hapusSemuaDataSiswaDanNilai(token) {
 
     // === 1. ARSIPKAN DATA SEBELUM PENGHAPUSAN ===
     try {
-       // Ini akan mengirim data ke Spreadsheet Arsip (App 3)
        processArchivingToApp3(token); 
     } catch (archiveError) {
-       // Log error tapi lanjutkan penghapusan
        Logger.log("Gagal mengarsipkan data (lanjut hapus): " + archiveError.message);
     }
     
     // === 2. HAPUS DATA DI APLIKASI 1 (LOKAL) ===
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    
-    // Daftar sheet yang akan DIBERSIHKAN di App 1
-    const sheetsToClearApp1 = [
-      'Siswa',
-      'Nilai_Ujian',
-      'Nilai_Rapor_Akhir',
-      'Cache_Rekap_Ijazah'
-    ];
+    const sheetsToClearApp1 = ['Siswa', 'Nilai_Ujian', 'Nilai_Rapor_Akhir', 'Cache_Rekap_Ijazah'];
     
     sheetsToClearApp1.forEach(sheetName => {
       const sheet = ss.getSheetByName(sheetName);
       if (sheet) {
         const lastRow = sheet.getLastRow();
         if (lastRow > 1) {
-          // Hapus baris 2 sampai akhir (sisakan header)
           sheet.deleteRows(2, lastRow - 1);
         }
       }
@@ -7424,11 +7452,35 @@ function hapusSemuaDataSiswaDanNilai(token) {
     if (app2DbId) {
         try {
           Logger.log("Menghapus data total di Aplikasi 2...");
-          _syncDeleteAllDataInApp2(app2DbId);
+          _syncDeleteAllDataInApp2(app2DbId); // Helper ini tidak menghapus db_tahun_ajaran
+          
+          // --- [BARU] TAMBAHKAN TAHUN AJARAN BARU JIKA ADA DATA ---
+          if (newTaData && newTaData.id && newTaData.deskripsi) {
+             const ssApp2 = SpreadsheetApp.openById(app2DbId);
+             const sheetTA = ssApp2.getSheetByName('db_tahun_ajaran');
+             if (sheetTA) {
+                // Cek duplikat ID
+                const dataTA = sheetTA.getDataRange().getValues();
+                let exists = false;
+                for(let i=1; i<dataTA.length; i++) {
+                   if(String(dataTA[i][0]).toUpperCase() === String(newTaData.id).toUpperCase()) {
+                      exists = true; 
+                      break;
+                   }
+                }
+                
+                if (!exists) {
+                  // Append: [ID, Deskripsi, StatusKunci(False)]
+                  sheetTA.appendRow([newTaData.id, newTaData.deskripsi, false]);
+                  Logger.log(`Tahun Ajaran Baru Ditambahkan: ${newTaData.id}`);
+                }
+             }
+          }
+          // -------------------------------------------------------
+
           Logger.log("Sukses membersihkan Aplikasi 2.");
         } catch(e) {
-          Logger.log("Gagal menghapus data App 2: " + e.message);
-          // Tetap lanjut agar App 1 bersih
+          Logger.log("Gagal menghapus/update App 2: " + e.message);
         }
     }
 
@@ -7440,8 +7492,7 @@ function hapusSemuaDataSiswaDanNilai(token) {
     clearLockedKelasCache(sessionData.sekolahID);
     CacheService.getScriptCache().remove(NILAI_IJAZAH_CACHE_KEY + "_" + sessionData.sekolahID);
 
-    // [MODIFIKASI PESAN]
-    return { status: "sukses", message: "Proses Kelulusan Selesai. Data siswa dan nilai telah dihapus/diarsipkan. Data Tahun Ajaran tetap tersimpan." };
+    return { status: "sukses", message: "Proses Kelulusan Selesai. Data siswa dan nilai telah direset. Tahun Ajaran baru (jika diisi) telah ditambahkan." };
 
   } catch (e) {
     Logger.log("Gagal hapusSemuaDataSiswaDanNilai: " + e.message);
@@ -10867,10 +10918,9 @@ function restoreDatabaseFromSecureFile(token, fileData) {
     // 4. Parse Data Payload
     const content = JSON.parse(packet.payload);
 
-    // 5. Validasi Pemilik Backup (Opsional: Cek apakah ID sekolah cocok)
-    // Jika Anda ingin backup sekolah A bisa direstore ke sekolah B, hapus blok ini.
+    // 5. Validasi Pemilik Backup
     if (content.schoolID && content.schoolID !== sessionData.sekolahID) {
-       // Opsional: throw new Error("File backup ini milik sekolah lain. Tidak dapat direstore di sini.");
+       throw new Error("File backup ini milik sekolah lain (ID: " + content.schoolID + "). Tidak dapat direstore di akun ini.");
     }
 
     // 6. EKSEKUSI RESTORE (Tulis ke Sheet)
