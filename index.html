@@ -1917,11 +1917,13 @@
 
         <form id="form-proses-kelulusan" onsubmit="return false;">
           <h3 class="form-section-header">Langkah 1: Download Backup Data</h3>
-          <p>Sebelum melanjutkan, sistem akan mengunduh salinan (backup) lengkap database Anda saat ini dalam format Excel. Pastikan Anda menyimpannya.</p>
+          <p>Sebelum melanjutkan, sistem akan mengunduh salinan (backup) lengkap database Anda.</p>
+          
+          <button type="button" id="btn-download-secure-backup" class="btn-aksi" style="background-color: #17a2b8; margin-bottom: 20px;">
+            <i class="fas fa-file-shield"></i> Download Backup Aman (.SBK)
+          </button>
 
           <h3 class="form-section-header">Langkah 2: Konfirmasi Penghapusan</h3>
-          <p>Untuk melanjutkan proses dan menghapus data, ketik nama sekolah Anda di bawah ini. Nama sekolah harus sama persis.</p>
-          
           <div class="form-group">
             <label for="input-konfirmasi-nama-sekolah">Ketik Nama Sekolah: <strong id="nama-sekolah-untuk-konfirmasi" style="color: var(--danger-color);">Memuat...</strong></label>
             <input type="text" id="input-konfirmasi-nama-sekolah" placeholder="Ketik nama sekolah Anda di sini" autocomplete="off">
@@ -1933,10 +1935,33 @@
           <hr>
           <div class="form-actions">
               <button type="button" id="btn-proses-kelulusan" disabled style="background-color: var(--danger-color);">
-                <i class="fas fa-trash-alt"></i>Download Backup & Hapus Data
+                <i class="fas fa-trash-alt"></i>Hapus Data (Reset)
               </button>
           </div>
         </form>
+        
+        <hr class="dashboard-divider" style="margin-top: 40px; margin-bottom: 30px;">
+        
+        <div class="restore-section" style="background-color: #e9f7ef; padding: 20px; border-radius: 8px; border: 1px solid #c3e6cb;">
+           <h3 class="form-section-header" style="margin-top: 0; color: #155724;"><i class="fas fa-history"></i> Restore Data (Import Backup)</h3>
+           <p style="color: #155724;">Kembalikan data sekolah dari file backup <strong>(.sbk)</strong> yang Anda download sebelumnya.</p>
+           
+           <div class="alert alert-warning" style="font-size: 13px; background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+             <strong>Peringatan:</strong> Proses ini akan <strong>MENIMPA (MENGHAPUS)</strong> seluruh data yang ada saat ini dan menggantinya dengan data dari file backup. Pastikan Anda menggunakan file backup yang benar.
+           </div>
+
+           <div class="form-group">
+              <label for="file-restore-input" class="file-upload-zone" id="file-restore-zone" style="background-color: white;">
+                <input type="file" id="file-restore-input" accept=".sbk">
+                <i class="fas fa-file-import" style="color: #198754;"></i>
+                <span id="file-restore-text">Klik untuk memilih file backup (.sbk)...</span>
+              </label>
+           </div>
+           
+           <button id="btn-proses-restore" class="btn-aksi" style="background-color: #198754; width: 100%;" disabled>
+             <i class="fas fa-upload"></i> Upload & Restore Data
+           </button>
+        </div>
       </div>
     </div>
 
