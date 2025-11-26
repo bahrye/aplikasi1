@@ -11842,6 +11842,13 @@
     labelNama.innerText = 'Memuat...';
     hiddenNama.value = '';
 
+    // --- [MODIFIKASI: DISABLE RESTORE ZONE SAAT LOADING] ---
+    const restoreInput = document.getElementById('file-restore-input');
+    const restoreZone = document.getElementById('file-restore-zone');
+    if(restoreInput) restoreInput.disabled = true;
+    if(restoreZone) restoreZone.classList.add('disabled');
+    // -------------------------------------------------------
+
     // --- [TAMBAHAN BARU] ---
     const halaman = document.getElementById('halaman-proses-kelulusan');
     const isPremium = (globalDonasiStatus === 'APPROVED');
@@ -11891,6 +11898,14 @@
    */
   function onNamaSekolahForProsesLoaded(response) {
     setLoading(false);
+
+    // --- [MODIFIKASI: ENABLE RESTORE ZONE SETELAH SELESAI] ---
+    const restoreInput = document.getElementById('file-restore-input');
+    const restoreZone = document.getElementById('file-restore-zone');
+    if(restoreInput) restoreInput.disabled = false;
+    if(restoreZone) restoreZone.classList.remove('disabled');
+    // ---------------------------------------------------------
+
     if (response.status === 'sukses') {
       document.getElementById('nama-sekolah-untuk-konfirmasi').innerText = response.namaSekolah;
       document.getElementById('nama-sekolah-hidden-konfirmasi').value = response.namaSekolah;
