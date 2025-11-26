@@ -2305,6 +2305,36 @@
       </div>
     </div>
 
+    <div id="modal-setup-new-ta" class="modal">
+      <div class="modal-content" style="max-width: 450px;">
+        <div class="modal-header">
+          <h2 id="modal-new-ta-title">Persiapan Tahun Ajaran Baru</h2>
+        </div>
+        <div class="modal-body">
+          <p>Data tahun ajaran saat ini belum ada di Arsip. Setelah reset, sistem akan menyiapkan tahun ajaran berikutnya.</p>
+          <div class="alert alert-info" style="font-size: 14px; padding: 10px; margin-bottom: 15px;">
+            Silakan tentukan ID dan Deskripsi untuk <strong>Tahun Ajaran Berikutnya</strong>.
+          </div>
+          
+          <form id="form-new-ta-reset">
+            <div class="form-group">
+              <label for="new-ta-id-select">ID Tahun Ajaran (Berikutnya)</label>
+              <select id="new-ta-id-select" class="form-control">
+                </select>
+            </div>
+            <div class="form-group">
+              <label for="new-ta-desc-input">Deskripsi (Contoh: 2025/2026)</label>
+              <input type="text" id="new-ta-desc-input" class="form-control" placeholder="2025/2026">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-batal-new-ta" style="background-color: var(--secondary-color);"><i class="fas fa-times"></i> Batal</button>
+          <button id="btn-lanjut-reset-new-ta" style="background-color: var(--success-color);"><i class="fas fa-arrow-right"></i> Lanjut Reset</button>
+        </div>
+      </div>
+    </div>
+
     <canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10001; pointer-events: none;"></canvas>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
