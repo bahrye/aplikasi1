@@ -11915,60 +11915,127 @@
     }
   }
 
+  // --- LOGIKA RESET DATA (DIPERBAIKI: FIX ERROR 'innerText' & Alur Download) ---
+
   /**
-   * [BARU] Menjalankan proses utama: 1. Backup, 2. Hapus.
+   * 1. FUNGSI PEMICU UTAMA
+   * Dipanggil saat tombol "Download Backup & Hapus Data" diklik.
    */
   function jalankanProsesKelulusan() {
-    // Langkah 1: Panggil backup
-    setLoading(true, 'Membuat file backup database... Ini mungkin perlu waktu beberapa saat.', true, true);
+    // Langkah 1: Tampilkan Loading & Mulai request Excel
+    setLoading(true, 'Langkah 1/3: Membuat backup Excel...', true, true);
     hideMessage('proses-kelulusan-message');
     
+    // Panggil server
     google.script.run
-      .withSuccessHandler(onBackupDownloaded) // Handler kustom
-      .withFailureHandler(onGagal) // Handler onGagal biasa
-      .getBackupDatabaseExcel(getToken()); // Fungsi backend baru
+      .withSuccessHandler(onBackupExcelReady) 
+      .withFailureHandler(onGagal) 
+      .getBackupDatabaseExcel(getToken());
   }
 
   /**
-   * [BARU] Callback setelah file backup berhasil dibuat.
+   * 2. CALLBACK SETELAH EXCEL SIAP
    */
-  function onBackupDownloaded(response) {
-    setLoading(false); // Matikan loading "Membuat backup..."
-    
+  function onBackupExcelReady(response) {
     if (response.status === 'sukses') {
-      // 1. Picu download di browser
-      try {
-        const dataUrl = `data:${response.mimeType};base64,${response.base64}`;
-        const link = document.createElement('a');
-        link.setAttribute('href', dataUrl);
-        link.setAttribute('download', response.fileName);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (e) {
-        showMessage('proses-kelulusan-message', 'Gagal memicu download: ' + e.message, true);
-        return; // Hentikan proses jika download gagal
-      }
       
-      // 2. Tampilkan toast perantara
-      showToast("Backup berhasil diunduh. Memulai pembersihan data...", 'sukses', 3000);
+      // A. Trigger Download Excel
+      downloadFileAuto(response.base64, response.mimeType, response.fileName);
       
-      // 3. Panggil proses penghapusan data
-      setLoading(true, 'Menghapus data siswa dan nilai... Harap jangan tutup halaman.', true, true);
-      
-      google.script.run
-        .withSuccessHandler(onPembersihanSelesai)
-        .withFailureHandler(onGagal)
-        .hapusSemuaDataSiswaDanNilai(getToken()); // Fungsi backend baru
-        
+      // B. Beri notifikasi visual bahwa Excel sudah dikirim
+      showToast("Backup Excel sedang diunduh. Jangan tutup halaman...", "sukses", 3000);
+
+      // C. Jeda 4 detik sebelum lanjut ke langkah 2 (Supaya browser tidak memblokir download kedua)
+      setTimeout(() => {
+          // Update status loading untuk Langkah 2
+          setLoading(true, 'Langkah 2/3: Membuat backup aman (.sbk)...', true, true);
+          
+          console.log("Lanjut ke Langkah 2: Request SBK...");
+          google.script.run
+            .withSuccessHandler(onBackupSbkReady)
+            .withFailureHandler(onGagal) // Jika gagal di tengah, berhenti.
+            .getSecureBackupFile(getToken());
+      }, 4000);
+
     } else {
-      showMessage('proses-kelulusan-message', 'Gagal membuat file backup: ' + response.message, true);
+      setLoading(false);
+      showMessage('proses-kelulusan-message', 'Gagal membuat backup Excel: ' + response.message, true);
     }
   }
 
   /**
-   * [BARU] Callback setelah semua data dihapus.
+   * 3. CALLBACK SETELAH .SBK SIAP
+   */
+  function onBackupSbkReady(response) {
+    if (response.status === 'sukses') {
+      
+      // A. Trigger Download .SBK
+      downloadFileAuto(response.fileContent, response.mimeType, response.fileName);
+      
+      // B. Beri notifikasi
+      showToast("Backup Aman (.sbk) sedang diunduh...", "sukses", 3000);
+
+      // C. Jeda 4 detik lagi sebelum menghapus data
+      setTimeout(() => {
+          // Update status loading untuk Langkah 3
+          setLoading(true, 'Langkah 3/3: Menghapus data & Mereset sistem...', true, true);
+          
+          console.log("Lanjut ke Langkah 3: Hapus Data...");
+          google.script.run
+            .withSuccessHandler(onPembersihanSelesai)
+            .withFailureHandler(onGagal)
+            .hapusSemuaDataSiswaDanNilai(getToken());
+      }, 4000);
+
+    } else {
+      setLoading(false);
+      showMessage('proses-kelulusan-message', 'Gagal membuat backup aman (.sbk). Reset dibatalkan demi keamanan.', true);
+    }
+  }
+
+  /**
+   * 4. HELPER DOWNLOAD (DIPERBAIKI: Menggunakan Blob & Klik Otomatis)
+   */
+  function downloadFileAuto(base64Data, mimeType, fileName) {
+    try {
+      // Konversi Base64 ke Blob
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], {type: mimeType});
+      
+      // Buat URL Object dari Blob
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Buat elemen link sementara
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      link.style.display = 'none'; // Sembunyikan
+      document.body.appendChild(link);
+      
+      // Klik otomatis
+      link.click();
+      
+      // Bersihkan memori setelah jeda singkat
+      setTimeout(() => {
+          if (document.body.contains(link)) {
+             document.body.removeChild(link);
+          }
+          window.URL.revokeObjectURL(blobUrl);
+      }, 100);
+      
+    } catch (e) {
+      console.error("Gagal download otomatis: " + e.message);
+      showToast("Gagal download otomatis: " + fileName + ". Coba lagi.", 'gagal');
+    }
+  }
+
+  /**
+   * 5. CALLBACK FINAL (SELESAI)
    */
   function onPembersihanSelesai(response) {
     setLoading(false);
@@ -11976,7 +12043,7 @@
     if (response.status === 'sukses') {
       // Bersihkan semua cache di sisi klien
       globalSiswaList = [];
-      globalGuruList = []; // Juga hapus data guru
+      globalGuruList = [];
       globalKelasListCache = [];
       globalNilaiGridCacheUM = null;
       globalNilaiGridCachePraktek = null;
@@ -11984,7 +12051,7 @@
       globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
       
       // Tampilkan notifikasi sukses dan kembali ke dasbor
-      showToast('Proses Kelulusan Selesai. Data siswa, guru, dan nilai telah dihapus.', 'sukses', 5000);
+      showToast('SUKSES! Data telah direset. Backup Excel & .SBK telah diamankan.', 'sukses', 6000);
       tampilHalaman('halaman-utama');
       
     } else {
@@ -14759,6 +14826,147 @@
       // Reset border kartu
       card.style.borderColor = ''; 
     }
+  }
+
+  // --- LOGIKA DOWNLOAD BACKUP AMAN ---
+  document.getElementById('btn-download-secure-backup').addEventListener('click', () => {
+     setLoading(true, 'Membuat backup aman (.sbk)...', true, true);
+     google.script.run
+       .withSuccessHandler(onSecureBackupCreated)
+       .withFailureHandler(onGagal)
+       .getSecureBackupFile(getToken());
+  });
+
+  function onSecureBackupCreated(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+       // Download file binary
+       try {
+         // Buat blob
+         const byteCharacters = atob(response.fileContent);
+         const byteNumbers = new Array(byteCharacters.length);
+         for (let i = 0; i < byteCharacters.length; i++) {
+           byteNumbers[i] = byteCharacters.charCodeAt(i);
+         }
+         const byteArray = new Uint8Array(byteNumbers);
+         const blob = new Blob([byteArray], {type: response.mimeType});
+         
+         const link = document.createElement('a');
+         link.href = window.URL.createObjectURL(blob);
+         link.download = response.fileName;
+         document.body.appendChild(link);
+         link.click();
+         document.body.removeChild(link);
+         
+         showToast("Backup aman berhasil diunduh. Simpan file .sbk ini baik-baik.", "sukses");
+       } catch (e) {
+         showToast("Gagal download file: " + e.message, "gagal");
+       }
+    } else {
+       showMessage('proses-kelulusan-message', response.message, true);
+    }
+  }
+
+  // --- LOGIKA RESTORE DATA ---
+  
+  const fileRestoreInput = document.getElementById('file-restore-input');
+  const fileRestoreText = document.getElementById('file-restore-text');
+  const btnRestore = document.getElementById('btn-proses-restore');
+  const fileRestoreZone = document.getElementById('file-restore-zone');
+
+  if (fileRestoreInput) {
+    fileRestoreInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        // Validasi ekstensi sederhana
+        if (!file.name.endsWith('.sbk')) {
+           showToast("Format file salah! Harap pilih file berakhiran .sbk", "gagal");
+           fileRestoreInput.value = "";
+           btnRestore.disabled = true;
+           fileRestoreText.innerText = "Klik untuk memilih file backup (.sbk)...";
+           fileRestoreText.classList.remove('file-chosen');
+           return;
+        }
+        fileRestoreText.innerText = `File Siap: ${file.name}`;
+        fileRestoreText.classList.add('file-chosen');
+        btnRestore.disabled = false;
+      } else {
+        btnRestore.disabled = true;
+        fileRestoreText.innerText = "Klik untuk memilih file backup (.sbk)...";
+        fileRestoreText.classList.remove('file-chosen');
+      }
+    });
+    
+    // Drag & Drop effect (reuse style)
+    fileRestoreZone.addEventListener('dragover', (e) => { e.preventDefault(); fileRestoreZone.classList.add('drag-over'); });
+    fileRestoreZone.addEventListener('dragleave', (e) => { e.preventDefault(); fileRestoreZone.classList.remove('drag-over'); });
+    fileRestoreZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileRestoreZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+          fileRestoreInput.files = e.dataTransfer.files;
+          const changeEvent = new Event('change');
+          fileRestoreInput.dispatchEvent(changeEvent);
+        }
+    });
+  }
+
+  if (btnRestore) {
+      btnRestore.addEventListener('click', () => {
+         const file = fileRestoreInput.files[0];
+         if (!file) return;
+         
+         const title = "PERINGATAN RESTORE!";
+         const message = `Anda akan mengembalikan database ke kondisi file backup <strong>${file.name}</strong>.<br><br>
+                          <span style="color:red;">SEMUA DATA SAAT INI AKAN DIHAPUS DAN DITIMPA!</span><br><br>
+                          Apakah Anda yakin 100% ingin melanjutkan?`;
+         
+         const callback = function() {
+             lakukanRestore(file);
+         };
+         
+         showConfirmationModal(title, message, callback, 'danger');
+      });
+  }
+
+  function lakukanRestore(file) {
+      setLoading(true, "Membaca file backup...", true, true);
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          const base64Data = e.target.result.split(',')[1]; // Ambil isi base64
+          const fileData = {
+              base64: base64Data,
+              mimeType: file.type || 'application/octet-stream',
+              fileName: file.name
+          };
+          
+          // Update loading text
+          // Kita bisa update teks loading dengan menutup dan membuka lagi atau membiarkannya
+          // Tapi karena blocking UI, user hanya melihat spinner.
+          
+          google.script.run
+            .withSuccessHandler(onRestoreSuccess)
+            .withFailureHandler(onGagal) // onGagal akan mematikan loading
+            .restoreDatabaseFromSecureFile(getToken(), fileData);
+      };
+      reader.onerror = (e) => {
+          setLoading(false);
+          showToast("Gagal membaca file lokal.", "gagal");
+      };
+      reader.readAsDataURL(file);
+  }
+
+  function onRestoreSuccess(response) {
+      setLoading(false);
+      if (response.status === 'sukses') {
+          showInfoModal("Restore Berhasil", response.message, false, () => {
+              // Reload halaman penuh untuk memastikan semua cache bersih dan data baru tampil
+              location.reload(); 
+          });
+      } else {
+          showMessage('proses-kelulusan-message', response.message, true);
+      }
   }
 
 </script>
