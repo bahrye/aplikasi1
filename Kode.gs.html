@@ -10754,3 +10754,211 @@ function getPendingNotificationCount(token) {
     return { status: "silent_error", count: 0 };
   }
 }
+
+// --- FITUR BACKUP & RESTORE AMAN (.SBK) ---
+
+/**
+ * 1. MEMBUAT FILE BACKUP AMAN
+ * Mengambil semua data sheet, membuat checksum, dan mengenkripsi ke Base64.
+ */
+function getSecureBackupFile(token) {
+  try {
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    
+    // Daftar sheet yang akan dibackup
+    const sheetsToBackup = [
+      'Data_Sekolah',
+      'Pengaturan',
+      'Mapel',
+      'Kelas',
+      'Akun_Guru',
+      'Siswa',
+      'Nilai_Ujian',
+      'Nilai_Rapor_Akhir'
+    ];
+
+    const backupData = {};
+
+    // Loop ambil data
+    sheetsToBackup.forEach(sheetName => {
+      const sheet = ss.getSheetByName(sheetName);
+      if (sheet) {
+        const values = sheet.getDataRange().getValues();
+        backupData[sheetName] = values;
+      }
+    });
+
+    // Tambahkan Metadata
+    const payload = {
+      version: '1.0',
+      timestamp: new Date().getTime(),
+      schoolID: sessionData.sekolahID,
+      schoolName: sessionData.namaSekolah,
+      data: backupData
+    };
+
+    // Konversi ke String JSON
+    const jsonString = JSON.stringify(payload);
+
+    // Buat Checksum (SHA-256 Hash dari data asli) untuk validasi integritas
+    const signature = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, jsonString, Utilities.Charset.UTF_8);
+    const signatureHex = bytesToHex(signature);
+
+    // Bungkus Data + Signature
+    const finalPacket = JSON.stringify({
+      payload: jsonString, // Data asli stringified
+      signature: signatureHex // Tanda tangan
+    });
+
+    // Encode ke Base64 agar tidak mudah dibaca/diedit manusia
+    const encodedContent = Utilities.base64Encode(finalPacket, Utilities.Charset.UTF_8);
+
+    // Buat nama file
+    const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmm");
+    const fileName = `BACKUP_SECURE_${sessionData.namaSekolah.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.sbk`;
+
+    return {
+      status: "sukses",
+      fileContent: encodedContent,
+      fileName: fileName,
+      mimeType: "application/octet-stream" // Tipe file binary umum
+    };
+
+  } catch (e) {
+    return { status: "gagal", message: "Gagal membuat backup aman: " + e.message };
+  }
+}
+
+/**
+ * 2. PROSES RESTORE DARI FILE .SBK
+ */
+function restoreDatabaseFromSecureFile(token, fileData) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(60000); // Lock lama karena proses berat
+
+  try {
+    const { sessionData, spreadsheetID, app2DbId } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    
+    // 1. Decode Base64
+    const decodedString = Utilities.newBlob(Utilities.base64Decode(fileData.base64), fileData.mimeType).getDataAsString();
+    
+    let packet;
+    try {
+      packet = JSON.parse(decodedString);
+    } catch (e) {
+      throw new Error("File rusak atau format tidak valid. Tidak dapat membaca paket.");
+    }
+
+    // 2. Validasi Struktur Paket
+    if (!packet.payload || !packet.signature) {
+      throw new Error("Format file backup tidak dikenali (Signature hilang).");
+    }
+
+    // 3. Validasi Integritas (Cek Hash)
+    // Hitung ulang hash dari payload yang diterima
+    const calculatedSig = bytesToHex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, packet.payload, Utilities.Charset.UTF_8));
+    
+    if (calculatedSig !== packet.signature) {
+      throw new Error("KEAMANAN: File backup telah dimodifikasi atau korup! Restore dibatalkan demi keamanan data.");
+    }
+
+    // 4. Parse Data Payload
+    const content = JSON.parse(packet.payload);
+
+    // 5. Validasi Pemilik Backup (Opsional: Cek apakah ID sekolah cocok)
+    // Jika Anda ingin backup sekolah A bisa direstore ke sekolah B, hapus blok ini.
+    if (content.schoolID && content.schoolID !== sessionData.sekolahID) {
+       // Opsional: throw new Error("File backup ini milik sekolah lain. Tidak dapat direstore di sini.");
+    }
+
+    // 6. EKSEKUSI RESTORE (Tulis ke Sheet)
+    const sheetsData = content.data;
+    
+    // Urutan restore penting (Referensi dulu baru data transaksi)
+    const sheetOrder = [
+      'Data_Sekolah', 'Pengaturan', 'Mapel', 'Kelas', 'Akun_Guru', 'Siswa', 'Nilai_Ujian', 'Nilai_Rapor_Akhir'
+    ];
+
+    sheetOrder.forEach(sheetName => {
+      if (sheetsData[sheetName] && sheetsData[sheetName].length > 0) {
+        let sheet = ss.getSheetByName(sheetName);
+        if (!sheet) {
+           sheet = ss.insertSheet(sheetName);
+        }
+        
+        // Bersihkan sheet
+        sheet.clear();
+        
+        // Tulis data
+        const rows = sheetsData[sheetName];
+        sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+        
+        // Format khusus jika perlu (misal kolom NISN jadi text)
+        if (sheetName === 'Siswa') {
+           try { sheet.getRange("C:D").setNumberFormat("@"); } catch(e){}
+        }
+        if (sheetName === 'Data_Sekolah') {
+           try { sheet.getRange("A2:P2").setNumberFormat("@"); } catch(e){}
+        }
+      }
+    });
+
+    // 7. SINKRONISASI KE APP 2 (PENTING!)
+    // Karena data lokal berubah total, App 2 harus di-reset atau disinkronkan.
+    // Cara paling aman: Hapus semua data di App 2, lalu push ulang Siswa & Guru.
+    // (Ini proses berat, pastikan timeout cukup)
+    
+    if (app2DbId) {
+      try {
+        Logger.log("Restore: Membersihkan App 2...");
+        _syncDeleteAllDataInApp2(app2DbId); // Fungsi ini sudah ada di kode Anda sebelumnya
+        
+        // Push ulang Guru (dari data yang baru direstore)
+        const sheetGuru = ss.getSheetByName('Akun_Guru');
+        const guruData = sheetGuru.getDataRange().getValues();
+        // Skip header
+        for (let i = 1; i < guruData.length; i++) {
+           const r = guruData[i];
+           // email, pass(null), nama, id_sekolah, role, nip, mapelJson, app2db, app1db
+           let mapelJsonParsed = {};
+           try { mapelJsonParsed = JSON.parse(r[5]); } catch(e){}
+           
+           addOrUpdateGuruInApp2(r[0], null, r[1], sessionData.sekolahID, 'guru', r[2], mapelJsonParsed, app2DbId, spreadsheetID);
+        }
+        
+        // Push ulang Siswa (dari data yang baru direstore)
+        const sheetSiswa = ss.getSheetByName('Siswa');
+        const siswaData = sheetSiswa.getDataRange().getValues();
+        const studentsForApp2 = [];
+        for (let i = 1; i < siswaData.length; i++) {
+           // r[0]=id, r[1]=nama, r[2]=nisn, r[7]=kelas
+           const r = siswaData[i];
+           if (r[2]) {
+             studentsForApp2.push({ nisn: r[2], nama: r[1], kelas: r[7] });
+           }
+        }
+        if (studentsForApp2.length > 0) {
+           _syncBatchImportSiswaToApp2(app2DbId, studentsForApp2, sessionData.sekolahID);
+        }
+        
+        Logger.log("Restore: Sinkronisasi App 2 selesai.");
+
+      } catch (syncError) {
+        Logger.log("Restore Warning: Sinkronisasi ke App 2 tidak sempurna: " + syncError.message);
+      }
+    }
+
+    // 8. Bersihkan Cache
+    clearAllCaches(token);
+
+    return { status: "sukses", message: "Database berhasil dipulihkan dari backup! Halaman akan dimuat ulang." };
+
+  } catch (e) {
+    Logger.log("Restore Error: " + e.stack);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
