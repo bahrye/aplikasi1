@@ -6233,4 +6233,94 @@
     width: 100%;
     margin: 0 !important;
   }
+
+  /* --- GAYA BARU TOMBOL RESTORE (FIX ALIGNMENT & DESIGN) --- */
+  #btn-proses-restore {
+    /* LAYOUT & DIMENSI */
+    width: 100% !important;
+    box-sizing: border-box !important; /* PENTING: Agar lebar tombol tidak melebihi container */
+    padding: 16px 20px !important;
+    margin-top: 15px !important;       /* Jarak yang pas dengan kotak upload */
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+
+    /* TYPOGRAPHY */
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'Roboto', sans-serif; /* Pastikan font konsisten */
+
+    /* BORDER & BACKGROUND */
+    border: none !important;
+    border-radius: 12px !important;    /* Samakan dengan radius kotak upload (file-upload-zone) */
+    
+    /* Gradient Hijau Elegan */
+    background: linear-gradient(135deg, #198754 0%, #157347 100%) !important;
+    color: white !important;
+    
+    /* EFEK VISUAL */
+    box-shadow: 0 4px 6px rgba(25, 135, 84, 0.2);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    
+    /* ALIGNMENT ISI */
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  /* State: Hover (Saat mouse diarahkan) */
+  #btn-proses-restore:hover:not(:disabled) {
+    transform: translateY(-2px); /* Naik sedikit */
+    box-shadow: 0 8px 15px rgba(25, 135, 84, 0.3); /* Bayangan membesar lembut */
+    background: linear-gradient(135deg, #20c997 0%, #198754 100%) !important; /* Warna lebih cerah */
+  }
+
+  /* State: Active (Saat diklik) */
+  #btn-proses-restore:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(25, 135, 84, 0.2);
+  }
+
+  /* State: Disabled (Saat belum pilih file) */
+  #btn-proses-restore:disabled {
+    background: #e9ecef !important;   /* Abu-abu muda menyatu dengan bg */
+    color: #adb5bd !important;        /* Teks abu-abu */
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+    transform: none !important;
+    border: 1px solid #dee2e6 !important; /* Border tipis agar tetap terlihat rapi */
+  }
+
+  /* Ikon di dalam tombol */
+  #btn-proses-restore i {
+    font-size: 18px;
+  }
+
+  /* --- GAYA DISABLED UNTUK AREA UPLOAD RESTORE --- */
+  .file-upload-zone.disabled {
+    opacity: 0.5 !important;
+    pointer-events: none !important; /* Mencegah klik */
+    background-color: #e9ecef !important; /* Warna abu-abu */
+    border-color: #adb5bd !important;
+    cursor: not-allowed !important;
+    position: relative;
+  }
+
+  /* Opsional: Menambahkan ikon gembok atau loading saat disabled */
+  .file-upload-zone.disabled::after {
+    content: "Menunggu data...";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    font-weight: bold;
+    color: #6c757d;
+    background: rgba(255,255,255,0.8);
+    padding: 5px 10px;
+    border-radius: 5px;
+  }
 </style>
