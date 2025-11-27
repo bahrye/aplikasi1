@@ -2097,7 +2097,13 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: transparent; 
+    
+    /* --- MODIFIKASI: Efek Buram (Blur) --- */
+    background: rgba(255, 255, 255, 0.6); /* Putih transparan agar lebih bersih */
+    backdrop-filter: blur(8px);           /* Efek buram */
+    -webkit-backdrop-filter: blur(8px);   /* Support untuk Safari/iOS */
+    /* ------------------------------------- */
+    
     z-index: 10000; 
     cursor: wait; 
   }
@@ -6413,5 +6419,31 @@
       padding: 2px 20px; font-size: 8px; font-weight: 700;
       transform: rotate(45deg); box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       z-index: 3; display: block;
+  }
+
+  /* --- TAMBAHAN BARU: Posisi Tengah Layar --- */
+  #global-toast-container.center-screen {
+      top: 50% !important;       /* Dorong ke tengah vertikal */
+      left: 50% !important;      /* Dorong ke tengah horizontal */
+      transform: translate(-50%, -50%) !important; /* Koreksi posisi agar pas di tengah */
+      
+      /* Reset lebar agar menyesuaikan konten pesan yang besar */
+      width: auto !important;
+      max-width: 90% !important;
+      min-width: 320px !important; /* Minimal lebar agar rapi */
+  }
+
+  /* Pastikan pesan di dalamnya juga lebih rapi saat di tengah */
+  #global-toast-container.center-screen .global-toast {
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2); /* Bayangan lebih tebal agar elegan */
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-direction: column; /* Susun ikon dan teks ke bawah (opsional, tapi lebih bagus) */
+      text-align: center;
+  }
+  
+  #global-toast-container.center-screen .toast-icon {
+      margin-right: 0;
+      margin-bottom: 10px;
+      transform: scale(1.5); /* Perbesar spinner */
   }
 </style>
