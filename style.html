@@ -358,7 +358,8 @@
   #btn-kembali-ke-dashboard-17,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
-  #btn-kembali-ke-dashboard-guru {
+  #btn-kembali-ke-dashboard-guru,
+  #btn-kembali-ke-dashboard-arsip {
     width: auto;
     padding: 12px 16px; 
     font-size: 15px;     
@@ -390,7 +391,8 @@
   #btn-kembali-ke-dashboard-17:hover,
   #btn-kembali-ke-input-rapor:hover,
   #btn-kembali-ke-input-rapor-2:hover,
-  #btn-kembali-ke-dashboard-guru:hover {
+  #btn-kembali-ke-dashboard-guru:hover,
+  #btn-kembali-ke-dashboard-arsip:hover {
      background-color: #5a6268;
      color: white;
   }
@@ -512,7 +514,8 @@
     #halaman-donasi,
     #halaman-proses-kelulusan,
     #halaman-pengaturan-cetak,
-    #halaman-kelola-nilai-guru {
+    #halaman-kelola-nilai-guru,
+    #halaman-kelola-arsip {
       max-width: 960px;
     }
 
@@ -2839,7 +2842,8 @@
   #btn-kembali-ke-dashboard-17,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
-  #btn-kembali-ke-dashboard-guru {
+  #btn-kembali-ke-dashboard-guru,
+  #btn-kembali-ke-dashboard-arsip {
       /* Memastikan elemen tombol itu sendiri dapat diklik */
       user-select: auto; 
       -webkit-user-select: auto;
@@ -2865,7 +2869,8 @@
   #btn-kembali-ke-dashboard-17 i,
   #btn-kembali-ke-input-rapor i,
   #btn-kembali-ke-input-rapor-2 i,
-  #btn-kembali-ke-dashboard-guru i {
+  #btn-kembali-ke-dashboard-guru i,
+  #btn-kembali-ke-dashboard-arsip i {
       pointer-events: none;
   }
 
@@ -6322,5 +6327,91 @@
     background: rgba(255,255,255,0.8);
     padding: 5px 10px;
     border-radius: 5px;
+  }
+
+  /* --- TAMBAHKAN STYLE UNTUK TOMBOL KELOLA ARSIP --- */
+  #btn-buka-kelola-arsip { color: #607d8b; } /* Blue Grey */
+  #btn-buka-kelola-arsip:hover {
+    background-color: #607d8b !important;
+    color: white !important;
+  }
+
+  /* Override: Kembalikan warna asli untuk kartu Kelola Arsip saat disabled (Premium Logic) */
+  #btn-buka-kelola-arsip.card-disabled,
+  #btn-buka-kelola-arsip:disabled {
+    background-color: var(--bg-white) !important;
+    color: #607d8b !important;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+  #btn-buka-kelola-arsip.card-disabled i,
+  #btn-buka-kelola-arsip:disabled i,
+  #btn-buka-kelola-arsip.card-disabled span,
+  #btn-buka-kelola-arsip:disabled span {
+    color: #607d8b !important;
+  }
+  #btn-buka-kelola-arsip.card-disabled:hover,
+  #btn-buka-kelola-arsip:disabled:hover {
+    background-color: #607d8b !important;
+    color: white !important;
+    transform: translateY(-5px) !important;
+  }
+  #btn-buka-kelola-arsip.card-disabled:hover i,
+  #btn-buka-kelola-arsip:disabled:hover i,
+  #btn-buka-kelola-arsip.card-disabled:hover span,
+  #btn-buka-kelola-arsip:disabled:hover span {
+    color: white !important;
+  }
+
+  /* Shimmer Effect untuk Kelola Arsip */
+  #btn-buka-kelola-arsip.card-disabled::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    --shimmer-color: rgba(96, 125, 139, 0.8); 
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0) 30%, var(--shimmer-color) 50%, rgba(255, 255, 255, 0) 70%);
+    transform: translateX(-150%);
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out;
+    z-index: 1;
+    display: block;
+    border-radius: 12px;
+  }
+  
+  /* Tombol Hapus Arsip */
+  .btn-hapus-arsip {
+    background-color: var(--danger-color);
+    color: white;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn-hapus-arsip:hover {
+    background-color: #b02a37;
+  }
+  
+  /* Read-Only Mode untuk Halaman Kelola Arsip */
+  #halaman-kelola-arsip.non-premium-readonly .btn-hapus-arsip {
+      position: relative;
+      overflow: hidden;
+      cursor: pointer !important; /* Tetap bisa diklik untuk memicu donasi */
+      pointer-events: auto !important;
+  }
+  #halaman-kelola-arsip.non-premium-readonly .btn-hapus-arsip::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      --shimmer-color: rgba(255, 255, 255, 0.8);
+      background: linear-gradient(100deg, rgba(255, 255, 255, 0) 30%, var(--shimmer-color) 50%, rgba(255, 255, 255, 0) 70%);
+      transform: translateX(-150%);
+      animation: shimmer-premium-stronger 3.5s infinite ease-in-out;
+      z-index: 1; display: block; border-radius: 6px;
+  }
+  #halaman-kelola-arsip.non-premium-readonly .btn-hapus-arsip .premium-stamp {
+      position: absolute; top: -5px; right: -20px;
+      background-color: #fd7e14; color: white;
+      padding: 2px 20px; font-size: 8px; font-weight: 700;
+      transform: rotate(45deg); box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      z-index: 3; display: block;
   }
 </style>
