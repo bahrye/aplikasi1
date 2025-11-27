@@ -551,24 +551,34 @@
     document.getElementById('loader').style.display = 'none';
     
     const uiBlocker = document.getElementById('global-ui-blocker');
+    const toastContainer = document.getElementById('global-toast-container'); // <--- Tambahkan ini
 
     if (isLoading) {
       
-      // --- PERUBAHAN DI SINI ---
-      // Hanya tampilkan toast jika showLoadingToast adalah true
       if (showLoadingToast) {
         showToast(message, 'proses');
       }
-      // --- AKHIR PERUBAHAN ---
       
       if (uiBlocker && blockUI) {
         uiBlocker.style.display = 'block';
+        
+        // --- MODIFIKASI: Pindahkan ke Tengah ---
+        if (toastContainer) {
+            toastContainer.classList.add('center-screen');
+        }
+        // ---------------------------------------
       }
     } else {
       hideToast();
       if (uiBlocker) {
         uiBlocker.style.display = 'none';
       }
+
+      // --- MODIFIKASI: Kembalikan ke Posisi Semula ---
+      if (toastContainer) {
+          toastContainer.classList.remove('center-screen');
+      }
+      // -----------------------------------------------
     }
   }
 
@@ -1262,20 +1272,47 @@
         }
         
         hideMessage('verif-message');
-        setButtonLoading(btn, "Memverifikasi...");
+
+        // --- MODIFIKASI: TAMPILAN PESAN PROSES LAMA ---
+        
+        // 1. Matikan tombol agar tidak diklik ganda
+        btn.disabled = true;
+
+        // 2. Tampilkan Overlay Loading dengan Pesan Detail
+        setLoading(true, 
+            `<div style="text-align: center;">
+                <strong style="font-size: 18px;">Memproses Verifikasi...</strong>
+                <br><br>
+                Sistem sedang mencocokkan kode Anda.<br>
+                Jika valid, sistem akan langsung <strong>membuat Database & Folder Sekolah</strong>.
+                <br><br>
+                <span style="color: #ffc107; font-weight: bold;">
+                   <i class="fas fa-clock"></i> Proses ini membutuhkan waktu 1-3 menit.
+                </span>
+                <br>
+                Mohon <strong>JANGAN TUTUP</strong> halaman ini sampai selesai.
+            </div>`, 
+            true, // blockUI
+            true  // showLoadingToast (sebagai overlay konten)
+        );
         
         google.script.run
             .withSuccessHandler((res) => {
-                resetButtonLoading(btn);
+                // Matikan loading global
+                setLoading(false);
+                btn.disabled = false; // Aktifkan tombol kembali (jika gagal)
+
                 if (res.status === 'sukses') {
-                    showToast("Verifikasi Berhasil! Silakan Login.", "sukses");
-                    tampilHalaman('halaman-login'); // Pindah ke login
+                    // Pesan sukses akhir
+                    showToast("Akun Berhasil Dibuat! Silakan Login.", "sukses", 5000);
+                    tampilHalaman('halaman-login'); 
                 } else {
                     showMessage('verif-message', res.message, true);
                 }
             })
             .withFailureHandler((err) => {
-                resetButtonLoading(btn);
+                setLoading(false);
+                btn.disabled = false;
                 showMessage('verif-message', "Error: " + err.message, true);
             })
             .prosesVerifikasiManual(email, kode);
