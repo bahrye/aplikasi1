@@ -605,33 +605,6 @@
   }
 
   function tampilHalaman(idHalaman) {
-    // --- [PERBAIKAN BARU V2] ---
-    // BLOK KODE UNTUK SCROLL DIPINDAHKAN DARI SINI
-    // --- [AKHIR PERBAIKAN BARU V2] ---
-
-    /* --- =================================== --- */
-    /* ---      TAMBAHAN BARU: Hentikan Video    --- */
-    /* --- =================================== --- */
-    // Cek apakah player video donasi (ytPlayerDonasi) ada
-    // dan memiliki fungsi stopVideo.
-    if (ytPlayerDonasi && typeof ytPlayerDonasi.stopVideo === 'function') {
-      
-      // Jika halaman yang dituju BUKAN halaman donasi,
-      // panggil .stopVideo() untuk menghentikannya.
-      if (idHalaman !== 'halaman-donasi') {
-        ytPlayerDonasi.stopVideo();
-        
-        // Pastikan juga navigasi slider muncul kembali
-        const sliderEl = document.querySelector('.donasi-slider');
-        if (sliderEl) {
-            sliderEl.classList.remove('video-is-playing');
-        }
-      }
-    }
-    /* --- =================================== --- */
-    /* ---      AKHIR TAMBAHAN BARU            --- */
-    /* --- =================================== --- */
-
     const allPages = [
       'auth-container', 'halaman-utama', 'halaman-mapel',
       'halaman-data-sekolah', 'halaman-bobot', 'halaman-kelas', 'halaman-siswa',
@@ -3344,6 +3317,17 @@
       }
     }
     // --- AKHIR LOGIKA PEMUATAN AWAL ---
+
+    // --- TAMBAHAN: TOMBOL PLAYLIST YOUTUBE ---
+    const btnPlaylist = document.getElementById('btn-buka-playlist');
+    if (btnPlaylist) {
+      btnPlaylist.addEventListener('click', () => {
+        // GANTI URL DI BAWAH INI DENGAN LINK PLAYLIST ANDA
+        const urlPlaylist = "https://www.youtube.com/playlist?list=PLAYLIST_ID_ANDA"; 
+        window.open(urlPlaylist, '_blank');
+      });
+    }
+
   });
 
   function activateRaporTab(tabName) {
@@ -11739,134 +11723,6 @@
       showMessage('superadmin-message', response.message, true);
     }
   }
-
-  /* --- ============================================= --- */
-  /* ---      INISIALISASI SLIDER DONASI (SWIPER)      --- */
-  /* --- ============================================= --- */
-
-  // Pastikan kode ini ada DI LUAR (setelah) fungsi-fungsi lain
-  // Ia akan otomatis berjalan saat halaman dimuat
-
-  var donasiSwiper = new Swiper(".donasi-slider", {
-    // Opsi Loop (Kembali ke awal setelah slide terakhir)
-    loop: true,
-
-    // Indikator Titik-titik
-    pagination: {
-      el: ".swiper-pagination",
-      clickable: true,
-    },
-
-    // Tombol Panah Kanan/Kiri
-    navigation: {
-      nextEl: ".swiper-button-next",
-      prevEl: ".swiper-button-prev",
-    },
-    
-    // Bonus: Otomatis hentikan video YouTube saat slide diganti
-    on: {
-      slideChange: function () {
-        try {
-          // Cari semua iframe di dalam slider (LOGIKA ASLI)
-          var iframes = this.el.querySelectorAll('iframe');
-          iframes.forEach(function(iframe) {
-            // Reset 'src'-nya untuk menghentikan video
-            var iframeSrc = iframe.src;
-            iframe.src = iframeSrc; 
-          });
-
-          /* --- =================================== --- */
-          /* ---      TAMBAHAN BARU DI SINI        --- */
-          /* --- =================================== --- */
-          // Hentikan juga player API jika ada
-          if (ytPlayerDonasi && typeof ytPlayerDonasi.stopVideo === 'function') {
-            ytPlayerDonasi.stopVideo();
-          }
-          // Pastikan nav tampil lagi saat slide diganti
-          const sliderEl = document.querySelector('.donasi-slider');
-          if (sliderEl) {
-              sliderEl.classList.remove('video-is-playing');
-          }
-          /* --- =================================== --- */
-          /* ---      AKHIR TAMBAHAN BARU          --- */
-          /* --- =================================== --- */
-
-        } catch (e) {
-          console.warn("Gagal menghentikan video:", e);
-        }
-      },
-    }
-  });
-
-  /* --- ============================================= --- */
-  /* ---      KODE BARU: KONTROL VIDEO YOUTUBE         --- */
-  /* --- ============================================= --- */
-
-  // 1. Variabel global untuk player
-  let ytPlayerDonasi = null;
-
-  /**
-   * 2. Fungsi ini dipanggil otomatis oleh API YouTube (dari index.html)
-   * saat API siap.
-   */
-  function onYouTubeIframeAPIReady() {
-    const playerElement = document.getElementById('youtube-player-donasi');
-    if (playerElement) {
-      try {
-        ytPlayerDonasi = new YT.Player('youtube-player-donasi', {
-          events: {
-            'onReady': onPlayerReady,
-            'onStateChange': onPlayerStateChange
-          }
-        });
-      } catch(e) {
-        console.error("Gagal menginisialisasi YouTube Player API:", e);
-      }
-    }
-  }
-
-  /**
-   * 3. Dipanggil saat player siap.
-   */
-  function onPlayerReady(event) {
-    // Player siap. Kita tambahkan listener untuk menampilkan kembali nav
-    const sliderEl = document.querySelector('.donasi-slider');
-    if (sliderEl) {
-      // Listener untuk "kursor diarahkan ke video/slider"
-      sliderEl.addEventListener('mouseenter', showSliderNav);
-      // Listener untuk "halaman diklik"
-      document.addEventListener('click', showSliderNav);
-    }
-  }
-
-  /**
-   * 4. Fungsi untuk menangani perubahan status player (Play, Pause, dll.)
-   */
-  function onPlayerStateChange(event) {
-    const sliderEl = document.querySelector('.donasi-slider');
-    if (!sliderEl) return;
-
-    if (event.data == YT.PlayerState.PLAYING) {
-      // Saat video diputar: Sembunyikan navigasi
-      sliderEl.classList.add('video-is-playing');
-    } else {
-      // Saat video dijeda, selesai, atau buffering: Tampilkan navigasi
-      sliderEl.classList.remove('video-is-playing');
-    }
-  }
-
-  /**
-   * 5. Fungsi helper untuk menampilkan navigasi (dipanggil oleh listener)
-   */
-  function showSliderNav() {
-    const sliderEl = document.querySelector('.donasi-slider');
-    if (sliderEl) {
-      sliderEl.classList.remove('video-is-playing');
-    }
-  }
-  /* --- ============================================= --- */
-  /* ---      AKHIR KODE BARU                        --- */
-  /* --- ============================================= --- */
 
   /**
    * [BARU] Fungsi untuk memvalidasi format Kode Mapel (3-5 char, alphanumeric).
