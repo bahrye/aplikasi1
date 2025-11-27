@@ -7413,8 +7413,10 @@ function checkArsipExistence(token) {
 
 /**
  * [DIPERBARUI] Proses Kelulusan (Tutup Tahun Ajaran).
- * Sekarang menerima parameter opsional `newTaData`.
- * Jika `newTaData` ada, fungsi ini akan membuat Tahun Ajaran baru di App 2 setelah reset.
+ * 1. Mengarsipkan data ke App 3.
+ * 2. Menghapus data siswa/nilai di App 1 & App 2.
+ * 3. MENGGANTI total Tahun Ajaran di App 2 dengan yang baru.
+ * 4. MIGRASI semua Mapel & Guru di App 2 ke Tahun Ajaran baru.
  */
 function hapusSemuaDataSiswaDanNilai(token, newTaData) {
   const lock = LockService.getDocumentLock();
@@ -7448,39 +7450,56 @@ function hapusSemuaDataSiswaDanNilai(token, newTaData) {
       }
     });
 
-    // === 3. HAPUS DATA DI APLIKASI 2 (GLOBAL/DB) ===
+    // === 3. HAPUS & MIGRASI DATA DI APLIKASI 2 (GLOBAL/DB) ===
     if (app2DbId) {
         try {
           Logger.log("Menghapus data total di Aplikasi 2...");
-          _syncDeleteAllDataInApp2(app2DbId); // Helper ini tidak menghapus db_tahun_ajaran
           
-          // --- [BARU] TAMBAHKAN TAHUN AJARAN BARU JIKA ADA DATA ---
+          // 3a. Bersihkan data siswa, enrollment, dan status kirim
+          _syncDeleteAllDataInApp2(app2DbId); 
+          
+          // 3b. PROSES GANTI TAHUN AJARAN & MIGRASI MAPEL
           if (newTaData && newTaData.id && newTaData.deskripsi) {
              const ssApp2 = SpreadsheetApp.openById(app2DbId);
+             
+             // --- A. REPLACE TAHUN AJARAN (db_tahun_ajaran) ---
              const sheetTA = ssApp2.getSheetByName('db_tahun_ajaran');
              if (sheetTA) {
-                // Cek duplikat ID
-                const dataTA = sheetTA.getDataRange().getValues();
-                let exists = false;
-                for(let i=1; i<dataTA.length; i++) {
-                   if(String(dataTA[i][0]).toUpperCase() === String(newTaData.id).toUpperCase()) {
-                      exists = true; 
-                      break;
-                   }
+                // Hapus semua TA lama jika ada
+                if (sheetTA.getLastRow() > 1) {
+                   sheetTA.deleteRows(2, sheetTA.getLastRow() - 1);
                 }
-                
-                if (!exists) {
-                  // Append: [ID, Deskripsi, StatusKunci(False)]
-                  sheetTA.appendRow([newTaData.id, newTaData.deskripsi, false]);
-                  Logger.log(`Tahun Ajaran Baru Ditambahkan: ${newTaData.id}`);
-                }
+                // Masukkan TA Baru [ID, Deskripsi, StatusKunci(False)]
+                sheetTA.appendRow([newTaData.id, newTaData.deskripsi, false]);
+                Logger.log(`Tahun Ajaran direset menjadi: ${newTaData.id}`);
+             }
+
+             // --- B. MIGRASI MAPEL (db_mapel) ---
+             // Ubah kolom C (id_tahun_ajaran) semua mapel ke TA baru
+             const sheetMapel = ssApp2.getSheetByName('db_mapel');
+             if (sheetMapel && sheetMapel.getLastRow() > 1) {
+                // Kolom C adalah kolom ke-3
+                const numRows = sheetMapel.getLastRow() - 1;
+                sheetMapel.getRange(2, 3, numRows, 1).setValue(newTaData.id);
+                Logger.log(`Semua Mapel dipindahkan ke TA: ${newTaData.id}`);
+             }
+
+             // --- C. MIGRASI GURU (db_guru) ---
+             // Ubah kolom H (ActiveTA) semua guru ke TA baru agar login lancar
+             const sheetGuru = ssApp2.getSheetByName('db_guru');
+             if (sheetGuru && sheetGuru.getLastRow() > 1) {
+                // Kolom H adalah kolom ke-8
+                const numRowsGuru = sheetGuru.getLastRow() - 1;
+                sheetGuru.getRange(2, 8, numRowsGuru, 1).setValue(newTaData.id);
+                Logger.log(`ActiveTA semua guru diupdate ke: ${newTaData.id}`);
              }
           }
           // -------------------------------------------------------
 
-          Logger.log("Sukses membersihkan Aplikasi 2.");
+          Logger.log("Sukses membersihkan dan migrasi Aplikasi 2.");
         } catch(e) {
           Logger.log("Gagal menghapus/update App 2: " + e.message);
+          throw new Error("Gagal update App 2: " + e.message);
         }
     }
 
@@ -7490,9 +7509,12 @@ function hapusSemuaDataSiswaDanNilai(token, newTaData) {
     clearNilaiRaporCache(sessionData.sekolahID, spreadsheetID);
     clearRekapNilaiCache(sessionData.sekolahID);
     clearLockedKelasCache(sessionData.sekolahID);
+    
+    // Hapus cache TA agar dropdown terupdate
+    globalTaList = []; 
     CacheService.getScriptCache().remove(NILAI_IJAZAH_CACHE_KEY + "_" + sessionData.sekolahID);
 
-    return { status: "sukses", message: "Proses Kelulusan Selesai. Data siswa dan nilai telah direset. Tahun Ajaran baru (jika diisi) telah ditambahkan." };
+    return { status: "sukses", message: "Proses Kelulusan Selesai. Data siswa direset, Tahun Ajaran diganti baru, dan Mapel telah dimigrasi." };
 
   } catch (e) {
     Logger.log("Gagal hapusSemuaDataSiswaDanNilai: " + e.message);
@@ -10883,6 +10905,7 @@ function getSecureBackupFile(token) {
 
 /**
  * 2. PROSES RESTORE DARI FILE .SBK
+ * [DIPERBARUI] Otomatis memicu Hitung Ulang Nilai setelah restore selesai.
  */
 function restoreDatabaseFromSecureFile(token, fileData) {
   const lock = LockService.getDocumentLock();
@@ -10957,9 +10980,6 @@ function restoreDatabaseFromSecureFile(token, fileData) {
 
     // 7. SINKRONISASI KE APP 2 (PENTING!)
     // Karena data lokal berubah total, App 2 harus di-reset atau disinkronkan.
-    // Cara paling aman: Hapus semua data di App 2, lalu push ulang Siswa & Guru.
-    // (Ini proses berat, pastikan timeout cukup)
-    
     if (app2DbId) {
       try {
         Logger.log("Restore: Membersihkan App 2...");
@@ -11003,7 +11023,12 @@ function restoreDatabaseFromSecureFile(token, fileData) {
     // 8. Bersihkan Cache
     clearAllCaches(token);
 
-    return { status: "sukses", message: "Database berhasil dipulihkan dari backup! Halaman akan dimuat ulang." };
+    // 9. [BARU] HITUNG ULANG OTOMATIS
+    // Agar data ijazah langsung up-to-date dengan data yang baru direstore
+    Logger.log("Restore: Memicu Hitung Ulang Nilai...");
+    recalculateIjazahData(token);
+
+    return { status: "sukses", message: "Database berhasil dipulihkan dan Nilai telah dihitung ulang! Halaman akan dimuat ulang." };
 
   } catch (e) {
     Logger.log("Restore Error: " + e.stack);
