@@ -11037,3 +11037,99 @@ function restoreDatabaseFromSecureFile(token, fileData) {
     lock.releaseLock();
   }
 }
+
+/**
+ * [BARU] Mengambil daftar sheet arsip dari Database Arsip (App 3).
+ */
+function getArsipList(token) {
+  try {
+    const { sessionData } = validateAdminSession(token);
+    const sekolahID = sessionData.sekolahID;
+
+    // 1. Ambil ID Database Arsip dari Master Sheet
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const data = sheetSekolah.getDataRange().getValues();
+    
+    let arsipDbId = null;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == sekolahID) {
+        arsipDbId = data[i][21]; // Kolom V (Index 21)
+        break;
+      }
+    }
+
+    if (!arsipDbId) {
+      return { status: 'sukses', data: [] }; // Belum punya arsip
+    }
+
+    // 2. Buka DB Arsip dan List Sheet
+    const ssArsip = SpreadsheetApp.openById(arsipDbId);
+    const sheets = ssArsip.getSheets();
+    const arsipList = [];
+
+    sheets.forEach(sheet => {
+      const name = sheet.getName();
+      // Filter hanya sheet yang diawali "Arsip "
+      if (name.startsWith("Arsip ")) {
+         arsipList.push({ name: name });
+      }
+    });
+
+    // Urutkan (Terbaru di atas)
+    arsipList.sort((a, b) => b.name.localeCompare(a.name));
+
+    return { status: 'sukses', data: arsipList };
+
+  } catch (e) {
+    return { status: 'gagal', message: e.message };
+  }
+}
+
+/**
+ * [BARU] Menghapus sheet arsip tertentu.
+ */
+function deleteArsipSheet(token, sheetName) {
+  try {
+    const { sessionData } = validateAdminSession(token);
+    const sekolahID = sessionData.sekolahID;
+
+    // 1. Cek Status Donasi (Double Check di Server)
+    // (validateAdminSession sudah mengembalikan sessionData, kita bisa cek ulang donasiStatus jika tersimpan di sesi,
+    // atau cek ulang ke Master Sheet untuk keamanan maksimal)
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const data = sheetSekolah.getDataRange().getValues();
+    let arsipDbId = null;
+    let donasiStatus = "NONE";
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == sekolahID) {
+        arsipDbId = data[i][21];
+        donasiStatus = data[i][8]; // Kolom I
+        break;
+      }
+    }
+
+    if (donasiStatus !== 'APPROVED') {
+       throw new Error("Fitur hapus arsip hanya untuk akun Premium.");
+    }
+
+    if (!arsipDbId) throw new Error("Database Arsip tidak ditemukan.");
+
+    // 2. Hapus Sheet
+    const ssArsip = SpreadsheetApp.openById(arsipDbId);
+    const sheet = ssArsip.getSheetByName(sheetName);
+    
+    if (!sheet) {
+       throw new Error("Arsip tidak ditemukan atau sudah dihapus.");
+    }
+
+    ssArsip.deleteSheet(sheet);
+    
+    return { status: 'sukses', message: `Arsip "${sheetName}" berhasil dihapus.` };
+
+  } catch (e) {
+    return { status: 'gagal', message: e.message };
+  }
+}
