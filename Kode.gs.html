@@ -361,6 +361,9 @@ function simpanPasswordBaruAdmin(token, newPassword) {
     // Bersihkan Cache
     clearMasterSheetCache();
     
+    // --- [PERBAIKAN: BAGIAN INI DINONAKTIFKAN] ---
+    // Mencegah Admin Sekolah otomatis terupdate di db_guru (Aplikasi 2)
+    /*
     // --- SYNC KE APP 2 (Agar login guru juga berubah) ---
     if (app2DbId) {
        try {
@@ -381,6 +384,8 @@ function simpanPasswordBaruAdmin(token, newPassword) {
          Logger.log("Gagal sync password ke App 2: " + e.message);
        }
     }
+    */
+    // --- [AKHIR BAGIAN DINONAKTIFKAN] ---
     
     return { status: "sukses", message: "Password berhasil diubah." };
     
@@ -691,8 +696,20 @@ function prosesVerifikasiToken(token) {
           
           Logger.log(`Mulai integrasi App 2 (Global) untuk: ${newSekolahID}`);
           registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
-          // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
-          // registerAdminAsGuruInApp2(email, dbPlainPassword, namaSekolah.toUpperCase(), newSekolahID, 'guru', ''); // <-- DIHAPUS
+          
+          // --- [PERBAIKAN: BAGIAN INI DINONAKTIFKAN] ---
+          // Admin Sekolah TIDAK lagi otomatis didaftarkan sebagai Guru di App 2
+          /*
+          registerAdminAsGuruInApp2(
+            email, 
+            dbPlainPassword, // Password plain text (sudah tidak tersedia/kosong)
+            namaSekolah.toUpperCase(), 
+            newSekolahID, 
+            'guru', 
+            ''
+          ); 
+          */
+          // --- [AKHIR BAGIAN DINONAKTIFKAN] ---
           
           const appUrl = ScriptApp.getService().getUrl();
           return `<h1>Verifikasi Berhasil!</h1>
@@ -1022,6 +1039,9 @@ function prosesLogin(email, password) {
         // B. Bersihkan Cache Master agar login berikutnya membaca data baru
         clearMasterSheetCache();
 
+        // --- [PERBAIKAN: BAGIAN INI DINONAKTIFKAN] ---
+        // Mencegah Admin Sekolah otomatis masuk ke db_guru (Aplikasi 2)
+        /*
         // C. Sinkronisasi ke App 2 (Agar login guru juga aman)
         const sekolahID = cachedRow[0]; // Kolom A
         const namaSekolah = cachedRow[1]; // Kolom B
@@ -1042,6 +1062,8 @@ function prosesLogin(email, password) {
                 MASTER_SHEET_ID
             );
         }
+        */
+        // --- [AKHIR BAGIAN DINONAKTIFKAN] ---
         
         Logger.log(`Sukses migrasi keamanan otomatis untuk akun: ${email}`);
         
@@ -1076,6 +1098,10 @@ function prosesLogin(email, password) {
           app2DbId = buatDatabaseAplikasi2Baru(namaSekolahUpper); 
           sheetSekolah.getRange(rowNumGlobal, 13).setValue(app2DbId);
           registerSchoolInApp2(sekolahID, namaSekolahUpper);
+          
+          // [CATATAN] registerAdminAsGuruInApp2 DIHAPUS DARI SINI JUGA (JIKA ADA DI FUNGSI ASLI ANDA)
+          // registerAdminAsGuruInApp2(...) <-- Jangan dipanggil
+          
           clearMasterSheetCache();
           Logger.log(`PERBAIKAN LOGIN: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
         }
@@ -1664,12 +1690,24 @@ function superadminImpersonate(sekolahID, token) {
           app2DbId = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase());
           sheetSekolah.getRange(rowNumGlobal, 13).setValue(app2DbId);
           
-          // Daftarkan dengan password dummy
-          const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+          // Buat dummy password (tidak dipakai lagi untuk guru, tapi mungkin untuk log)
+          // const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
           
           registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
-          // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
-          // registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword, 'guru', ''); // <-- DIHAPUS
+          
+          // --- [PERBAIKAN: BAGIAN INI DINONAKTIFKAN] ---
+          // Admin Sekolah TIDAK lagi otomatis didaftarkan sebagai Guru di App 2
+          /*
+          registerAdminAsGuruInApp2(
+            emailAdmin, 
+            namaSekolah.toUpperCase(), 
+            sekolahID, 
+            dummyPassword, // password dummy
+            'guru', 
+            ''
+          );
+          */
+          // --- [AKHIR BAGIAN DINONAKTIFKAN] ---
           
           clearMasterSheetCache();
           Logger.log(`PERBAIKAN IMPERSONATE: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
@@ -7974,9 +8012,6 @@ function buatDatabaseAplikasi2Baru(namaSekolah, schoolDriveFolder) { // [MODIFIK
   }
 }
 
-// Di file: aplikasi1/Kode.gs.html
-// Ganti fungsi getApp2DatabaseId(token) Anda dengan yang ini:
-
 function getApp2DatabaseId(token) {
   const sessionData = validateAndRefreshSession(token);
   const sekolahID = sessionData.sekolahID;
@@ -8034,14 +8069,23 @@ function getApp2DatabaseId(token) {
       // 2. Tulis ID baru ke Kolom M
       sheetSekolah.getRange(targetRowIndex + 2, 13).setValue(newSSID_App2);
       
-      // 3. Daftarkan ke Global App 2 (dengan dummy password)
-      // Kita tidak bisa ambil password HASH, jadi buat dummy. Admin perlu edit manual jika ingin login ke App 2 sbg guru.
-      const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
-      
+      // 3. Daftarkan ke Global App 2
       registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
-      registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword);
+
+      // --- [PERBAIKAN: BAGIAN INI DINONAKTIFKAN] ---
+      // Admin Sekolah TIDAK lagi otomatis didaftarkan sebagai Guru
+      /*
+      const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+      registerAdminAsGuruInApp2(
+        emailAdmin, 
+        namaSekolah.toUpperCase(), 
+        sekolahID, 
+        dummyPassword // dummy password
+      );
+      */
+      // --- [AKHIR BAGIAN DINONAKTIFKAN] ---
       
-      Logger.log(`PERBAIKAN OTOMATIS: Sukses. DB App 2 Dibuat: ${newSSID_App2}. Admin ${emailAdmin} didaftarkan dengan password dummy.`);
+      Logger.log(`PERBAIKAN OTOMATIS: Sukses. DB App 2 Dibuat: ${newSSID_App2}.`);
       
       // 4. Bersihkan cache master
       clearMasterSheetCache();
@@ -9034,16 +9078,22 @@ function PERBAIKI_SEKOLAH_ADMIN_LAMA() {
         sheetSekolah.getRange(i + 2, 13).setValue(newSSID_App2);
         
         // 3. Daftarkan ke Global App 2
-        // Kita tidak punya plain password. Admin sekolah ini harus diinfokan
-        // untuk "lupa password" atau Superadmin harus mengeditnya manual.
-        // Kita daftarkan dengan password acak/dummy agar datanya ada.
-        const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
-        
         registerSchoolInApp2(sekolahID, namaSekolah.toUpperCase());
-        registerAdminAsGuruInApp2(emailAdmin, namaSekolah.toUpperCase(), sekolahID, dummyPassword);
+
+        // --- [PERBAIKAN: BAGIAN INI DINONAKTIFKAN] ---
+        // Admin Sekolah TIDAK lagi otomatis didaftarkan sebagai Guru
+        /*
+        const dummyPassword = "GANTI_PASSWORD_" + Math.random().toString(36).substring(2, 8);
+        registerAdminAsGuruInApp2(
+            emailAdmin, 
+            namaSekolah.toUpperCase(), 
+            sekolahID, 
+            dummyPassword
+        );
+        */
+        // --- [AKHIR BAGIAN DINONAKTIFKAN] ---
         
         Logger.log(`   -> DB App 2 Dibuat: ${newSSID_App2}`);
-        Logger.log(`   -> Terdaftar di Global (password: ${dummyPassword})`);
         perbaikanDilakukan++;
       }
     }
@@ -9052,7 +9102,7 @@ function PERBAIKI_SEKOLAH_ADMIN_LAMA() {
     SpreadsheetApp.flush();
     
     if (perbaikanDilakukan > 0) {
-      Browser.msgBox(`Perbaikan Selesai. ${perbaikanDilakukan} sekolah telah diperbarui dengan database Aplikasi 2. Admin dari sekolah tersebut mungkin perlu me-reset password mereka (via Superadmin Edit) jika login guru gagal.`);
+      Browser.msgBox(`Perbaikan Selesai. ${perbaikanDilakukan} sekolah telah diperbarui dengan database Aplikasi 2.`);
     } else {
       Browser.msgBox("Pemeriksaan Selesai. Tidak ada sekolah dengan Kolom M kosong yang ditemukan.");
     }
