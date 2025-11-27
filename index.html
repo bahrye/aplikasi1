@@ -220,6 +220,11 @@
             <span>Pengaturan Cetak</span>
             <div class="premium-stamp" style="display: none;">Premium</div>
           </button>
+          <button class="dashboard-card" id="btn-buka-kelola-arsip">
+            <i class="fas fa-archive"></i>
+            <span>Kelola Arsip</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
+          </button>
           <button class="dashboard-card" id="btn-buka-donasi">
             <i class="fas fa-hand-holding-heart"></i>
             <span>Donasi Premium</span>
@@ -2035,6 +2040,40 @@
           </div>
         </form>
 
+      </div>
+    </div>
+
+    <div class="container" id="halaman-kelola-arsip" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-arsip"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Kelola Arsip Nilai</h2>
+        </div>
+
+        <div id="kelola-arsip-premium-info" class="premium-info-box" style="display: none;">
+          <i class="fas fa-star"></i>Ini adalah Fitur Premium. Anda dapat melihat data, tetapi tidak dapat menghapus arsip. Silakan <a href="#" id="link-donasi-dari-kelola-arsip">Donasi</a> untuk mengaktifkan fitur ini.
+        </div>
+
+        <p>Daftar tahun ajaran yang telah diarsipkan ke Aplikasi 3 (Viewer). Menghapus data di sini akan menghapusnya secara permanen dari database Arsip.</p>
+        
+        <p id="kelola-arsip-message" class="message" style="display: none;"></p>
+
+        <div class="table-responsive" style="margin-top: 20px;">
+            <table class="siswa-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Nama Arsip (Tahun Ajaran)</th>
+                        <th style="width: 100px; text-align: center;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="tabel-kelola-arsip-body">
+                    <tr><td colspan="2" class="text-center">Memuat data...</td></tr>
+                </tbody>
+            </table>
+        </div>
       </div>
     </div>
 
