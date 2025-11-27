@@ -421,29 +421,21 @@ function getSheetSuperadmin(masterSS) {
   return sheet;
 }
 
-// --- FUNGSI BARU ---
-/**
- * Mengirim email verifikasi ke pengguna.
- */
 function kirimEmailVerifikasi(email, namaSekolah, token) {
   try {
-    const url = ScriptApp.getService().getUrl() + '?v=' + token;
-    const subject = "Verifikasi Akun Aplikasi Nilai Ijazah";
+    const subject = "Kode Verifikasi - Aplikasi Nilai Ijazah";
     const body = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <p>Halo, Admin ${namaSekolah},</p>
-        <p>Terima kasih telah mendaftar di Aplikasi Pengolahan Nilai Ijazah.</p>
-        <p>Untuk mengaktifkan akun Anda, silakan klik tombol di bawah ini:</p>
-        <p style="margin: 25px 0;">
-          <a href="${url}" style="font-size: 16px; font-weight: bold; padding: 12px 20px; background-color: #0d6efd; color: white; text-decoration: none; border-radius: 5px;">
-            Aktivasi Akun Saya
-          </a>
-        </p>
-        <p>Jika tombol di atas tidak berfungsi, salin dan tempel URL berikut di browser Anda:</p>
-        <p style="word-break: break-all;">${url}</p>
-        <p>Link ini akan kedaluwarsa dalam ${TOKEN_EXPIRY_HOURS} jam.</p>
-        <br>
-        <p>Terima kasih.</p>
+      <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px; border: 1px solid #ddd;">
+        <h2>Kode Verifikasi Anda</h2>
+        <p>Halo Admin ${namaSekolah},</p>
+        <p>Gunakan kode di bawah ini untuk mengaktifkan akun Anda:</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px dashed #0d6efd; padding: 15px; margin: 20px auto; width: fit-content;">
+           <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0d6efd;">${token}</span>
+        </div>
+
+        <p>Jangan berikan kode ini kepada siapa pun.</p>
+        <p style="font-size: 12px; color: #888;">Kode berlaku selama 24 jam.</p>
       </div>
     `;
 
@@ -451,16 +443,116 @@ function kirimEmailVerifikasi(email, namaSekolah, token) {
       to: email,
       subject: subject,
       htmlBody: body,
-      name: "Admin Aplikasi Ijazah" // Nama pengirim
+      name: "Admin Aplikasi Ijazah"
     });
-    Logger.log("Email verifikasi terkirim ke: " + email);
   } catch (e) {
-    Logger.log(`Gagal mengirim email verifikasi ke ${email}: ${e.message}`);
-    // Sebaiknya jangan gagalkan registrasi jika email gagal, cukup log saja
+    Logger.log("Gagal kirim email: " + e.message);
   }
 }
 
-// GANTI FUNGSI INI di aplikasi1/Kode.gs.html
+/**
+ * Fungsi untuk memproses verifikasi kode manual dari sisi klien
+ */
+function prosesVerifikasiManual(emailInput, kodeInput) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  
+  try {
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetPending = getSheetRegistrasiPending(masterSS);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    
+    const dataPending = sheetPending.getDataRange().getValues();
+    
+    // Cari data berdasarkan Email DAN Kode
+    let rowIndex = -1;
+    let rowData = null;
+    
+    for (let i = dataPending.length - 1; i >= 1; i--) {
+      // Kolom A = Email, Kolom G = Token (Kode)
+      if (String(dataPending[i][0]).toLowerCase() === emailInput.toLowerCase() && String(dataPending[i][6]) === String(kodeInput)) {
+        rowIndex = i;
+        rowData = dataPending[i];
+        break;
+      }
+    }
+    
+    if (rowIndex === -1) {
+      return { status: 'gagal', message: 'Kode verifikasi salah atau email tidak ditemukan.' };
+    }
+
+    // Cek Kedaluwarsa
+    const dbTimestamp = new Date(rowData[7]).getTime();
+    const now = new Date().getTime();
+    const expiryLimit = now - (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
+    
+    if (dbTimestamp < expiryLimit) {
+      sheetPending.deleteRow(rowIndex + 1);
+      return { status: 'gagal', message: 'Kode sudah kedaluwarsa. Silakan daftar ulang.' };
+    }
+
+    // --- MULAI PROSES AKTIVASI (Sama seperti sebelumnya) ---
+    const namaSekolah = rowData[1];
+    const npsn = rowData[2].toString().replace("'", ""); // Bersihkan tanda kutip
+    const jenjang = rowData[3];
+    const dbHashedPassword = rowData[4];
+    const dbSalt = rowData[5];
+    const email = rowData[0];
+
+    // Cek apakah sudah ada di Sheet_Sekolah (Double check)
+    const emailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
+    if (emailFinder.length > 0) {
+       sheetPending.deleteRow(rowIndex + 1);
+       return { status: 'sukses', message: 'Akun sudah aktif sebelumnya. Silakan login.' };
+    }
+
+    // Buat Folder & Database
+    let newSchoolFolderId = null;
+    try {
+       const parentFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
+       const newSchoolFolder = parentFolder.createFolder(namaSekolah.toUpperCase());
+       newSchoolFolderId = newSchoolFolder.getId();
+       const donasiSubFolder = newSchoolFolder.createFolder("Donasi");
+       
+       // Config
+       const config = getMasterConfig();
+       
+       // Buat DB
+       const newSSID_App1 = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy", masterSS, newSchoolFolder);
+       const newSSID_App2 = buatDatabaseAplikasi2Baru(namaSekolah.toUpperCase(), newSchoolFolder);
+       const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
+       
+       // Simpan ke Sheet_Sekolah
+       sheetSekolah.appendRow([
+          newSekolahID, namaSekolah.toUpperCase(), jenjang, email, 
+          dbHashedPassword, newSSID_App1, dbSalt, "'" + npsn, 
+          "NONE", "", "", "", newSSID_App2, newSchoolFolderId, donasiSubFolder.getId(),
+          "", "", config.DEFAULT_TEMPLATE_DOC_ID || "", config.DEFAULT_TEMPLATE_REKAP_ID || "", "", "otomatis"
+       ]);
+       
+       // Hapus dari Pending
+       sheetPending.deleteRow(rowIndex + 1);
+       clearMasterSheetCache();
+       
+       // Register ke App 2
+       registerSchoolInApp2(newSekolahID, namaSekolah.toUpperCase());
+       
+       return { status: 'sukses', message: 'Akun berhasil diverifikasi! Database telah dibuat.' };
+
+    } catch (e) {
+       // Cleanup jika gagal
+       if (newSchoolFolderId) {
+         try { DriveApp.getFolderById(newSchoolFolderId).setTrashed(true); } catch(err) {}
+       }
+       return { status: 'gagal', message: 'Gagal membuat database: ' + e.message };
+    }
+    
+  } catch (e) {
+    return { status: 'gagal', message: 'Error server: ' + e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 // [MODIFIKASI] Menambahkan argumen ke-7: schoolDriveFolder
 function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, masterSS, schoolDriveFolder) {
@@ -1223,7 +1315,7 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
       }
     }
 
-    const verificationToken = Utilities.getUuid() + Utilities.getUuid();
+    const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
     const namaSekolahUpper = namaSekolah.toUpperCase();
 
     // --- [PERUBAHAN LOGIKA PASSWORD] ---
