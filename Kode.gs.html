@@ -9951,45 +9951,62 @@ function _getSuperadminEmail(masterSS) {
 }
 
 /**
- * [BARU] Helper untuk mengirim email notifikasi ke guru (Aplikasi 2)
- * saat nilai disetujui atau ditolak.
+ * [DIPERBARUI] Helper untuk mengirim email notifikasi ke guru (Aplikasi 2)
+ * saat nilai disetujui atau ditolak oleh Admin.
  */
 function kirimNotifikasiKeGuru(emailGuru, namaMapel, status, alasan, namaSekolah) {
   try {
-    let subject, color, statusText, messageBody;
+    let subject, color, messageBody;
 
     if (status === 'APPROVED') {
+      // === EMAIL DISETUJUI ===
       subject = `[DISETUJUI] Nilai ${namaMapel} - ${namaSekolah}`;
       color = '#198754'; // Hijau
-      statusText = 'DISETUJUI';
       messageBody = `
+        <h2 style="color: ${color}; margin-top: 0;">Nilai Disetujui</h2>
+        <p>Halo Bapak/Ibu Guru,</p>
         <p>Nilai yang Anda kirimkan untuk mata pelajaran <strong>${namaMapel}</strong> telah <strong>DISETUJUI</strong> oleh Admin Sekolah.</p>
-        <p>Data nilai tersebut sekarang telah masuk ke database utama sekolah dan akan digunakan untuk pengolahan nilai akhir/ijazah.</p>
+        <div style="background-color: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 5px solid ${color};">
+          <i class="fas fa-check-circle"></i> <strong>Status: APPROVED (Final)</strong><br>
+          Data nilai tersebut sekarang telah masuk ke database utama sekolah dan akan digunakan untuk pengolahan nilai akhir/ijazah.
+        </div>
+        <p>Terima kasih atas kerja sama Anda.</p>
       `;
     } else {
-      subject = `[DITOLAK] Revisi Nilai ${namaMapel} - ${namaSekolah}`;
+      // === EMAIL DITOLAK / REVISI ===
+      subject = `[PERLU REVISI] Nilai ${namaMapel} - ${namaSekolah}`;
       color = '#dc3545'; // Merah
-      statusText = 'DITOLAK / PERLU REVISI';
       messageBody = `
-        <p>Nilai yang Anda kirimkan untuk mata pelajaran <strong>${namaMapel}</strong> telah <strong>DITOLAK</strong> oleh Admin Sekolah.</p>
-        <p><strong>Alasan / Catatan Admin:</strong></p>
-        <blockquote style="background: #f8d7da; padding: 15px; border-left: 5px solid #dc3545; color: #721c24;">
-          ${alasan || '-'}
-        </blockquote>
-        <p>Silakan perbaiki data nilai Anda di Aplikasi Guru, lalu kirim ulang.</p>
+        <h2 style="color: ${color}; margin-top: 0;">Nilai Ditolak / Perlu Revisi</h2>
+        <p>Halo Bapak/Ibu Guru,</p>
+        <p>Mohon maaf, nilai yang Anda kirimkan untuk mata pelajaran <strong>${namaMapel}</strong> telah <strong>DITOLAK</strong> oleh Admin Sekolah.</p>
+        
+        <div style="background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 5px solid ${color};">
+          <strong><i class="fas fa-exclamation-circle"></i> Alasan / Catatan Admin:</strong><br>
+          <p style="margin: 5px 0 0 0; font-style: italic;">"${alasan || 'Mohon periksa kembali data nilai Anda.'}"</p>
+        </div>
+
+        <p><strong>Tindakan yang diperlukan:</strong></p>
+        <ol>
+          <li>Buka kembali Aplikasi Input Nilai Guru.</li>
+          <li>Status kiriman Anda telah dikembalikan agar bisa diedit.</li>
+          <li>Lakukan perbaikan sesuai catatan admin di atas.</li>
+          <li>Klik tombol <strong>"Simpan & Kirim"</strong> kembali.</li>
+        </ol>
       `;
     }
 
     const htmlBody = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
-        <div style="background-color: ${color}; color: white; padding: 20px; text-align: center;">
-          <h2 style="margin: 0;">Status Pengiriman Nilai</h2>
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin: 0 auto;">
+        <div style="background-color: #f8f9fa; padding: 20px; border-bottom: 1px solid #ddd; text-align: center;">
+          <strong style="font-size: 18px; color: #333;">${namaSekolah}</strong>
         </div>
-        <div style="padding: 20px;">
-          <p>Halo Bapak/Ibu Guru,</p>
+        <div style="padding: 25px;">
           ${messageBody}
-          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="font-size: 12px; color: #777;">Email ini dikirim otomatis oleh Sistem Aplikasi Nilai Ijazah (${namaSekolah}).</p>
+        </div>
+        <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #ddd;">
+          Email ini dikirim otomatis oleh Sistem Aplikasi Nilai Ijazah.<br>
+          Mohon tidak membalas email ini.
         </div>
       </div>
     `;
@@ -10004,7 +10021,6 @@ function kirimNotifikasiKeGuru(emailGuru, namaMapel, status, alasan, namaSekolah
 
   } catch (e) {
     Logger.log(`Gagal mengirim email ke guru (${emailGuru}): ${e.message}`);
-    // Jangan throw error agar proses simpan data tetap berjalan meskipun email gagal
   }
 }
 
