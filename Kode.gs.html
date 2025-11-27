@@ -729,13 +729,13 @@ function prosesLogin(email, password) {
     const appUrl = ScriptApp.getService().getUrl();
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     
+    // 1. Cek Superadmin (Logika tetap sama)
     const sheetSuperadmin = getSheetSuperadmin(masterSS);
     const superadminEmailFinder = sheetSuperadmin.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
     
     if (superadminEmailFinder.length > 0) {
       const rowNum = superadminEmailFinder[0].getRow();
       const rowData = sheetSuperadmin.getRange(rowNum, 1, 1, sheetSuperadmin.getLastColumn()).getValues()[0];
-      // Verifikasi password HASHED Superadmin (Kolom C = Hash, Kolom D = Salt)
       if (verifyPassword(password, rowData[2], rowData[3])) {
         const token = Utilities.getUuid();
         const sessionData = {
@@ -754,24 +754,31 @@ function prosesLogin(email, password) {
       }
     }
     
+    // 2. Cek Admin Sekolah
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const adminEmailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
     
     let cachedRow = null;
     let passwordIsValid = false;
-    let rowNumGlobal = -1; // Simpan nomor baris
+    let rowNumGlobal = -1; 
+    let isPlainTextLogin = false; // Flag untuk menandai login plain text
 
     if (adminEmailFinder.length > 0) {
-      rowNumGlobal = adminEmailFinder[0].getRow(); // Dapatkan nomor baris
+      rowNumGlobal = adminEmailFinder[0].getRow();
       const rowData = sheetSekolah.getRange(rowNumGlobal, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
       
-      const storedHash = rowData[4]; // Kolom E (index 4)
-      const storedSalt = rowData[6]; // Kolom G (index 6)
+      const storedHash = rowData[4]; // Kolom E (HashedPassword)
+      const storedSalt = rowData[6]; // Kolom G (Salt)
       
       if (storedHash && storedSalt) {
+         // Login Normal (Sudah di-hash)
          passwordIsValid = verifyPassword(password, storedHash, storedSalt);
       } else if (storedHash && !storedSalt) {
+         // Login Lama (Plain Text)
          passwordIsValid = (storedHash === password);
+         if (passwordIsValid) {
+             isPlainTextLogin = true; // Tandai perlu migrasi
+         }
       }
 
       if (passwordIsValid) {
@@ -782,35 +789,75 @@ function prosesLogin(email, password) {
     if (!passwordIsValid || !cachedRow) {
       return { status: "gagal", message: "Email atau password salah." };
     }
+
+    // --- [MODIFIKASI: AUTO-MIGRASI PASSWORD KE HASH] ---
+    if (isPlainTextLogin) {
+      try {
+        const newSalt = generateSalt();
+        const newHash = hashPassword(password, newSalt);
+
+        // A. Update Sheet_Sekolah (Database Utama)
+        // Kolom E (Index 5) = Hash, Kolom G (Index 7) = Salt
+        sheetSekolah.getRange(rowNumGlobal, 5).setValue(newHash); 
+        sheetSekolah.getRange(rowNumGlobal, 7).setValue(newSalt);
+        
+        // B. Bersihkan Cache Master agar login berikutnya membaca data baru
+        clearMasterSheetCache();
+
+        // C. Sinkronisasi ke App 2 (Agar login guru juga aman)
+        const sekolahID = cachedRow[0]; // Kolom A
+        const namaSekolah = cachedRow[1]; // Kolom B
+        const app2DbId = cachedRow[12]; // Kolom M
+        
+        if (app2DbId) {
+            // Panggil fungsi helper yang sudah ada untuk update akun di App 2
+            // Kita kirim plain password agar fungsi tersebut meng-hash ulang untuk DB App 2
+            addOrUpdateGuruInApp2(
+                email, 
+                password, // Plain Password
+                `Admin ${namaSekolah}`, // Nama default admin
+                sekolahID, 
+                'guru', 
+                '', // NIP kosong
+                {}, // Mapel kosong
+                app2DbId, 
+                MASTER_SHEET_ID
+            );
+        }
+        
+        Logger.log(`Sukses migrasi keamanan otomatis untuk akun: ${email}`);
+        
+      } catch (migrasiError) {
+        Logger.log(`Gagal migrasi otomatis password: ${migrasiError.message}`);
+        // Jangan gagalkan login user, biarkan lanjut meski update gagal
+      }
+    }
+    // --- [AKHIR MODIFIKASI] ---
     
+    // 3. Proses Sesi (Lanjutan kode asli)
     const token = Utilities.getUuid();
     const namaSekolahUpper = cachedRow[1].toUpperCase();
-    const sekolahID = cachedRow[0]; // Kolom A
-    const userSpreadsheetID = cachedRow[5]; // Kolom F (App 1 DB ID)
-    let app2DbId = cachedRow[12]; // Kolom M (App 2 DB ID)
+    const sekolahID = cachedRow[0]; 
+    const userSpreadsheetID = cachedRow[5]; 
+    let app2DbId = cachedRow[12]; 
     
-    // Validasi ID
     if (!userSpreadsheetID) {
       return { status: "gagal", message: "Database sekolah (Kolom F) belum diatur oleh Superadmin." };
     }
     
-    // Perbaikan Otomatis: Jika App 2 DB ID (Kolom M) kosong, buatkan sekarang.
+    // Perbaikan Otomatis DB App 2 (Kode Asli)
     if (!app2DbId) {
       Logger.log(`PERBAIKAN LOGIN: Kolom M kosong untuk ${sekolahID}. Memulai pembuatan DB App 2...`);
       const lock = LockService.getScriptLock();
       lock.waitLock(30000);
       try {
-        // Cek ulang jika proses lain sudah mengisi
         const freshApp2DbId = sheetSekolah.getRange(rowNumGlobal, 13).getValue();
         if (freshApp2DbId) {
           app2DbId = freshApp2DbId;
         } else {
-          // Panggil fungsi internal (yang ada di file Kode.gs.html App 1)
           app2DbId = buatDatabaseAplikasi2Baru(namaSekolahUpper); 
           sheetSekolah.getRange(rowNumGlobal, 13).setValue(app2DbId);
           registerSchoolInApp2(sekolahID, namaSekolahUpper);
-          // [MODIFIKASI] Panggilan untuk mendaftarkan admin sebagai guru DIHAPUS
-          // registerAdminAsGuruInApp2(email, namaSekolahUpper, sekolahID, password, 'guru', ''); // <-- DIHAPUS
           clearMasterSheetCache();
           Logger.log(`PERBAIKAN LOGIN: Sukses. DB App 2 Dibuat: ${app2DbId}.`);
         }
@@ -823,15 +870,15 @@ function prosesLogin(email, password) {
     }
     
     const jenjangPilihan = getJenjangPilihanFromSheet(userSpreadsheetID);
-    const donasiStatus = cachedRow[8] || "NONE"; // Kolom I adalah DonasiStatus
+    const donasiStatus = cachedRow[8] || "NONE"; 
 
     const sessionData = {
       role: 'admin',
       sekolahID: sekolahID,
       namaSekolah: namaSekolahUpper,
-      jenjang: cachedRow[2], // Kolom C
-      spreadsheetID: userSpreadsheetID, // ID DB App 1
-      app2DbId: app2DbId, // ID DB App 2
+      jenjang: cachedRow[2], 
+      spreadsheetID: userSpreadsheetID, 
+      app2DbId: app2DbId, 
       jenjangPilihan: jenjangPilihan,
       donasiStatus: donasiStatus,
       lastActivity: new Date().getTime()
