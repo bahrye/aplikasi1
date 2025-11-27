@@ -653,7 +653,8 @@
       'halaman-login-siswa',
       'halaman-login-guru',
       'halaman-login-arsip',
-      'halaman-lupa-password'
+      'halaman-lupa-password',
+      'halaman-verifikasi'
     ];
 
     allPages.forEach(id => {
@@ -696,14 +697,35 @@
         if (authSubPages.includes(idHalaman)) {
             document.getElementById('auth-container').style.display = 'block';
             
-            // Sembunyikan semua sub-halaman dulu
+            // 1. Sembunyikan semua sub-halaman autentikasi dulu
             authSubPages.forEach(subId => {
                 const subEl = document.getElementById(subId);
-                if (subEl) subEl.style.display = 'none';
+                if (subEl) {
+                    subEl.style.display = 'none';
+                    subEl.classList.remove('active'); // Pastikan kelas active hilang
+                }
             });
 
-            // Tampilkan target
-            targetElement.style.display = 'block';
+            // 2. Atur Visibilitas Tab Navigasi (Login Admin/Guru/Siswa)
+            const authTabs = document.querySelector('.auth-tabs');
+            if (authTabs) {
+                // Jika halaman verifikasi atau lupa password, sembunyikan tab
+                if (idHalaman === 'halaman-verifikasi' || idHalaman === 'halaman-lupa-password') {
+                    authTabs.style.display = 'none';
+                } else {
+                    // Selain itu (halaman login/registrasi), tampilkan tab
+                    authTabs.style.display = 'flex';
+                }
+            }
+
+            // 3. Tampilkan target
+            if (targetElement) {
+                targetElement.style.display = 'block';
+                // Tambahkan animasi fade-in kecil agar halus
+                targetElement.style.opacity = 0;
+                setTimeout(() => targetElement.style.opacity = 1, 50);
+            }
+            
             localStorage.removeItem(LAST_PAGE_KEY);
 
             // --- PERBAIKAN LOGIKA DI SINI ---
@@ -1252,6 +1274,84 @@
             executePdfDownload(key, kelas);
         }
     });
+
+    // --- TAMBAHAN BARU: Listener Halaman Verifikasi ---
+    
+    // Tombol Proses Verifikasi
+    document.getElementById('btn-kirim-verifikasi').addEventListener('click', () => {
+        const email = document.getElementById('verif-email').value;
+        const kode = document.getElementById('verif-kode').value.trim();
+        const btn = document.getElementById('btn-kirim-verifikasi');
+        
+        if (!kode) {
+            showMessage('verif-message', "Masukkan kode verifikasi.", true);
+            return;
+        }
+        
+        hideMessage('verif-message');
+        setButtonLoading(btn, "Memverifikasi...");
+        
+        google.script.run
+            .withSuccessHandler((res) => {
+                resetButtonLoading(btn);
+                if (res.status === 'sukses') {
+                    showToast("Verifikasi Berhasil! Silakan Login.", "sukses");
+                    tampilHalaman('halaman-login'); // Pindah ke login
+                } else {
+                    showMessage('verif-message', res.message, true);
+                }
+            })
+            .withFailureHandler((err) => {
+                resetButtonLoading(btn);
+                showMessage('verif-message', "Error: " + err.message, true);
+            })
+            .prosesVerifikasiManual(email, kode);
+    });
+
+    // Tombol Kembali (jika salah email)
+    const btnKembaliReg = document.getElementById('btn-kembali-ke-reg');
+    if (btnKembaliReg) {
+        btnKembaliReg.addEventListener('click', (e) => {
+            e.preventDefault();
+            tampilHalaman('halaman-registrasi');
+        });
+    }
+
+    // --- TAMBAHAN BARU: Listener Link Navigasi Verifikasi ---
+    
+    // 1. Dari Halaman Login
+    const linkVerif = document.getElementById('link-ke-verifikasi');
+    if (linkVerif) {
+        linkVerif.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Bersihkan form verifikasi agar terlihat fresh
+            document.getElementById('verif-email').value = ''; 
+            document.getElementById('verif-kode').value = '';
+            hideMessage('verif-message');
+            
+            tampilHalaman('halaman-verifikasi');
+        });
+    }
+
+    // 2. Dari Halaman Registrasi
+    const linkVerifReg = document.getElementById('link-ke-verifikasi-reg');
+    if (linkVerifReg) {
+        linkVerifReg.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Jika user sudah mengetik email di form registrasi, kita salin ke form verifikasi
+            const emailReg = document.getElementById('reg-email').value;
+            if (emailReg) {
+                document.getElementById('verif-email').value = emailReg;
+            } else {
+                document.getElementById('verif-email').value = '';
+            }
+            document.getElementById('verif-kode').value = '';
+            hideMessage('verif-message');
+
+            tampilHalaman('halaman-verifikasi');
+        });
+    }
+    // --- AKHIR TAMBAHAN ---
 
     // --- FITUR LUPA PASSWORD ---
     
@@ -3471,44 +3571,52 @@
       resetButtonLoading(document.getElementById('btn-registrasi'));
       
       if (response.status === "pending") {
-        // Tampilkan pesan sukses (bukan error)
-        showMessage('reg-message', response.message, false); 
+        // --- LOGIKA BARU: Pindah ke Halaman Input Kode ---
+        
+        // 1. Sembunyikan halaman registrasi
+        document.getElementById('halaman-registrasi').style.display = 'none'; 
+        
+        // 2. Tampilkan halaman verifikasi kode
+        // Pastikan Anda sudah menambahkan <div id="halaman-verifikasi"> di index.html sesuai panduan sebelumnya
+        tampilHalaman('halaman-verifikasi'); 
+        document.getElementById('halaman-verifikasi').style.display = 'block';
+        
+        // 3. Otomatis isi email dari form registrasi ke form verifikasi
+        const emailDaftar = document.getElementById('reg-email').value;
+        document.getElementById('verif-email').value = emailDaftar;
+        
+        // 4. Fokuskan kursor ke input kode agar user bisa langsung mengetik
+        const inputKode = document.getElementById('verif-kode');
+        if (inputKode) inputKode.focus();
+        
+        // 5. Beri notifikasi
+        showToast("Kode verifikasi telah dikirim ke email Anda.", "sukses");
 
-        // Kosongkan form
+        // 6. Reset form registrasi (di belakang layar) agar bersih jika user kembali
         document.getElementById('reg-nama-sekolah').value = "";
+        document.getElementById('reg-npsn').value = "";
         document.getElementById('reg-jenjang').value = "";
+        // Email & password dibiarkan atau direset tergantung preferensi, di sini kita reset
         document.getElementById('reg-email').value = "";
         document.getElementById('reg-password').value = "";
         document.getElementById('reg-password-confirm').value = "";
         
-        // Reset validasi tooltip email
+        // Reset visual validasi
         validateEmailFormat(); 
-        
-        // Reset validasi tooltip password
         validatePasswordTooltip();
-        
-        // Reset validasi match
         validatePasswordMatch(); 
-
-        // Pastikan tooltip password tidak lagi 'all-valid'
         const tooltipContainer = document.getElementById('reg-password-tooltip');
-        if(tooltipContainer) {
-          tooltipContainer.classList.remove('all-valid');
-        }
+        if(tooltipContainer) tooltipContainer.classList.remove('all-valid');
 
       } else if (response.status === "gagal") {
-        // Ini adalah GAGAL (email sudah ada, dll)
+        // Jika gagal (misal email sudah ada), tetap di halaman registrasi & tampilkan error
         showMessage('reg-message', response.message, true);
       
       } else {
-        // Fallback untuk status 'sukses' (seharusnya tidak terjadi lagi dari registrasi)
-        showMessage('reg-message', "Registrasi berhasil! (Status tidak dikenal)", false);
-        // Pindahkan ke login jika status 'sukses' lama masih ada
-        setTimeout(() => {
-          tampilHalaman('halaman-login');
-        }, 2500);
+        // Fallback jika status tidak dikenali
+        showMessage('reg-message', "Registrasi berhasil! (Status: " + response.status + ")", false);
       }
-    }
+  }
 
   function onLogout(response) {
     // Logika utama sekarang ada di forceLogoutInstan()
