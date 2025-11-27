@@ -47,6 +47,7 @@
         </div>
         <p id="login-error" class="message error"></p>
         <a id="link-ke-registrasi" class="nav-link">Belum punya akun? Daftar di sini</a>
+        <a id="link-ke-verifikasi" class="nav-link" style="margin-top: 5px; cursor: pointer; color: var(--primary-color);">Sudah daftar? Masukkan Kode Verifikasi</a>
       </div>
       
       <div id="halaman-lupa-password" class="page" style="display: none;">
@@ -180,6 +181,28 @@
         <button id="btn-registrasi"><i class="fas fa-user-plus"></i>Daftar</button>
         <p id="reg-message" class="message"></p>
         <a id="link-ke-login" class="nav-link">Sudah punya akun? Login</a>
+        <a id="link-ke-verifikasi-reg" class="nav-link" style="margin-top: 5px; cursor: pointer; color: var(--success-color);">Sudah punya kode? Verifikasi Akun</a>
+      </div>
+
+      <div id="halaman-verifikasi" class="page" style="display: none;">
+        <h2 style="text-align: center;">Verifikasi Akun</h2>
+        <p style="text-align: center; font-size: 14px;">Kode verifikasi telah dikirim ke email Anda. Silakan masukkan kode 6 digit tersebut di bawah ini.</p>
+        
+        <form id="form-verifikasi" onsubmit="return false;">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="verif-email" placeholder="Masukkan email yang didaftarkan">
+          </div>
+          <div class="form-group">
+            <label>Kode Verifikasi</label>
+            <input type="text" id="verif-kode" placeholder="Contoh: 123456" style="text-align: center; font-size: 24px; letter-spacing: 5px; font-weight: bold;" maxlength="6">
+          </div>
+        </form>
+        
+        <button id="btn-kirim-verifikasi"><i class="fas fa-check-circle"></i> Verifikasi Akun</button>
+        <p id="verif-message" class="message"></p>
+        
+        <a href="#" id="btn-kembali-ke-reg" class="nav-link" style="font-size: 13px;">Salah email? Daftar ulang</a>
       </div>
     </div>
 
