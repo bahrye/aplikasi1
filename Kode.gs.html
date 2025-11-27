@@ -147,17 +147,8 @@ function generateNewSekolahID(namaSekolah, sheetSekolah) {
 }
 
 // --- MODIFIKASI doGet UNTUK MENANGANI RESET PASSWORD ---
-function doGet(e) {
-  // 1. Cek Verifikasi Akun (Logika Lama)
-  if (e.parameter.v) {
-    const token = e.parameter.v;
-    const message = prosesVerifikasiToken(token);
-    const template = HtmlService.createTemplateFromFile('verifikasi');
-    template.verificationMessage = `<div>${message}</div>`;
-    return template.evaluate().setTitle('Verifikasi Akun');
-  }
-  
-  // 2. [BARU] Cek Reset Password
+function doGet(e) {  
+  // 1. [BARU] Cek Reset Password
   if (e.parameter.reset) {
     const token = e.parameter.reset;
     const validasi = validasiTokenReset(token);
@@ -173,7 +164,7 @@ function doGet(e) {
       .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
   }
   
-  // 3. Halaman Utama (Login)
+  // 2. Halaman Utama (Login)
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('Pengolahan Nilai Ijazah')
