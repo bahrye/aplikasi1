@@ -42,6 +42,8 @@ const MASTER_KELULUSAN_DB_ID = "1f0xj0-tfK7hlEnAV-pIySfj_K4o46vjGV6iqo6toZRI";
 // GANTI DENGAN ID FILE YANG ANDA SALIN DARI LANGKAH 2
 const TEMPLATE_SISWA_FILE_ID = "1jITh9Ss5DsesT35RN-R3DDvI1AZDIi8M57F4nTLZoeM";
 
+const SHEET_RESET_PENDING = "Reset_Password_Pending";
+
 /**
  * Mengubah array byte (dari computeDigest) menjadi string heksadesimal.
  */
@@ -144,33 +146,249 @@ function generateNewSekolahID(namaSekolah, sheetSekolah) {
   return newSekolahID;
 }
 
+// --- MODIFIKASI doGet UNTUK MENANGANI RESET PASSWORD ---
 function doGet(e) {
-  // Cek apakah ada parameter 'v' (untuk verifikasi)
+  // 1. Cek Verifikasi Akun (Logika Lama)
   if (e.parameter.v) {
     const token = e.parameter.v;
-    // Proses token dan dapatkan pesan HTML
     const message = prosesVerifikasiToken(token);
-    
-    // --- PERBAIKAN DI SINI ---
-    // 1. Buat template dari file 'verifikasi.html'
     const template = HtmlService.createTemplateFromFile('verifikasi');
-    
-    // 2. Masukkan pesan (sukses/gagal) ke dalam variabel template 'verificationMessage'
-    //    Ini akan mengisi placeholder <?!= verificationMessage; ?> di file verifikasi.html
     template.verificationMessage = `<div>${message}</div>`;
-    
-    // 3. Evaluasi template SETELAH variabelnya diisi
-    return template.evaluate()
-      .setTitle('Verifikasi Akun');
-    // --- AKHIR PERBAIKAN ---
+    return template.evaluate().setTitle('Verifikasi Akun');
   }
   
-  // Jika tidak ada parameter 'v', jalankan aplikasi utama seperti biasa
+  // 2. [BARU] Cek Reset Password
+  if (e.parameter.reset) {
+    const token = e.parameter.reset;
+    const validasi = validasiTokenReset(token);
+    
+    const template = HtmlService.createTemplateFromFile('reset-password'); // Kita akan buat file ini nanti
+    template.token = token;
+    template.valid = validasi.valid;
+    template.message = validasi.message;
+    
+    return template.evaluate()
+      .setTitle('Reset Password Admin')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+  }
+  
+  // 3. Halaman Utama (Login)
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('Pengolahan Nilai Ijazah')
     .setFaviconUrl("https://images.icon-icons.com/547/PNG/512/1455554314_line-15_icon-icons.com_53330.png")
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+}
+
+// --- FUNGSI-FUNGSI BARU UNTUK LUPA PASSWORD ---
+
+function getSheetResetPending(masterSS) {
+  let sheet = masterSS.getSheetByName(SHEET_RESET_PENDING);
+  if (!sheet) {
+    sheet = masterSS.insertSheet(SHEET_RESET_PENDING);
+    sheet.appendRow(['Email', 'Token', 'Timestamp']);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/**
+ * Langkah 1: User meminta reset password via email
+ */
+function prosesPermintaanReset(email) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  
+  try {
+    if (!email) return { status: "gagal", message: "Email wajib diisi." };
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    
+    // Cek apakah email terdaftar sebagai Admin Sekolah
+    const finder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
+    
+    if (finder.length === 0) {
+      // Email tidak ditemukan (Untuk keamanan, kita tetap bilang email terkirim agar tidak bisa di-scan)
+      // Tapi untuk debugging development, Anda bisa return pesan error asli.
+      // Disini kita return sukses palsu untuk keamanan.
+      return { status: "sukses", message: "Jika email terdaftar, link reset telah dikirim." };
+    }
+
+    // Buat Token
+    const token = Utilities.getUuid();
+    const sheetReset = getSheetResetPending(masterSS);
+    const now = new Date();
+    
+    // Hapus request lama dari email yg sama (opsional, untuk kebersihan)
+    // (Di sini kita append saja, validasi ambil yang terbaru)
+    
+    sheetReset.appendRow([email, token, now]);
+    
+    // Kirim Email
+    const url = ScriptApp.getService().getUrl() + '?reset=' + token;
+    const subject = "Reset Password - Aplikasi Nilai Ijazah";
+    const body = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
+        <h3>Permintaan Reset Password</h3>
+        <p>Seseorang (semoga Anda) telah meminta untuk mereset password Admin Sekolah untuk email: ${email}.</p>
+        <p>Silakan klik tombol di bawah ini untuk membuat password baru:</p>
+        <p>
+          <a href="${url}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+            Reset Password Saya
+          </a>
+        </p>
+        <p>Link ini berlaku selama 1 jam.</p>
+        <p><small>Jika Anda tidak meminta ini, abaikan saja email ini.</small></p>
+      </div>
+    `;
+    
+    MailApp.sendEmail({
+      to: email,
+      subject: subject,
+      htmlBody: body,
+      name: "Admin Aplikasi Ijazah"
+    });
+    
+    return { status: "sukses", message: "Link reset password telah dikirim ke email Anda." };
+
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Langkah 2: Memvalidasi token saat halaman dibuka
+ */
+function validasiTokenReset(token) {
+  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  const sheetReset = getSheetResetPending(masterSS);
+  const data = sheetReset.getDataRange().getValues();
+  const now = new Date().getTime();
+  const oneHour = 60 * 60 * 1000;
+  
+  // Cari token dari bawah (terbaru)
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (data[i][1] === token) {
+      const timestamp = new Date(data[i][2]).getTime();
+      if (now - timestamp < oneHour) {
+        return { valid: true, message: "" };
+      } else {
+        return { valid: false, message: "Link reset password sudah kedaluwarsa." };
+      }
+    }
+  }
+  return { valid: false, message: "Token tidak valid atau tidak ditemukan." };
+}
+
+/**
+ * Langkah 3: Menyimpan password baru dengan Validasi Backend
+ */
+function simpanPasswordBaruAdmin(token, newPassword) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  
+  try {
+    // --- VALIDASI BACKEND (KEAMANAN) ---
+    if (!newPassword || newPassword.length < 8) {
+      return { status: "gagal", message: "Password minimal 8 karakter." };
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      return { status: "gagal", message: "Password harus mengandung huruf kecil." };
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      return { status: "gagal", message: "Password harus mengandung huruf besar." };
+    }
+    if (!/\d/.test(newPassword)) {
+      return { status: "gagal", message: "Password harus mengandung angka." };
+    }
+    if (!/[^a-zA-Z0-9]/.test(newPassword)) {
+      return { status: "gagal", message: "Password harus mengandung simbol." };
+    }
+    // ------------------------------------
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetReset = getSheetResetPending(masterSS);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    
+    const dataReset = sheetReset.getDataRange().getValues();
+    let emailTarget = null;
+    let rowIndexReset = -1;
+    
+    // Validasi token
+    for (let i = dataReset.length - 1; i >= 1; i--) {
+      if (dataReset[i][1] === token) {
+        emailTarget = dataReset[i][0];
+        rowIndexReset = i + 1;
+        break;
+      }
+    }
+    
+    if (!emailTarget) return { status: "gagal", message: "Token tidak valid atau sudah digunakan." };
+    
+    // Cari baris sekolah
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    let rowSekolah = -1;
+    let app2DbId = null;
+    let namaSekolah = "";
+    let sekolahID = "";
+
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][3] === emailTarget) { // Kolom D (Email)
+        rowSekolah = i + 1;
+        namaSekolah = dataSekolah[i][1];
+        sekolahID = dataSekolah[i][0];
+        app2DbId = dataSekolah[i][12]; // Kolom M
+        break;
+      }
+    }
+    
+    if (rowSekolah === -1) return { status: "gagal", message: "Data sekolah tidak ditemukan." };
+    
+    // Update Password di App 1
+    const newSalt = generateSalt();
+    const newHash = hashPassword(newPassword, newSalt);
+    
+    sheetSekolah.getRange(rowSekolah, 5).setValue(newHash); // Kolom E
+    sheetSekolah.getRange(rowSekolah, 7).setValue(newSalt); // Kolom G
+    
+    // Hapus token agar tidak bisa dipakai lagi
+    sheetReset.deleteRow(rowIndexReset);
+    
+    // Bersihkan Cache
+    clearMasterSheetCache();
+    
+    // --- SYNC KE APP 2 (Agar login guru juga berubah) ---
+    if (app2DbId) {
+       try {
+         // Fungsi helper ini sudah ada di Kode.gs.html Anda (dari fitur sebelumnya)
+         addOrUpdateGuruInApp2(
+            emailTarget, 
+            newPassword, // Password plain (akan di-hash di helper)
+            `Admin ${namaSekolah}`, 
+            sekolahID, 
+            'guru', 
+            '', // NIP
+            {}, // Mapel
+            app2DbId, 
+            MASTER_SHEET_ID
+         );
+         Logger.log("Password Admin disinkronkan ke App 2.");
+       } catch (e) {
+         Logger.log("Gagal sync password ke App 2: " + e.message);
+       }
+    }
+    
+    return { status: "sukses", message: "Password berhasil diubah." };
+    
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // --- TAMBAHAN BARU ---
