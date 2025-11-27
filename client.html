@@ -643,7 +643,8 @@
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
       'halaman-guru', 'halaman-donasi',
       'halaman-proses-kelulusan', 'halaman-tahun-ajaran', 'halaman-penempatan',
-      'halaman-pengaturan-cetak', 'halaman-kelola-nilai-guru'
+      'halaman-pengaturan-cetak', 'halaman-kelola-nilai-guru',
+      'halaman-kelola-arsip'
     ];
     
     const authSubPages = [
@@ -686,6 +687,7 @@
     hideMessage('penempatan-message');
     hideMessage('pengaturan-cetak-message');
     hideMessage('kelola-nilai-guru-message');
+    hideMessage('kelola-arsip-message');
     // --- AKHIR TAMBAHAN ---
 
     const targetElement = document.getElementById(idHalaman);
@@ -923,6 +925,9 @@
             break;
         case 'halaman-kelola-nilai-guru':
             bukaHalamanKelolaNilaiGuru();
+            break;
+        case 'halaman-kelola-arsip':
+            bukaHalamanKelolaArsip();
             break;
         default:
             console.warn("ID halaman tersimpan tidak valid:", pageId, ". Menampilkan dashboard.");
@@ -1291,6 +1296,30 @@
         return;
       }
     });
+
+    // --- LISTENER KELOLA ARSIP ---
+    document.getElementById('btn-buka-kelola-arsip').addEventListener('click', () => {
+      handleNavigationConfirm(bukaHalamanKelolaArsip);
+    });
+    
+    document.getElementById('btn-kembali-ke-dashboard-arsip').addEventListener('click', () => {
+      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
+    });
+    
+    // Listener fase capture untuk tombol di halaman arsip (jika non-premium)
+    document.getElementById('halaman-kelola-arsip').addEventListener('click', (e) => {
+      const halaman = e.currentTarget;
+      if (halaman.classList.contains('non-premium-readonly')) {
+        // Cek jika tombol hapus diklik
+        const deleteBtn = e.target.closest('.btn-hapus-arsip');
+        if (deleteBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          showToast("Fitur Premium. Silakan Donasi untuk menghapus arsip.", 'gagal', 2500);
+        }
+      }
+    }, true);
+    // -----------------------------
 
     // --- [MODIFIKASI DI SINI: Hapus bukaHalamanDonasi] ---
     document.getElementById('halaman-guru').addEventListener('click', (e) => {
@@ -11047,6 +11076,7 @@
     const btnCetakKartuSiswa = document.getElementById('btn-cetak-kartu-siswa');
     const btnPengaturanCetak = document.getElementById('btn-buka-pengaturan-cetak');
     const btnKelolaNilaiGuru = document.getElementById('btn-buka-kelola-nilai-guru');
+    const btnKelolaArsip = document.getElementById('btn-buka-kelola-arsip');
     
     if (btnGuru) {
       const stamp = btnGuru.querySelector('.premium-stamp');
@@ -11125,6 +11155,19 @@
         if (stamp) stamp.style.display = 'block';
       }
     }
+
+    // --- LOGIKA TOMBOL ARSIP ---
+    if (btnKelolaArsip) {
+      const stamp = btnKelolaArsip.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnKelolaArsip.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnKelolaArsip.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    // ---------------------------
 
     if (tabGuru) {
       tabGuru.disabled = !isPremium;
@@ -15158,6 +15201,127 @@
       } else {
           showMessage('proses-kelulusan-message', response.message, true);
       }
+  }
+
+  // --- FUNGSI KELOLA ARSIP ---
+
+  function bukaHalamanKelolaArsip() {
+    tampilHalaman('halaman-kelola-arsip');
+    
+    const halaman = document.getElementById('halaman-kelola-arsip');
+    const isPremium = (globalDonasiStatus === 'APPROVED');
+    
+    const oldInfoBox = document.getElementById('kelola-arsip-premium-info');
+    if (oldInfoBox) oldInfoBox.remove(); // Hapus duplikat
+    
+    // Logic Premium Info Box (tampilkan jika belum donasi)
+    const defaultInfoBox = halaman.querySelector('.premium-info-box'); // Box default di HTML
+    
+    if (isPremium) {
+      halaman.classList.remove('non-premium-readonly');
+      if (defaultInfoBox) defaultInfoBox.style.display = 'none';
+    } else {
+      halaman.classList.add('non-premium-readonly');
+      if (defaultInfoBox) {
+          defaultInfoBox.style.display = 'block';
+          
+          // Pasang listener link donasi
+          const linkDonasi = document.getElementById('link-donasi-dari-kelola-arsip');
+          if(linkDonasi) {
+             // Hapus listener lama (clone node trick)
+             const newLink = linkDonasi.cloneNode(true);
+             linkDonasi.parentNode.replaceChild(newLink, linkDonasi);
+             newLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                bukaHalamanDonasi();
+             });
+          }
+      }
+    }
+    
+    hideMessage('kelola-arsip-message');
+    document.getElementById('tabel-kelola-arsip-body').innerHTML = '<tr><td colspan="2" class="text-center"><div class="spinner-inline"></div> Memuat daftar arsip...</td></tr>';
+    
+    // Panggil Server
+    google.script.run
+      .withSuccessHandler(onArsipListLoaded)
+      .withFailureHandler(onGagal)
+      .getArsipList(getToken());
+  }
+
+  function onArsipListLoaded(response) {
+    if (response.status === 'sukses') {
+      renderArsipTable(response.data);
+    } else {
+      showMessage('kelola-arsip-message', response.message, true);
+      document.getElementById('tabel-kelola-arsip-body').innerHTML = '<tr><td colspan="2" class="text-center text-danger">Gagal memuat data.</td></tr>';
+    }
+  }
+
+  function renderArsipTable(arsipList) {
+    const tbody = document.getElementById('tabel-kelola-arsip-body');
+    tbody.innerHTML = '';
+
+    if (!arsipList || arsipList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" class="text-center">Belum ada data arsip.</td></tr>';
+      return;
+    }
+
+    arsipList.forEach(arsip => {
+      const tr = document.createElement('tr');
+      
+      // Kolom Nama (Bersihkan "Arsip " dari nama untuk tampilan)
+      const displayName = arsip.name.replace('Arsip ', '');
+      
+      tr.innerHTML = `
+        <td>
+            <strong>${displayName}</strong><br>
+            <small class="text-muted">Sheet: ${arsip.name}</small>
+        </td>
+        <td class="text-center">
+            <button class="btn-hapus-arsip" onclick="konfirmasiHapusArsip('${arsip.name}')">
+               <i class="fas fa-trash-alt"></i> Hapus
+               <div class="premium-stamp" style="display: none;">Premium</div>
+            </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function konfirmasiHapusArsip(sheetName) {
+    // Cek lagi status premium di sisi klien (double check)
+    if (globalDonasiStatus !== 'APPROVED') {
+        showToast("Fitur Premium. Silakan Donasi untuk menghapus arsip.", 'gagal');
+        return;
+    }
+
+    const displayName = sheetName.replace('Arsip ', '');
+    const title = "Hapus Arsip?";
+    const message = `Anda yakin ingin menghapus arsip tahun ajaran: <br><strong>${displayName}</strong>?<br><br>
+                     Data nilai pada tahun tersebut akan <strong>DIHAPUS PERMANEN</strong> dari database Arsip.<br>
+                     Tindakan ini tidak dapat dibatalkan.`;
+    
+    const callback = function() {
+        setLoading(true, 'Menghapus arsip...', true);
+        google.script.run
+            .withSuccessHandler(onArsipDeleted)
+            .withFailureHandler(onGagal)
+            .deleteArsipSheet(getToken(), sheetName);
+    };
+
+    showConfirmationModal(title, message, callback, 'danger');
+  }
+
+  function onArsipDeleted(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+       showToast(response.message, 'sukses');
+       // Muat ulang daftar
+       bukaHalamanKelolaArsip();
+    } else {
+       showMessage('kelola-arsip-message', response.message, true);
+    }
   }
 
 </script>
