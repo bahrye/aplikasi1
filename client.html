@@ -652,7 +652,8 @@
       'halaman-registrasi',
       'halaman-login-siswa',
       'halaman-login-guru',
-      'halaman-login-arsip' // <-- TAMBAHKAN INI
+      'halaman-login-arsip',
+      'halaman-lupa-password'
     ];
 
     allPages.forEach(id => {
@@ -1251,6 +1252,68 @@
             executePdfDownload(key, kelas);
         }
     });
+
+    // --- FITUR LUPA PASSWORD ---
+    
+    // Navigasi: Buka halaman lupa password
+    const linkLupaPass = document.getElementById('link-lupa-password');
+    if (linkLupaPass) {
+        linkLupaPass.addEventListener('click', (e) => {
+            e.preventDefault();
+            tampilHalaman('halaman-lupa-password');
+            hideMessage('lupa-pass-message');
+            document.getElementById('form-lupa-password').reset();
+            // Sembunyikan tab auth agar fokus
+            document.querySelector('.auth-tabs').style.display = 'none';
+        });
+    }
+
+    // Navigasi: Kembali ke login
+    const linkKembaliLogin = document.getElementById('btn-kembali-login');
+    if (linkKembaliLogin) {
+        linkKembaliLogin.addEventListener('click', (e) => {
+            e.preventDefault();
+            tampilHalaman('halaman-login');
+            // Munculkan kembali tab auth
+            document.querySelector('.auth-tabs').style.display = 'flex';
+        });
+    }
+
+    // Aksi: Kirim permintaan reset
+    const btnKirimReset = document.getElementById('btn-kirim-reset');
+    if (btnKirimReset) {
+        btnKirimReset.addEventListener('click', () => {
+            const email = document.getElementById('email-lupa-pass').value.trim();
+            const msgBox = document.getElementById('lupa-pass-message');
+            const btn = document.getElementById('btn-kirim-reset');
+            
+            msgBox.style.display = 'none';
+            
+            if (!email) {
+                showMessage('lupa-pass-message', 'Email wajib diisi.', true);
+                return;
+            }
+            
+            // Set loading state
+            setButtonLoading(btn, 'Mengirim...');
+            
+            google.script.run
+                .withSuccessHandler((res) => {
+                    resetButtonLoading(btn);
+                    if (res.status === 'sukses') {
+                        showMessage('lupa-pass-message', res.message, false);
+                        document.getElementById('form-lupa-password').reset();
+                    } else {
+                        showMessage('lupa-pass-message', res.message, true);
+                    }
+                })
+                .withFailureHandler((err) => {
+                    resetButtonLoading(btn);
+                    showMessage('lupa-pass-message', 'Gagal: ' + err.message, true);
+                })
+                .prosesPermintaanReset(email);
+        });
+    }
 
     // --- [TAMBAHAN BARU] Event Listener Fase Capture untuk Halaman Guru ---
 
