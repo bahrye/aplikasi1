@@ -6423,27 +6423,27 @@
 
   /* --- TAMBAHAN BARU: Posisi Tengah Layar --- */
   #global-toast-container.center-screen {
-      top: 50% !important;       /* Dorong ke tengah vertikal */
-      left: 50% !important;      /* Dorong ke tengah horizontal */
-      transform: translate(-50%, -50%) !important; /* Koreksi posisi agar pas di tengah */
+      top: 50% !important;       
+      left: 50% !important;      
+      transform: translate(-50%, -50%) !important; 
       
-      /* Reset lebar agar menyesuaikan konten pesan yang besar */
       width: auto !important;
       max-width: 90% !important;
-      min-width: 320px !important; /* Minimal lebar agar rapi */
+      min-width: 320px !important; 
   }
 
   /* Pastikan pesan di dalamnya juga lebih rapi saat di tengah */
   #global-toast-container.center-screen .global-toast {
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2); /* Bayangan lebih tebal agar elegan */
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
       border: 1px solid rgba(0,0,0,0.1);
-      flex-direction: column; /* Susun ikon dan teks ke bawah (opsional, tapi lebih bagus) */
-      text-align: center;
+      /* HAPUS BARIS INI: flex-direction: column; */
+      /* HAPUS BARIS INI: text-align: center; */
   }
   
   #global-toast-container.center-screen .toast-icon {
-      margin-right: 0;
-      margin-bottom: 10px;
-      transform: scale(1.5); /* Perbesar spinner */
+      /* Kembalikan margin agar ikon tidak nempel teks */
+      margin-right: 12px; 
+      margin-bottom: 0; 
+      transform: scale(1.5); 
   }
 </style>
