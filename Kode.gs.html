@@ -6239,176 +6239,96 @@ function rebuildKelulusanCacheFromDB() {
 }
 
 /**
- * [MODIFIKASI BESAR UNTUK SSO]
- * Mengautentikasi guru ke database Aplikasi 2 menggunakan HASH & SALT.
- * dan MENCATAT One-Time Token (OTT) di spreadsheet Aplikasi 2.
- * [MODIFIKASI V2] Sekarang mengirim payload JSON {email, jenjangPilihan}.
- * [MODIFIKASI V3] Menggunakan Master Sheet 'Config' untuk URL dinamis.
+ * [DIPERBARUI] Login Guru dengan metode API Handoff (Zero Spreadsheet Write).
  */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    // 1. Validasi NPSN/Kode Sekolah dan AMBIL DATA BARIS
+    // 1. Validasi NPSN & Data Sekolah (Logika tetap sama)
     const masterSS_App1 = SpreadsheetApp.openById(MASTER_SHEET_ID); 
     const sheetSekolah_App1 = masterSS_App1.getSheetByName('Sheet_Sekolah');
-    
     const dataSekolahApp1 = sheetSekolah_App1.getRange("A2:H" + sheetSekolah_App1.getLastRow()).getValues();
     
     let rowDataSekolah = null;
     const npsnLower = npsn.toLowerCase();
 
     for (const row of dataSekolahApp1) {
-      const npsnDb = String(row[7]).toLowerCase(); // Kolom H
-      const namaDb = String(row[1]).toLowerCase(); // Kolom B
-      
+      const npsnDb = String(row[7]).toLowerCase(); 
+      const namaDb = String(row[1]).toLowerCase(); 
       if (npsnDb === npsnLower || namaDb === npsnLower) {
         rowDataSekolah = row;
         break;
       }
     }
 
-    if (!rowDataSekolah) {
-      return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan di Aplikasi 1." };
-    }
+    if (!rowDataSekolah) return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
 
-    const idSekolahApp1 = rowDataSekolah[0]; // Kolom A
-    const app1DbId = rowDataSekolah[5];      // Kolom F (App 1 DB ID)
+    const idSekolahApp1 = rowDataSekolah[0]; 
+    const app1DbId = rowDataSekolah[5];      
     
-    if (!app1DbId) {
-      return { status: "gagal", message: `Database App 1 (Kolom F) untuk sekolah ${idSekolahApp1} belum diatur.` };
-    }
+    if (!app1DbId) return { status: "gagal", message: `Database App 1 belum diatur.` };
     const jenjangPilihan = getJenjangPilihanFromSheet(app1DbId);
-    if (!jenjangPilihan) {
-      return { status: "gagal", message: `Jenjang Pilihan (Data_Sekolah!A2) di database sekolah ${idSekolahApp1} belum diatur.` };
-    }
 
-
-    // 2. Buka database Aplikasi 2 (Pusat Guru)
+    // 2. Validasi Kredensial di DB Global (App 2)
     const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
     const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
-    if (!sheetGuru_app2) throw new Error("Database Guru (db_guru) di Aplikasi 2 tidak ditemukan.");
-    
     const dataGuru_app2 = sheetGuru_app2.getDataRange().getValues();
     
-    // 3. Cari guru di Aplikasi 2 (Logic Multi-Sekolah)
     const userEmailLower = email.toLowerCase();
-    const targetSekolahIdStr = String(idSekolahApp1).trim(); // ID Sekolah dari NPSN
+    const targetSekolahIdStr = String(idSekolahApp1).trim();
     let foundGuruData = null;
     
     for (let i = 1; i < dataGuru_app2.length; i++) {
       const row = dataGuru_app2[i];
-      const rowEmail = String(row[0]).toLowerCase();
-      const rowSekolahId = String(row[3]).trim(); // Kolom D = ID Sekolah
-
-      // [PERUBAHAN DI SINI] 
-      // Cek Email DAN ID Sekolah secara bersamaan
-      if (rowEmail === userEmailLower && rowSekolahId === targetSekolahIdStr) {
-        
-        const storedHash = row[1]; // Kolom B (HashedPassword)
-        const storedSalt = row[5]; // Kolom F (Salt)
-        
-        if (verifyPassword(password, storedHash, storedSalt)) {
-            foundGuruData = {
-              email: row[0],
-              nama: row[2],
-              id_sekolah: row[3],
-              role: row[4] || 'guru'
-            };
-            break; // Ketemu & Password benar
+      if (String(row[0]).toLowerCase() === userEmailLower && String(row[3]).trim() === targetSekolahIdStr) {
+        if (verifyPassword(password, row[1], row[5])) {
+            foundGuruData = { email: row[0] }; // Password benar
+            break; 
         } else {
             return { status: "gagal", message: "Password salah." };
         }
       }
     }
 
-    if (!foundGuruData) {
-      // Pesan error lebih spesifik
-      return { status: "gagal", message: "Email tidak terdaftar di sekolah (NPSN) ini." };
-    }
+    if (!foundGuruData) return { status: "gagal", message: "Email tidak terdaftar di sekolah ini." };
 
-    // 4. Buat One-Time Token (OTT)
-    const ott = 'ott-' + Utilities.getUuid();
-    
-    const payload = {
-      email: foundGuruData.email,
-      jenjangPilihan: jenjangPilihan 
-    };
-    const payloadString = JSON.stringify(payload);
-    
-    const timestamp = new Date();
-    
-    const ottSheet = ss_app2.getSheetByName('db_ott_cache');
-    if (!ottSheet) {
-      throw new Error("Sheet 'db_ott_cache' tidak ditemukan di Aplikasi 2.");
-    }
-    
-    // 5. Simpan OTT ke SPREADSHEET Aplikasi 2 (OPTIMASI BATCH)
-    const lock = LockService.getScriptLock();
-    lock.waitLock(10000); 
-    try {
-      // Ambil semua data sekaligus
-      const range = ottSheet.getDataRange();
-      let data = [];
-      if (ottSheet.getLastRow() > 0) {
-        data = range.getValues();
-      }
-      
-      const now = timestamp.getTime();
-      const expiryLimit = 5 * 60 * 1000; // 5 menit (Token expired setelah 5 menit)
-      
-      // Siapkan array untuk data baru yang bersih
-      const validData = [];
-      
-      // Pastikan header ada
-      if (data.length > 0) {
-        validData.push(data[0]); // Simpan header asli
-      } else {
-        validData.push(["Token", "EmailPayload", "Timestamp"]); // Header default jika kosong
-      }
-
-      // Filter data lama: Hanya simpan yang BELUM expired
-      for (let i = 1; i < data.length; i++) {
-        const rowTime = data[i][2];
-        // Cek apakah tanggal valid dan belum lewat batas waktu
-        if (rowTime instanceof Date && (now - rowTime.getTime() <= expiryLimit)) {
-          validData.push(data[i]);
-        }
-      }
-      
-      // Tambahkan token baru ke daftar valid
-      validData.push([ott, payloadString, timestamp]);
-      
-      // Tulis ulang sheet sekaligus (Hapus semua -> Tulis yang bersih)
-      // Ini hanya 2 operasi (Clear + SetValues) vs puluhan operasi deleteRow
-      ottSheet.clearContents();
-      ottSheet.getRange(1, 1, validData.length, 3).setValues(validData);
-      
-    } catch(e) {
-      // Jika gagal menulis, lempar error agar klien tahu login gagal
-      throw new Error("Gagal menyimpan token login: " + e.message);
-    } finally {
-      lock.releaseLock();
-    }
-    
-    // 6. Baca URL Aplikasi 2 secara dinamis dari Master Sheet 'Config'
+    // 3. Ambil URL Aplikasi 2 dari Config (PENTING: Pastikan sheet Config sudah diisi URL App 2)
     const configSheet = masterSS_App1.getSheetByName('Config');
-    if (!configSheet) {
-      throw new Error("Sheet 'Config' tidak ditemukan di Master Sheet.");
-    }
     const URL_APLIKASI_2_DINAMIS = configSheet.getRange('B1').getValue();
     
-    // --- TAMBAHAN VALIDASI ---
-    if (!URL_APLIKASI_2_DINAMIS || URL_APLIKASI_2_DINAMIS === "") {
-      return { status: "gagal", message: "Error Konfigurasi: URL Aplikasi 2 belum diatur di Master Sheet (Sheet Config, Sel B1). Hubungi Admin." };
+    if (!URL_APLIKASI_2_DINAMIS) return { status: "gagal", message: "URL Aplikasi 2 belum diatur di Config Master Sheet." };
+
+    // 4. Buat Token & Payload
+    const ott = 'ott-' + Utilities.getUuid();
+    const payload = JSON.stringify({
+      email: foundGuruData.email,
+      jenjangPilihan: jenjangPilihan,
+      // Tambahkan info lain jika perlu (misal pengumuman)
+    });
+
+    // 5. [OPTIMASI] Kirim Token ke App 2 via API
+    try {
+      const response = UrlFetchApp.fetch(URL_APLIKASI_2_DINAMIS, {
+        method: 'post',
+        payload: {
+          action: 'store_sso_token',
+          ott: ott,
+          payload: payload
+        },
+        muteHttpExceptions: true
+      });
+      
+      if (response.getContentText() !== "OK") {
+         // Jika App 2 belum dideploy ulang dengan doPost baru, ini akan error
+         throw new Error("Gagal handshake dengan App 2. Pastikan App 2 sudah di-deploy ulang.");
+      }
+    } catch (e) {
+      Logger.log("Gagal kirim token ke App 2: " + e.message);
+      return { status: "gagal", message: "Koneksi ke Aplikasi Guru gagal: " + e.message };
     }
     
-    if (!URL_APLIKASI_2_DINAMIS.endsWith('/exec')) {
-       // Opsional: peringatan jika format URL aneh, tapi jangan gagalkan jika cuma beda sedikit
-       Logger.log("Peringatan: URL Aplikasi 2 mungkin salah format: " + URL_APLIKASI_2_DINAMIS);
-    }
-    // --- AKHIR TAMBAHAN ---
-    
-    // 7. Buat URL Redirect (DINAMIS)
-    const redirectUrl = URL_APLIKASI_2_DINAMIS + (URL_APLIKASI_2_DINAMIS.includes('?') ? '&' : '?') + 'ott=' + ott;
+    // 6. Return URL Redirect
+    const separator = URL_APLIKASI_2_DINAMIS.includes('?') ? '&' : '?';
+    const redirectUrl = URL_APLIKASI_2_DINAMIS + separator + 'ott=' + ott;
     
     return {
       status: "sso_redirect",
@@ -6416,7 +6336,6 @@ function prosesLoginGuru(npsn, email, password) {
     };
 
   } catch (e) {
-    Logger.log(`Error prosesLoginGuru (SSO): ${e.message}`);
     return { status: "gagal", message: "Terjadi error server: " + e.message };
   }
 }
@@ -8761,10 +8680,10 @@ function registerSchoolInApp2(sekolahID, namaSekolah) {
     sheetSekolah_app2.appendRow([
       sekolahID,          // id_sekolah (pakai ID dari App 1)
       namaSekolah,        // nama_sekolah
-      'Belum Diatur',     // tempat_ttd (Kolom C)
-      'Belum Diatur',     // kepala_sekolah (Kolom D)
-      '-',                // nip_kepsek (Kolom E)
-      'ID_TEMPLATE_HARUS_DIISI_MANUAL_OLEH_SA', // template_id (Kolom F)
+      '',     // tempat_ttd (Kolom C)
+      '',     // kepala_sekolah (Kolom D)
+      '',                // nip_kepsek (Kolom E)
+      '', // template_id (Kolom F)
       null,               // tanggal_sistem (Kolom G)
       '',                 // template_rekap (Kolom H)
       ''                  // pengumuman (Kolom I)
