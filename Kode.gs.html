@@ -6289,34 +6289,40 @@ function prosesLoginGuru(npsn, email, password) {
     
     const dataGuru_app2 = sheetGuru_app2.getDataRange().getValues();
     
-    // 3. Cari guru di Aplikasi 2
+    // 3. Cari guru di Aplikasi 2 (Logic Multi-Sekolah)
     const userEmailLower = email.toLowerCase();
+    const targetSekolahIdStr = String(idSekolahApp1).trim(); // ID Sekolah dari NPSN
     let foundGuruData = null;
     
     for (let i = 1; i < dataGuru_app2.length; i++) {
       const row = dataGuru_app2[i];
-      if (row[0].toLowerCase() === userEmailLower) {
+      const rowEmail = String(row[0]).toLowerCase();
+      const rowSekolahId = String(row[3]).trim(); // Kolom D = ID Sekolah
+
+      // [PERUBAHAN DI SINI] 
+      // Cek Email DAN ID Sekolah secara bersamaan
+      if (rowEmail === userEmailLower && rowSekolahId === targetSekolahIdStr) {
+        
         const storedHash = row[1]; // Kolom B (HashedPassword)
         const storedSalt = row[5]; // Kolom F (Salt)
         
         if (verifyPassword(password, storedHash, storedSalt)) {
-          if (row[3] == idSekolahApp1) { 
             foundGuruData = {
               email: row[0],
               nama: row[2],
               id_sekolah: row[3],
               role: row[4] || 'guru'
             };
-            break;
-          } else {
-              return { status: "gagal", message: "Login berhasil, tetapi guru ini tidak terdaftar di sekolah (NPSN) ini." };
-          }
+            break; // Ketemu & Password benar
+        } else {
+            return { status: "gagal", message: "Password salah." };
         }
       }
     }
 
     if (!foundGuruData) {
-      return { status: "gagal", message: "Email atau password guru salah." };
+      // Pesan error lebih spesifik
+      return { status: "gagal", message: "Email tidak terdaftar di sekolah (NPSN) ini." };
     }
 
     // 4. Buat One-Time Token (OTT)
@@ -6608,7 +6614,7 @@ function deleteGuru(token, emailGuru) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token); // Ambil sessionData
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
@@ -6616,12 +6622,11 @@ function deleteGuru(token, emailGuru) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === emailGuru) {
         sheet.deleteRow(i + 1);
-        deleteGuruFromApp2(emailGuru);
         
-        // --- TAMBAHKAN BARIS INI ---
+        // [PERUBAHAN DI SINI] Kirim ID Sekolah ke helper
+        deleteGuruFromApp2(emailGuru, sessionData.sekolahID);
+        
         clearGuruCache(sessionData.sekolahID);
-        // ---------------------------
-        
         return { status: "sukses", message: "Guru berhasil dihapus." };
       }
     }
@@ -8806,11 +8811,12 @@ function registerAdminAsGuruInApp2(email, namaSekolah, sekolahID, plainPassword)
 }
 
 /**
- * [MODIFIKASI] Helper: 
- * 1. Update Akun di DB GLOBAL
- * 2. Update Mapel di DB LOKAL SEKOLAH (dengan membaca status isUS/isUP dari App 1)
+ * [MODIFIKASI MULTI-SEKOLAH & FIX NIP] Helper: 
+ * Update atau Tambah Guru di DB Global. 
+ * - Mengizinkan email duplikat ASALKAN id_sekolah berbeda.
+ * - Memformat NIP menjadi teks (diawali tanda petik).
  */
-function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip, mapelKelasData, app2DbId, app1DbId) { // <-- Tambah app1DbId
+function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip, mapelKelasData, app2DbId, app1DbId) {
   try {
     // A. UPDATE DB GLOBAL (Untuk Login)
     const ss_global = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
@@ -8818,10 +8824,15 @@ function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip,
     
     const data = sheetGuru_global.getDataRange().getValues();
     const emailLower = email.toLowerCase();
+    const targetSekolahID = String(sekolahID).trim(); 
     let foundRowIndex = -1;
 
+    // Cari berdasarkan EMAIL && SEKOLAH ID
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0].toLowerCase() === emailLower) {
+      const rowEmail = String(data[i][0]).toLowerCase();
+      const rowSekolahID = String(data[i][3]).trim();
+
+      if (rowEmail === emailLower && rowSekolahID === targetSekolahID) {
         foundRowIndex = i + 1; 
         break;
       }
@@ -8829,6 +8840,7 @@ function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip,
     
     let hashToSave, saltToSave;
 
+    // Logika Password
     if (plainPassword) {
       saltToSave = generateSalt();
       hashToSave = hashPassword(plainPassword, saltToSave);
@@ -8840,17 +8852,24 @@ function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip,
       hashToSave = hashPassword("PasswordDefault123!", saltToSave);
     }
 
-    const rowData = [email, hashToSave, nama, sekolahID, role, saltToSave, nip || ""];
+    // --- [PERBAIKAN NIP] ---
+    // Paksa NIP menjadi string dan tambahkan tanda petik satu di depan
+    const formattedNip = (nip && String(nip).trim() !== "") ? "'" + String(nip).trim() : "";
+
+    // Susun Data Baris (Kolom A s.d G)
+    // A=Email, B=Hash, C=Nama, D=SekolahID, E=Role, F=Salt, G=NIP
+    const rowData = [email, hashToSave, nama, sekolahID, role, saltToSave, formattedNip];
 
     if (foundRowIndex > -1) {
+      // Update baris yang ditemukan
       sheetGuru_global.getRange(foundRowIndex, 1, 1, 7).setValues([rowData]); 
     } else {
+      // Buat baris baru
       sheetGuru_global.appendRow(rowData); 
     }
 
     // B. UPDATE DB LOKAL SEKOLAH (Untuk Mapel & Kelas)
     if (mapelKelasData && app2DbId && app1DbId) {
-       // [MODIFIKASI] Kirim app1DbId untuk lookup isUS/isUP
        _syncGuruMapelToLocalApp2(app2DbId, email, mapelKelasData, app1DbId);
     }
 
@@ -8860,10 +8879,10 @@ function addOrUpdateGuruInApp2(email, plainPassword, nama, sekolahID, role, nip,
 }
 
 /**
- * [BARU] Helper: Menghapus guru dari db_guru global (Aplikasi 2)
- * Fungsi ini akan dipanggil oleh deleteGuru.
+ * [MODIFIKASI MULTI-SEKOLAH] Helper: 
+ * Menghapus guru dari db_guru global (Aplikasi 2) HANYA untuk sekolah tertentu.
  */
-function deleteGuruFromApp2(email) {
+function deleteGuruFromApp2(email, sekolahID) {
   try {
     const ss_app2 = SpreadsheetApp.openById(ID_SPREADSHEET_APLIKASI_2);
     const sheetGuru_app2 = ss_app2.getSheetByName('db_guru');
@@ -8871,19 +8890,24 @@ function deleteGuruFromApp2(email) {
 
     const data = sheetGuru_app2.getDataRange().getValues();
     const emailLower = email.toLowerCase();
+    const targetSekolahID = String(sekolahID).trim();
+
     let rowsToDelete = [];
 
     // Loop dari BAWAH ke ATAS saat menghapus
     for (let i = data.length - 1; i >= 1; i--) { 
-      if (data[i][0].toLowerCase() === emailLower) {
+      const rowEmail = String(data[i][0]).toLowerCase();
+      const rowSekolahID = String(data[i][3]).trim();
+
+      // [PERUBAHAN DI SINI] Cek Email DAN Sekolah
+      if (rowEmail === emailLower && rowSekolahID === targetSekolahID) {
         rowsToDelete.push(i + 1); // 1-based index
       }
     }
 
     if (rowsToDelete.length > 0) {
-      // Hapus baris yang ditemukan
       rowsToDelete.forEach(rowNum => sheetGuru_app2.deleteRow(rowNum));
-      Logger.log(`Sinkronisasi Hapus (App 2): Guru ${emailLower} dihapus.`);
+      Logger.log(`Sinkronisasi Hapus (App 2): Guru ${emailLower} dihapus dari sekolah ${sekolahID}.`);
     }
   } catch (e) {
     Logger.log(`Peringatan: Gagal sinkronisasi 'deleteGuruFromApp2' (App 2) untuk ${email}: ${e.message}`);
