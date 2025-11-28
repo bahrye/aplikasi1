@@ -12554,8 +12554,8 @@
   }
 
   /**
-   * [MODIFIKASI UI] Merender list T.A. menjadi SATU BARIS SAJA.
-   * Menghilangkan kolom Kunci dan Aksi.
+   * [MODIFIKASI UI] Merender list T.A. menjadi SATU BARIS.
+   * ID T.A. sekarang berupa DROPDOWN (3 Tahun: Lalu, Kini, Depan).
    */
   function renderTahunAjaranList(taList) {
     const container = document.getElementById('ta-list-container');
@@ -12569,39 +12569,95 @@
 
     // 1. Buat Header Sederhana
     const headerDiv = document.createElement('div');
-    headerDiv.className = 'ta-input-row'; // Tetap pakai class asli untuk margin/gap
-    headerDiv.style.cssText = gridStyle;  // Timpa grid-columns
+    headerDiv.className = 'ta-input-row'; 
+    headerDiv.style.cssText = gridStyle; 
     
     headerDiv.innerHTML = `
       <label style="font-weight: 700; margin:0;">ID Tahun Ajaran</label>
-      <label style="font-weight: 700; margin:0;">Deskripsi (Cth: 2024/2025)</label>
+      <label style="font-weight: 700; margin:0;">Deskripsi</label>
     `;
     container.appendChild(headerDiv);
 
-    // 2. Buat Baris Input Tunggal
+    // 2. Siapkan Opsi Dropdown (3 Tahun)
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0 = Jan, 11 = Des
+    
+    // Jika bulan >= Juli (Index 6), maka Tahun Ajaran mulai di tahun ini (2025 -> TA 2025/2026)
+    // Jika bulan < Juli, maka Tahun Ajaran mulai tahun lalu (Feb 2026 -> TA 2025/2026)
+    let baseYear = (currentMonth >= 6) ? currentYear : currentYear - 1;
+
+    const years = [
+        { y: baseYear - 1, label: '(Tahun Lalu)' },
+        { y: baseYear,     label: '(Tahun Ini)' },
+        { y: baseYear + 1, label: '(Tahun Depan)' }
+    ];
+
+    let optionsHtml = '<option value="">-- Pilih --</option>';
+    years.forEach(item => {
+        const y = item.y;
+        const idStr = `TA-${y}-${y+1}`;
+        const descStr = `${y}/${y+1}`;
+        
+        // Cek apakah opsi ini sama dengan data yang tersimpan (ta.id)
+        const isSelected = (ta.id === idStr) ? 'selected' : '';
+        
+        optionsHtml += `<option value="${idStr}" data-desc="${descStr}" ${isSelected}>${descStr} ${item.label}</option>`;
+    });
+
+    // 3. Buat Baris Input
     const div = document.createElement('div');
     div.className = 'ta-input-row';
-    div.style.cssText = gridStyle; // Timpa grid-columns
+    div.style.cssText = gridStyle; 
     
     const isUsed = ta.isUsed || false;
-    // Kunci dihilangkan dari UI, jadi kita tidak merender checkbox.
-    // Status isUsed tetap dicek untuk readonly ID.
-
     const titleAttr = isUsed ? 'ID tidak bisa diubah karena T.A. sudah memiliki data.' : '';
 
-    const idInputHtml = isUsed ? 
-      `<input type="text" class="ta-id-input" value="${ta.id}" readonly style="background-color: var(--bg-light); cursor: not-allowed; margin:0;" title="${titleAttr}">` :
-      `<input type="text" class="ta-id-input" value="${ta.id}" placeholder="TA-2024-2025" style="margin:0;">`;
+    // LOGIKA INPUT:
+    // Jika sudah dipakai (isUsed) -> Tampilkan TEXT INPUT READONLY (agar terlihat jelas nilainya terkunci)
+    // Jika belum dipakai -> Tampilkan DROPDOWN SELECT
+    
+    let idInputHtml = '';
+    if (isUsed) {
+        idInputHtml = `<input type="text" class="ta-id-input" value="${ta.id}" readonly 
+                              style="background-color: #e9ecef; cursor: not-allowed; margin:0;" 
+                              title="${titleAttr}">`;
+    } else {
+        idInputHtml = `<select class="ta-id-input" style="margin:0; padding: 12px; border-radius: 8px; border: 1px solid #dee2e6;" onchange="handleTaIdChange(this)">
+                          ${optionsHtml}
+                       </select>`;
+    }
 
     div.innerHTML = `
       ${idInputHtml}
-      <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Deskripsi T.A." style="margin:0;">
+      <input type="text" class="ta-deskripsi-input" value="${ta.deskripsi}" placeholder="Contoh: 2025/2026" style="margin:0;">
     `;
     
-    // Simpan state isUsed di dataset untuk referensi saat simpan
+    // Simpan state isUsed di dataset
     div.dataset.isUsed = String(isUsed);
 
     container.appendChild(div);
+  }
+
+  /**
+   * [BARU] Helper: Mengisi otomatis deskripsi saat ID TA dipilih dari dropdown.
+   */
+  function handleTaIdChange(selectElement) {
+      const selectedOption = selectElement.options[selectElement.selectedIndex];
+      const deskripsi = selectedOption.dataset.desc;
+      
+      if (deskripsi) {
+          // Cari input deskripsi di sebelahnya dalam baris yang sama
+          const parentRow = selectElement.closest('.ta-input-row');
+          const descInput = parentRow.querySelector('.ta-deskripsi-input');
+          if (descInput) {
+              descInput.value = deskripsi;
+              // Tandai form sebagai kotor (ada perubahan)
+              isFormDirty = true; 
+          }
+      }
+      // Tandai form kotor
+      isFormDirty = true;
   }
 
   /**
