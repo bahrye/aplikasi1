@@ -8071,8 +8071,17 @@ function buatDatabaseAplikasi2Baru(namaSekolah, schoolDriveFolder) { // [MODIFIK
     // db_mapel
     newSS.insertSheet('db_mapel').appendRow(["email_guru", "mapel", "id_tahun_ajaran", "singkatan"]).setFrozenRows(1);
 
-    // db_sekolah (Hanya untuk referensi)
-    newSS.insertSheet('db_sekolah').appendRow(["id_sekolah", "nama_sekolah", "tempat_ttd", "kepala_sekolah", "nip_kepsek", "template_id", "tanggal_sistem", "template_rekap", "pengumuman"]).setFrozenRows(1);
+    // db_sekolah (Diisi default agar nama muncul di Dashboard App 2)
+    const sheetDbSekolah = newSS.insertSheet('db_sekolah');
+    sheetDbSekolah.appendRow(["id_sekolah", "nama_sekolah", "tempat_ttd", "kepala_sekolah", "nip_kepsek", "template_id", "tanggal_sistem", "template_rekap", "pengumuman"]);
+    sheetDbSekolah.setFrozenRows(1);
+
+    // [FIX] Isi Baris ke-2 dengan data awal
+    sheetDbSekolah.appendRow([
+      "",             // id_sekolah (bisa kosong atau diisi nanti)
+      namaSekolah,    // <--- PENTING: NAMA SEKOLAH HARUS MASUK SINI (Kolom B)
+      "", "", "", "", "", "", "" 
+    ]);
 
     // db_pengaturan_cetak
     newSS.insertSheet('db_pengaturan_cetak').appendRow(["email_guru", "preferensi_tanggal", "tanggal_manual_OBSOLETE"]).setFrozenRows(1);
